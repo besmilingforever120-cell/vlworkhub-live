@@ -10,9 +10,5 @@ export const env = {
     .split(",")
     .map((value) => value.trim())
     .filter(Boolean),
-  mysqlHost: process.env.MYSQL_HOST || "localhost",
-  mysqlPort: Number(process.env.MYSQL_PORT || 3306),
-  mysqlDatabase: process.env.MYSQL_DATABASE || "vlworkhub",
-  mysqlUser: process.env.MYSQL_USER || "vlworkhub",
-  mysqlPassword: process.env.MYSQL_PASSWORD || "vlworkhub"
+  databaseUrl: process.env.DATABASE_URL
 };

@@ -1,0 +1,48 @@
+[
+  {
+    "id": "session-1766311000000-emp-001",
+    "userId": "emp-001",
+    "status": "online",
+    "deviceName": "iOS 18.5",
+    "platform": "ios",
+    "startedAt": "2025-12-22T04:52:08.478Z",
+    "lastSeenAt": "2025-12-22T07:25:20.809Z",
+    "location": {
+      "latitude": 50.27129221127779,
+      "longitude": -119.271706791356,
+      "timestamp": "2025-12-22T07:25:20.809Z",
+      "accuracy": 7.916424709591318
+    }
+  },
+  {
+    "id": "session-1766311200000-user-1766213357742-eoiy0holf",
+    "userId": "user-1766213357742-eoiy0holf",
+    "status": "online",
+    "deviceName": "IOS 18.3.2",
+    "platform": "ios",
+    "startedAt": "2025-12-21T20:05:36.243Z",
+    "lastSeenAt": "2025-12-21T20:06:06.329Z",
+    "location": {
+      "latitude": 50.27129983048505,
+      "longitude": -119.27173954749844,
+      "timestamp": "2025-12-21T20:06:06.329Z",
+      "accuracy": 13.38173182496122
+    }
+  },
+  {
+    "id": "session-1766311400000-user-1766040545788-959s22mr3",
+    "userId": "user-1766040545788-959s22mr3",
+    "status": "idle",
+    "deviceName": "iPad Pro",
+    "platform": "ios",
+    "startedAt": "2025-12-21T01:10:00.000Z",
+    "lastSeenAt": "2025-12-21T02:05:45.000Z",
+    "location": {
+      "latitude": 50.26631,
+      "longitude": -119.27102,
+      "timestamp": "2025-12-21T02:05:45.000Z",
+      "accuracy": 23,
+      "address": "1200 37 Ave, Vernon, BC"
+    }
+  }
+]

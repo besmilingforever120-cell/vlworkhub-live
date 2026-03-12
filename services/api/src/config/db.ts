@@ -1,11 +1,19 @@
-import mysql from "mysql2/promise";
+import { Pool } from "pg";
 import { env } from "./env";
 
-export const pool = mysql.createPool({
-  host: env.mysqlHost,
-  port: env.mysqlPort,
-  database: env.mysqlDatabase,
-  user: env.mysqlUser,
-  password: env.mysqlPassword,
-  connectionLimit: 10
+if (!env.databaseUrl) {
+  throw new Error("DATABASE_URL is required. Configure it in the environment before starting the API.");
+}
+
+export const pool = new Pool({
+  connectionString: env.databaseUrl
 });
+
+export async function verifyDatabaseConnection() {
+  const client = await pool.connect();
+  try {
+    await client.query("SELECT 1");
+  } finally {
+    client.release();
+  }
+}

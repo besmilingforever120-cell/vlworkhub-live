@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-const rootUrl = process.env.NEXT_PUBLIC_ROOT_URL || "http://www.vlworkhub.ca";
+const rootUrl = process.env.NEXT_PUBLIC_ROOT_URL || "http://localhost:3000";
 
 export function middleware(request: NextRequest) {
   if (!request.cookies.get("vlwh_session")) {

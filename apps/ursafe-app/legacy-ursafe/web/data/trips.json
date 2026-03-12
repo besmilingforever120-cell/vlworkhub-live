@@ -1,0 +1,730 @@
+[
+  {
+    "id": "trip-001",
+    "userId": "emp-001",
+    "startTime": "2025-12-16T09:00:00.000Z",
+    "endTime": "2025-12-16T10:30:00.000Z",
+    "distanceInMiles": 25.5,
+    "category": "client_visit",
+    "status": "approved",
+    "coordinates": [],
+    "notes": "Meeting with client downtown",
+    "createdAt": "2025-12-16T09:00:00.000Z",
+    "updatedAt": "2025-12-16T10:30:00.000Z"
+  },
+  {
+    "id": "trip-002",
+    "userId": "emp-001",
+    "startTime": "2025-12-15T14:00:00.000Z",
+    "endTime": "2025-12-15T15:45:00.000Z",
+    "distanceInMiles": 18.2,
+    "category": "delivery",
+    "status": "approved",
+    "coordinates": [],
+    "notes": "Package delivery to warehouse",
+    "createdAt": "2025-12-15T14:00:00.000Z",
+    "updatedAt": "2025-12-15T15:45:00.000Z"
+  },
+  {
+    "id": "trip-1734501002677",
+    "userId": "emp-001",
+    "status": "approved",
+    "category": "business",
+    "startLocation": {
+      "latitude": 50.27131182513043,
+      "longitude": -119.27156903671323,
+      "timestamp": "2025-12-18T05:50:02.677Z",
+      "accuracy": 8.458108453698678
+    },
+    "startTime": "2025-12-18T05:50:02.677Z",
+    "distanceInMiles": 0.06,
+    "route": [
+      {
+        "latitude": 50.27131182513043,
+        "longitude": -119.27156903671323,
+        "timestamp": "2025-12-18T05:50:02.677Z",
+        "accuracy": 8.458108453698678
+      }
+    ],
+    "vehicleInfo": "",
+    "purpose": "",
+    "endLocation": {
+      "latitude": 50.27127285007856,
+      "longitude": -119.271470054487,
+      "timestamp": "2025-12-18T05:50:52.801Z",
+      "accuracy": 6.973087258989849
+    },
+    "endTime": "2025-12-18T05:50:52.801Z",
+    "coordinates": [
+      {
+        "latitude": 50.27131182513043,
+        "longitude": -119.27156903671323,
+        "timestamp": "2025-12-18T05:50:02.677Z",
+        "accuracy": 8.458108453698678
+      },
+      {
+        "latitude": 50.271312896979225,
+        "longitude": -119.271537891808,
+        "timestamp": "2025-12-18T05:50:02.741Z",
+        "accuracy": 8.002542917674486
+      },
+      {
+        "latitude": 50.27132405502913,
+        "longitude": -119.27139420518358,
+        "timestamp": "2025-12-18T05:50:06.728Z",
+        "accuracy": 9.722819191283518
+      },
+      {
+        "latitude": 50.2713283293134,
+        "longitude": -119.27155081560343,
+        "timestamp": "2025-12-18T05:50:13.729Z",
+        "accuracy": 10.871443445897453
+      },
+      {
+        "latitude": 50.27124100856734,
+        "longitude": -119.271631798979,
+        "timestamp": "2025-12-18T05:50:18.725Z",
+        "accuracy": 10.033227475675366
+      },
+      {
+        "latitude": 50.27132339557593,
+        "longitude": -119.2717409428593,
+        "timestamp": "2025-12-18T05:50:26.725Z",
+        "accuracy": 19.12896727212819
+      },
+      {
+        "latitude": 50.271413232670064,
+        "longitude": -119.27169043284266,
+        "timestamp": "2025-12-18T05:50:29.860Z",
+        "accuracy": 12.789355871818941
+      },
+      {
+        "latitude": 50.2712880231582,
+        "longitude": -119.2717081253285,
+        "timestamp": "2025-12-18T05:50:33.723Z",
+        "accuracy": 6.614236669564398
+      },
+      {
+        "latitude": 50.271324234836435,
+        "longitude": -119.27157037759831,
+        "timestamp": "2025-12-18T05:50:41.729Z",
+        "accuracy": 5.332690803998774
+      },
+      {
+        "latitude": 50.27127285007856,
+        "longitude": -119.271470054487,
+        "timestamp": "2025-12-18T05:50:52.801Z",
+        "accuracy": 6.973087258989849
+      }
+    ],
+    "notes": "Test trip"
+  },
+  {
+    "id": "trip-1734501275257",
+    "userId": "emp-001",
+    "status": "rejected",
+    "category": "personal",
+    "startLocation": {
+      "latitude": 50.27129272994405,
+      "longitude": -119.2717117583424,
+      "timestamp": "2025-12-18T05:54:35.257Z",
+      "accuracy": 7.622638260865101
+    },
+    "startTime": "2025-12-18T05:54:35.257Z",
+    "distanceInMiles": 0.03,
+    "route": [
+      {
+        "latitude": 50.27129272994405,
+        "longitude": -119.2717117583424,
+        "timestamp": "2025-12-18T05:54:35.257Z",
+        "accuracy": 7.622638260865101
+      }
+    ],
+    "vehicleInfo": "My car",
+    "purpose": "Brought Lunch",
+    "endLocation": {
+      "latitude": 50.27128098403635,
+      "longitude": -119.27165076071735,
+      "timestamp": "2025-12-18T05:55:52.127Z",
+      "accuracy": 3.494481383834665
+    },
+    "endTime": "2025-12-18T05:55:52.127Z",
+    "coordinates": [
+      {
+        "latitude": 50.27129272994405,
+        "longitude": -119.2717117583424,
+        "timestamp": "2025-12-18T05:54:35.257Z",
+        "accuracy": 7.622638260865101
+      },
+      {
+        "latitude": 50.27129272994405,
+        "longitude": -119.2717117583424,
+        "timestamp": "2025-12-18T05:54:35.296Z",
+        "accuracy": 7.622638260865101
+      },
+      {
+        "latitude": 50.271234726861515,
+        "longitude": -119.27155895394785,
+        "timestamp": "2025-12-18T05:54:57.956Z",
+        "accuracy": 3.463235915987037
+      },
+      {
+        "latitude": 50.2711417399412,
+        "longitude": -119.27154451530447,
+        "timestamp": "2025-12-18T05:55:10.963Z",
+        "accuracy": 4.748651530191767
+      },
+      {
+        "latitude": 50.271234471647816,
+        "longitude": -119.27159279166267,
+        "timestamp": "2025-12-18T05:55:24.963Z",
+        "accuracy": 3.7486811119910652
+      },
+      {
+        "latitude": 50.27132330339997,
+        "longitude": -119.27163035805376,
+        "timestamp": "2025-12-18T05:55:36.959Z",
+        "accuracy": 3.745980991329211
+      },
+      {
+        "latitude": 50.27128098403635,
+        "longitude": -119.27165076071735,
+        "timestamp": "2025-12-18T05:55:52.127Z",
+        "accuracy": 3.494481383834665
+      }
+    ],
+    "notes": "Thanks"
+  },
+  {
+    "id": "trip-1766044979515-xyybfiuxp",
+    "userId": "emp-001",
+    "status": "approved",
+    "category": "personal",
+    "startLocation": {
+      "latitude": 50.27129272994405,
+      "longitude": -119.2717117583424,
+      "timestamp": "2025-12-18T08:02:59.515Z",
+      "accuracy": 7.622638260865101
+    },
+    "startTime": "2025-12-18T08:02:59.515Z",
+    "distanceInMiles": 0,
+    "route": [
+      {
+        "latitude": 50.27129272994405,
+        "longitude": -119.2717117583424,
+        "timestamp": "2025-12-18T08:02:59.515Z",
+        "accuracy": 7.622638260865101
+      }
+    ],
+    "vehicleInfo": "Went for lunch ",
+    "purpose": "",
+    "endLocation": {
+      "latitude": 50.27129272994405,
+      "longitude": -119.2717117583424,
+      "timestamp": "2025-12-18T08:03:14.134Z",
+      "accuracy": 7.622638260865101
+    },
+    "endTime": "2025-12-18T08:03:14.134Z",
+    "coordinates": [
+      {
+        "latitude": 50.27129272994405,
+        "longitude": -119.2717117583424,
+        "timestamp": "2025-12-18T08:02:59.515Z",
+        "accuracy": 7.622638260865101
+      },
+      {
+        "latitude": 50.27129272994405,
+        "longitude": -119.2717117583424,
+        "timestamp": "2025-12-18T08:02:59.559Z",
+        "accuracy": 7.622638260865101
+      },
+      {
+        "latitude": 50.27129272994405,
+        "longitude": -119.2717117583424,
+        "timestamp": "2025-12-18T08:03:14.134Z",
+        "accuracy": 7.622638260865101
+      }
+    ],
+    "notes": ""
+  },
+  {
+    "id": "trip-1766211054965-94t9iephp",
+    "userId": "emp-001",
+    "status": "rejected",
+    "category": "business",
+    "startLocation": {
+      "latitude": 50.27129237225003,
+      "longitude": -119.27170806307993,
+      "timestamp": "2025-12-20T06:10:54.965Z",
+      "accuracy": 7.71540379393959
+    },
+    "startTime": "2025-12-20T06:10:54.965Z",
+    "distanceInMiles": 0,
+    "route": [
+      {
+        "latitude": 50.27129237225003,
+        "longitude": -119.27170806307993,
+        "timestamp": "2025-12-20T06:10:54.965Z",
+        "accuracy": 7.71540379393959
+      }
+    ],
+    "vehicleInfo": "Black Van",
+    "purpose": "",
+    "endLocation": {
+      "latitude": 50.27131950910016,
+      "longitude": -119.2717202138208,
+      "timestamp": "2025-12-20T06:12:10.126Z",
+      "accuracy": 8.976075942480282
+    },
+    "endTime": "2025-12-20T06:12:10.126Z",
+    "coordinates": [
+      {
+        "latitude": 50.27129237225003,
+        "longitude": -119.27170806307993,
+        "timestamp": "2025-12-20T06:10:54.965Z",
+        "accuracy": 7.71540379393959
+      },
+      {
+        "latitude": 50.27129237225003,
+        "longitude": -119.27170806307993,
+        "timestamp": "2025-12-20T06:10:55.032Z",
+        "accuracy": 7.71540379393959
+      },
+      {
+        "latitude": 50.27131950910016,
+        "longitude": -119.2717202138208,
+        "timestamp": "2025-12-20T06:12:10.126Z",
+        "accuracy": 8.976075942480282
+      }
+    ],
+    "notes": ""
+  },
+  {
+    "id": "trip-1766216036183-j2g84w54a",
+    "userId": "emp-001",
+    "status": "approved",
+    "category": "business",
+    "startLocation": {
+      "latitude": 50.27129237225003,
+      "longitude": -119.27170806307993,
+      "timestamp": "2025-12-20T07:33:56.183Z",
+      "accuracy": 7.71540379393959
+    },
+    "startTime": "2025-12-20T07:33:56.183Z",
+    "distanceInMiles": 0,
+    "route": [
+      {
+        "latitude": 50.27129237225003,
+        "longitude": -119.27170806307993,
+        "timestamp": "2025-12-20T07:33:56.183Z",
+        "accuracy": 7.71540379393959
+      }
+    ],
+    "vehicleInfo": "",
+    "purpose": "",
+    "endLocation": {
+      "latitude": 50.27129608000889,
+      "longitude": -119.27162048133975,
+      "timestamp": "2025-12-20T07:34:14.473Z",
+      "accuracy": 4.481947057530922
+    },
+    "endTime": "2025-12-20T07:34:14.473Z",
+    "coordinates": [
+      {
+        "latitude": 50.27129237225003,
+        "longitude": -119.27170806307993,
+        "timestamp": "2025-12-20T07:33:56.183Z",
+        "accuracy": 7.71540379393959
+      },
+      {
+        "latitude": 50.27129237225003,
+        "longitude": -119.27170806307993,
+        "timestamp": "2025-12-20T07:33:56.245Z",
+        "accuracy": 7.71540379393959
+      },
+      {
+        "latitude": 50.27129608000889,
+        "longitude": -119.27162048133975,
+        "timestamp": "2025-12-20T07:34:14.473Z",
+        "accuracy": 4.481947057530922
+      }
+    ],
+    "notes": ""
+  },
+  {
+    "id": "trip-1766280313203-dya4s6in8",
+    "userId": "user-1766213357742-eoiy0holf",
+    "status": "approved",
+    "category": "business",
+    "startLocation": {
+      "latitude": 50.2713097386909,
+      "longitude": -119.27173204476523,
+      "timestamp": "2025-12-21T01:25:13.203Z",
+      "accuracy": 14.74098307287741
+    },
+    "startTime": "2025-12-21T01:25:13.203Z",
+    "distanceInMiles": 0.03,
+    "route": [
+      {
+        "latitude": 50.2713097386909,
+        "longitude": -119.27173204476523,
+        "timestamp": "2025-12-21T01:25:13.203Z",
+        "accuracy": 14.74098307287741
+      }
+    ],
+    "vehicleInfo": "white van",
+    "purpose": "",
+    "endLocation": {
+      "latitude": 50.27127140671214,
+      "longitude": -119.27166197054953,
+      "timestamp": "2025-12-21T01:26:56.728Z",
+      "accuracy": 9.632671357056138
+    },
+    "endTime": "2025-12-21T01:26:56.728Z",
+    "coordinates": [
+      {
+        "latitude": 50.2713097386909,
+        "longitude": -119.27173204476523,
+        "timestamp": "2025-12-21T01:25:13.203Z",
+        "accuracy": 14.74098307287741
+      },
+      {
+        "latitude": 50.2713097386909,
+        "longitude": -119.27173204476523,
+        "timestamp": "2025-12-21T01:25:13.283Z",
+        "accuracy": 14.74098307287741
+      },
+      {
+        "latitude": 50.2713097386909,
+        "longitude": -119.27173204476523,
+        "timestamp": "2025-12-21T01:25:13.283Z",
+        "accuracy": 14.74098307287741
+      },
+      {
+        "latitude": 50.27123413619511,
+        "longitude": -119.27160828463131,
+        "timestamp": "2025-12-21T01:25:46.421Z",
+        "accuracy": 21.387059174433382
+      },
+      {
+        "latitude": 50.27117509242466,
+        "longitude": -119.27157432276394,
+        "timestamp": "2025-12-21T01:25:51.179Z",
+        "accuracy": 9.162502705673257
+      },
+      {
+        "latitude": 50.27108161184588,
+        "longitude": -119.27155857054002,
+        "timestamp": "2025-12-21T01:26:12.163Z",
+        "accuracy": 5.8032279776876905
+      },
+      {
+        "latitude": 50.27116968172538,
+        "longitude": -119.27159753105036,
+        "timestamp": "2025-12-21T01:26:28.161Z",
+        "accuracy": 5.850925265422644
+      },
+      {
+        "latitude": 50.271264983647534,
+        "longitude": -119.27159273415165,
+        "timestamp": "2025-12-21T01:26:46.167Z",
+        "accuracy": 6.099679128790494
+      },
+      {
+        "latitude": 50.27127140671214,
+        "longitude": -119.27166197054953,
+        "timestamp": "2025-12-21T01:26:56.728Z",
+        "accuracy": 9.632671357056138
+      }
+    ],
+    "notes": ""
+  },
+  {
+    "id": "trip-1766282984085-tqbz9shft",
+    "userId": "emp-001",
+    "status": "approved",
+    "category": "business",
+    "startLocation": {
+      "latitude": 50.271292701572264,
+      "longitude": -119.27170711379284,
+      "timestamp": "2025-12-21T02:09:44.085Z",
+      "accuracy": 8.521971376905668
+    },
+    "startTime": "2025-12-21T02:09:44.085Z",
+    "distanceInMiles": 0.01,
+    "route": [
+      {
+        "latitude": 50.271292701572264,
+        "longitude": -119.27170711379284,
+        "timestamp": "2025-12-21T02:09:44.085Z",
+        "accuracy": 8.521971376905668
+      }
+    ],
+    "vehicleInfo": "Blue car",
+    "purpose": "",
+    "endLocation": {
+      "latitude": 50.27132630419893,
+      "longitude": -119.27158198290462,
+      "timestamp": "2025-12-21T02:11:07.197Z",
+      "accuracy": 6.707518157452196
+    },
+    "endTime": "2025-12-21T02:11:07.197Z",
+    "coordinates": [
+      {
+        "latitude": 50.271292701572264,
+        "longitude": -119.27170711379284,
+        "timestamp": "2025-12-21T02:09:44.085Z",
+        "accuracy": 8.521971376905668
+      },
+      {
+        "latitude": 50.271292701572264,
+        "longitude": -119.27170711379284,
+        "timestamp": "2025-12-21T02:09:44.134Z",
+        "accuracy": 8.521971376905668
+      },
+      {
+        "latitude": 50.27132630419893,
+        "longitude": -119.27158198290462,
+        "timestamp": "2025-12-21T02:11:07.197Z",
+        "accuracy": 6.707518157452196
+      }
+    ],
+    "notes": ""
+  },
+  {
+    "id": "trip-1766298765489-13oi2of2k",
+    "userId": "emp-001",
+    "status": "approved",
+    "category": "commute",
+    "startLocation": {
+      "latitude": 50.271292701572264,
+      "longitude": -119.27170711379284,
+      "timestamp": "2025-12-21T06:32:45.489Z",
+      "accuracy": 8.521971376905668
+    },
+    "startTime": "2025-12-21T06:32:45.489Z",
+    "distanceInMiles": 1.03,
+    "route": [
+      {
+        "latitude": 50.271292701572264,
+        "longitude": -119.27170711379284,
+        "timestamp": "2025-12-21T06:32:45.489Z",
+        "accuracy": 8.521971376905668
+      }
+    ],
+    "vehicleInfo": "Blue car ",
+    "purpose": "Try in ",
+    "endLocation": {
+      "latitude": 50.271281591474434,
+      "longitude": -119.27169800564079,
+      "timestamp": "2025-12-21T06:46:43.316Z",
+      "accuracy": 2
+    },
+    "endTime": "2025-12-21T06:46:43.316Z",
+    "coordinates": [
+      {
+        "latitude": 50.271292701572264,
+        "longitude": -119.27170711379284,
+        "timestamp": "2025-12-21T06:32:45.489Z",
+        "accuracy": 8.521971376905668
+      },
+      {
+        "latitude": 50.271292701572264,
+        "longitude": -119.27170711379284,
+        "timestamp": "2025-12-21T06:32:45.547Z",
+        "accuracy": 8.521971376905668
+      },
+      {
+        "latitude": 50.27138102274063,
+        "longitude": -119.27161858256383,
+        "timestamp": "2025-12-21T06:32:53.662Z",
+        "accuracy": 40.717044766523706
+      },
+      {
+        "latitude": 50.271310702589716,
+        "longitude": -119.27164489866392,
+        "timestamp": "2025-12-21T06:32:55.304Z",
+        "accuracy": 17.366955464017934
+      },
+      {
+        "latitude": 50.2712940560209,
+        "longitude": -119.27166010276663,
+        "timestamp": "2025-12-21T06:33:00.021Z",
+        "accuracy": 3.5090388734452005
+      },
+      {
+        "latitude": 50.271308640013366,
+        "longitude": -119.27155160451572,
+        "timestamp": "2025-12-21T06:33:29.236Z",
+        "accuracy": 5.756367700043132
+      },
+      {
+        "latitude": 50.271308640013366,
+        "longitude": -119.27155160451572,
+        "timestamp": "2025-12-21T06:33:29.238Z",
+        "accuracy": 5.756367700043132
+      },
+      {
+        "latitude": 50.271292701572264,
+        "longitude": -119.27170711379284,
+        "timestamp": "2025-12-21T06:33:29.253Z",
+        "accuracy": 8.521971376905668
+      },
+      {
+        "latitude": 50.27129720748607,
+        "longitude": -119.27156872090623,
+        "timestamp": "2025-12-21T06:33:30.960Z",
+        "accuracy": 13.702307277543232
+      },
+      {
+        "latitude": 50.271292248565366,
+        "longitude": -119.27159560482848,
+        "timestamp": "2025-12-21T06:33:33.933Z",
+        "accuracy": 11.41510782198834
+      },
+      {
+        "latitude": 50.271292248565366,
+        "longitude": -119.27159560482848,
+        "timestamp": "2025-12-21T06:33:33.940Z",
+        "accuracy": 11.41510782198834
+      },
+      {
+        "latitude": 50.271383808435814,
+        "longitude": -119.27160177518935,
+        "timestamp": "2025-12-21T06:33:46.046Z",
+        "accuracy": 3.5355344566679086
+      },
+      {
+        "latitude": 50.27147980201126,
+        "longitude": -119.27165816768516,
+        "timestamp": "2025-12-21T06:33:53.034Z",
+        "accuracy": 5.40653772702268
+      },
+      {
+        "latitude": 50.276180254874276,
+        "longitude": -119.26436666325168,
+        "timestamp": "2025-12-21T06:39:47.798Z",
+        "accuracy": 15.035206484802778
+      },
+      {
+        "latitude": 50.27618456951249,
+        "longitude": -119.26412578350353,
+        "timestamp": "2025-12-21T06:39:49.042Z",
+        "accuracy": 5.58429198119037
+      },
+      {
+        "latitude": 50.276184569511976,
+        "longitude": -119.26398470413545,
+        "timestamp": "2025-12-21T06:39:50.047Z",
+        "accuracy": 3.723923309087364
+      },
+      {
+        "latitude": 50.27136215885673,
+        "longitude": -119.27193904871935,
+        "timestamp": "2025-12-21T06:45:57.020Z",
+        "accuracy": 26.67307166975616
+      },
+      {
+        "latitude": 50.271360695355284,
+        "longitude": -119.27193904871844,
+        "timestamp": "2025-12-21T06:45:57.031Z",
+        "accuracy": 25.611482095197324
+      },
+      {
+        "latitude": 50.27127076069096,
+        "longitude": -119.27159380478544,
+        "timestamp": "2025-12-21T06:46:07.034Z",
+        "accuracy": 4.376693989879352
+      },
+      {
+        "latitude": 50.271281591474434,
+        "longitude": -119.27169800564079,
+        "timestamp": "2025-12-21T06:46:43.316Z",
+        "accuracy": 2
+      }
+    ],
+    "notes": ""
+  },
+  {
+    "id": "trip-1766350350995-3uajmv4bf",
+    "userId": "emp-001",
+    "status": "pending_approval",
+    "category": "business",
+    "startLocation": {
+      "latitude": 50.271292701572264,
+      "longitude": -119.27170711379284,
+      "timestamp": "2025-12-21T20:52:30.995Z",
+      "accuracy": 8.521971376905668
+    },
+    "startTime": "2025-12-21T20:52:30.995Z",
+    "distanceInMiles": 0.06,
+    "route": [
+      {
+        "latitude": 50.271292701572264,
+        "longitude": -119.27170711379284,
+        "timestamp": "2025-12-21T20:52:30.995Z",
+        "accuracy": 8.521971376905668
+      }
+    ],
+    "vehicleInfo": "driving away.",
+    "purpose": "Test",
+    "endLocation": {
+      "latitude": 50.27138658520402,
+      "longitude": -119.27151141932563,
+      "timestamp": "2025-12-21T20:57:21.490Z",
+      "accuracy": 2.0024631308193963
+    },
+    "endTime": "2025-12-21T20:57:21.490Z",
+    "coordinates": [
+      {
+        "latitude": 50.271292701572264,
+        "longitude": -119.27170711379284,
+        "timestamp": "2025-12-21T20:52:30.995Z",
+        "accuracy": 8.521971376905668
+      },
+      {
+        "latitude": 50.271292701572264,
+        "longitude": -119.27170711379284,
+        "timestamp": "2025-12-21T20:52:31.039Z",
+        "accuracy": 8.521971376905668
+      },
+      {
+        "latitude": 50.27104689744326,
+        "longitude": -119.27143564458868,
+        "timestamp": "2025-12-21T20:54:45.581Z",
+        "accuracy": 14
+      },
+      {
+        "latitude": 50.271292701572264,
+        "longitude": -119.27170711379284,
+        "timestamp": "2025-12-21T20:56:39.051Z",
+        "accuracy": 8.521971376905668
+      },
+      {
+        "latitude": 50.271292701572264,
+        "longitude": -119.27170711379284,
+        "timestamp": "2025-12-21T20:56:39.056Z",
+        "accuracy": 8.521971376905668
+      },
+      {
+        "latitude": 50.27146029290768,
+        "longitude": -119.27143128599903,
+        "timestamp": "2025-12-21T20:56:44.066Z",
+        "accuracy": 14
+      },
+      {
+        "latitude": 50.271387189008095,
+        "longitude": -119.27151044412503,
+        "timestamp": "2025-12-21T20:57:00.039Z",
+        "accuracy": 2.049332908992377
+      },
+      {
+        "latitude": 50.27138658520402,
+        "longitude": -119.27151141932563,
+        "timestamp": "2025-12-21T20:57:21.490Z",
+        "accuracy": 2.0024631308193963
+      }
+    ],
+    "notes": ""
+  }
+]

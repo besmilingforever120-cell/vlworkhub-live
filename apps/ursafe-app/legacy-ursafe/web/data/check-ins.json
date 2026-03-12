@@ -1,0 +1,390 @@
+[
+  {
+    "id": "checkin-1766212409307-umlw5lvda",
+    "shiftId": "shift-1766212336161-zyxkgepo4",
+    "userId": "emp-001",
+    "timestamp": "2025-12-20T06:33:29.307Z",
+    "location": {
+      "latitude": 50.27129237225003,
+      "longitude": -119.27170806307993
+    },
+    "status": "safe",
+    "notes": ""
+  },
+  {
+    "id": "checkin-1766212999891-ckpw5x13e",
+    "shiftId": "shift-1766212438758-yo3ma2hd3",
+    "userId": "emp-001",
+    "timestamp": "2025-12-20T06:43:19.891Z",
+    "location": {
+      "latitude": 50.27129237225003,
+      "longitude": -119.27170806307993
+    },
+    "status": "safe",
+    "notes": ""
+  },
+  {
+    "id": "checkin-1766214167310-l45fbfjhk",
+    "shiftId": "shift-1766214049759-dqph229q2",
+    "userId": "user-1766213357742-eoiy0holf",
+    "timestamp": "2025-12-20T07:02:47.311Z",
+    "location": {
+      "latitude": 50.27130633882229,
+      "longitude": -119.27172669566015
+    },
+    "status": "safe",
+    "notes": ""
+  },
+  {
+    "id": "checkin-1766214194936-yeab782j1",
+    "shiftId": "shift-1766214066334-t9whx3cgm",
+    "userId": "emp-001",
+    "timestamp": "2025-12-20T07:03:14.936Z",
+    "location": {
+      "latitude": 50.27129237225003,
+      "longitude": -119.27170806307993
+    },
+    "status": "safe",
+    "notes": ""
+  },
+  {
+    "id": "checkin-1766214218818-lsdv5h184",
+    "shiftId": "shift-1766214066334-t9whx3cgm",
+    "userId": "emp-001",
+    "timestamp": "2025-12-20T07:03:38.818Z",
+    "location": {
+      "latitude": 50.27129237225003,
+      "longitude": -119.27170806307993
+    },
+    "status": "safe",
+    "notes": ""
+  },
+  {
+    "id": "checkin-1766214319435-ze4j9nrtb",
+    "shiftId": "shift-1766214049759-dqph229q2",
+    "userId": "user-1766213357742-eoiy0holf",
+    "timestamp": "2025-12-20T07:05:19.435Z",
+    "location": {
+      "latitude": 50.27130597115932,
+      "longitude": -119.27172428120346
+    },
+    "status": "safe",
+    "notes": ""
+  },
+  {
+    "id": "checkin-1766214506925-kgkhhohy0",
+    "shiftId": "shift-1766214066334-t9whx3cgm",
+    "userId": "emp-001",
+    "timestamp": "2025-12-20T07:08:26.925Z",
+    "location": {
+      "latitude": 50.27129237225003,
+      "longitude": -119.27170806307993
+    },
+    "status": "safe",
+    "notes": ""
+  },
+  {
+    "id": "checkin-1766215099433-48aspbxof",
+    "shiftId": "shift-1766214851137-wgct4hr49",
+    "userId": "emp-001",
+    "timestamp": "2025-12-20T07:18:19.433Z",
+    "location": {
+      "latitude": 50.27129237225003,
+      "longitude": -119.27170806307993
+    },
+    "status": "safe",
+    "notes": ""
+  },
+  {
+    "id": "checkin-1766215917635-rfytl4c0v",
+    "shiftId": "shift-1766214851137-wgct4hr49",
+    "userId": "emp-001",
+    "timestamp": "2025-12-20T07:31:57.635Z",
+    "location": {
+      "latitude": 50.27129237225003,
+      "longitude": -119.27170806307993
+    },
+    "status": "safe",
+    "notes": ""
+  },
+  {
+    "id": "checkin-1766216070629-q1kdtl9dy",
+    "shiftId": "shift-1766214851137-wgct4hr49",
+    "userId": "emp-001",
+    "timestamp": "2025-12-20T07:34:30.629Z",
+    "location": {
+      "latitude": 50.27129539199044,
+      "longitude": -119.27162231482266
+    },
+    "status": "safe",
+    "notes": ""
+  },
+  {
+    "id": "checkin-1766216665060-k23y35t31",
+    "shiftId": "shift-1766216660640-q1cntf8ju",
+    "userId": "emp-001",
+    "timestamp": "2025-12-20T07:44:25.060Z",
+    "location": {
+      "latitude": 50.27129237225003,
+      "longitude": -119.27170806307993
+    },
+    "status": "safe",
+    "notes": ""
+  },
+  {
+    "id": "checkin-1766217120413-lueo818bq",
+    "shiftId": "shift-1766216660640-q1cntf8ju",
+    "userId": "emp-001",
+    "timestamp": "2025-12-20T07:52:00.413Z",
+    "location": {
+      "latitude": 50.27129237225003,
+      "longitude": -119.27170806307993
+    },
+    "status": "safe",
+    "notes": ""
+  },
+  {
+    "id": "checkin-1766217652185-c6dxsmgfg",
+    "shiftId": "shift-1766217635567-ezeyv9h68",
+    "userId": "emp-001",
+    "timestamp": "2025-12-20T08:00:52.185Z",
+    "location": {
+      "latitude": 50.27129237225003,
+      "longitude": -119.27170806307993
+    },
+    "status": "safe",
+    "notes": ""
+  },
+  {
+    "id": "checkin-1766217917055-hg2qxnxhp",
+    "shiftId": "shift-1766217906496-kdoq6dcd0",
+    "userId": "emp-001",
+    "timestamp": "2025-12-20T08:05:17.055Z",
+    "location": {
+      "latitude": 50.27129237225003,
+      "longitude": -119.27170806307993
+    },
+    "status": "safe",
+    "notes": ""
+  },
+  {
+    "id": "checkin-1766279498586-7kk30bym0",
+    "shiftId": "shift-1766279477657-hjrik29d8",
+    "userId": "emp-001",
+    "timestamp": "2025-12-21T01:11:38.586Z",
+    "location": {
+      "latitude": 50.271292701572264,
+      "longitude": -119.27170711379284
+    },
+    "status": "safe",
+    "notes": ""
+  },
+  {
+    "id": "checkin-1766279513930-o8veojhed",
+    "shiftId": "shift-1766279477657-hjrik29d8",
+    "userId": "emp-001",
+    "timestamp": "2025-12-21T01:11:53.930Z",
+    "location": {
+      "latitude": 50.271292701572264,
+      "longitude": -119.27170711379284
+    },
+    "status": "safe",
+    "notes": ""
+  },
+  {
+    "id": "checkin-1766280002801-i5dja2vhi",
+    "shiftId": "shift-1766279477657-hjrik29d8",
+    "userId": "emp-001",
+    "timestamp": "2025-12-21T01:20:02.801Z",
+    "location": {
+      "latitude": 50.271292701572264,
+      "longitude": -119.27170711379284
+    },
+    "status": "safe",
+    "notes": ""
+  },
+  {
+    "id": "checkin-1766280772706-bmned8aol",
+    "shiftId": "shift-1766279477657-hjrik29d8",
+    "userId": "emp-001",
+    "timestamp": "2025-12-21T01:32:52.706Z",
+    "location": {
+      "latitude": 50.271292701572264,
+      "longitude": -119.27170711379284
+    },
+    "status": "safe",
+    "notes": ""
+  },
+  {
+    "id": "checkin-1766281063258-zbxhxe532",
+    "shiftId": "shift-1766279477657-hjrik29d8",
+    "userId": "emp-001",
+    "timestamp": "2025-12-21T01:37:43.258Z",
+    "location": {
+      "latitude": 50.271292701572264,
+      "longitude": -119.27170711379284
+    },
+    "status": "safe",
+    "notes": ""
+  },
+  {
+    "id": "checkin-1766282600011-3afgc6kl7",
+    "shiftId": "shift-1766282474985-aqmdoq6ji",
+    "userId": "user-1766213357742-eoiy0holf",
+    "timestamp": "2025-12-21T02:03:20.011Z",
+    "location": {
+      "latitude": 50.27130101408383,
+      "longitude": -119.27173971852994
+    },
+    "status": "safe",
+    "notes": ""
+  },
+  {
+    "id": "checkin-1766283138979-un52m266x",
+    "shiftId": "shift-1766282474985-aqmdoq6ji",
+    "userId": "user-1766213357742-eoiy0holf",
+    "timestamp": "2025-12-21T02:12:18.979Z",
+    "location": {
+      "latitude": 50.27130094202319,
+      "longitude": -119.27173988588928
+    },
+    "status": "safe",
+    "notes": ""
+  },
+  {
+    "id": "checkin-1766283147237-ckrkdwjbu",
+    "shiftId": "shift-1766283094755-bwdx73nie",
+    "userId": "emp-001",
+    "timestamp": "2025-12-21T02:12:27.237Z",
+    "location": {
+      "latitude": 50.271292701572264,
+      "longitude": -119.27170711379284
+    },
+    "status": "safe",
+    "notes": ""
+  },
+  {
+    "id": "checkin-1766284081300-b3oyxu4v2",
+    "shiftId": "shift-1766283094755-bwdx73nie",
+    "userId": "emp-001",
+    "timestamp": "2025-12-21T02:28:01.300Z",
+    "location": {
+      "latitude": 50.271292701572264,
+      "longitude": -119.27170711379284
+    },
+    "status": "safe",
+    "notes": ""
+  },
+  {
+    "id": "checkin-1766284190757-zmnsvxr3r",
+    "shiftId": "shift-1766284172689-gsq9u6ie6",
+    "userId": "emp-001",
+    "timestamp": "2025-12-21T02:29:50.757Z",
+    "location": {
+      "latitude": 50.271292701572264,
+      "longitude": -119.27170711379284
+    },
+    "status": "safe",
+    "notes": ""
+  },
+  {
+    "id": "checkin-1766284517234-z0nu8hio2",
+    "shiftId": "shift-1766284172689-gsq9u6ie6",
+    "userId": "emp-001",
+    "timestamp": "2025-12-21T02:35:17.234Z",
+    "location": {
+      "latitude": 50.271292701572264,
+      "longitude": -119.27170711379284
+    },
+    "status": "safe",
+    "notes": ""
+  },
+  {
+    "id": "checkin-1766286272029-o9thrtl5n",
+    "shiftId": "shift-1766286193235-8u8lafd62",
+    "userId": "user-1766213357742-eoiy0holf",
+    "timestamp": "2025-12-21T03:04:32.029Z",
+    "location": {
+      "latitude": 50.27130053176345,
+      "longitude": -119.27174057134135
+    },
+    "status": "safe",
+    "notes": ""
+  },
+  {
+    "id": "checkin-1766287106295-g4t1y1vzz",
+    "shiftId": "shift-1766286193235-8u8lafd62",
+    "userId": "user-1766213357742-eoiy0holf",
+    "timestamp": "2025-12-21T03:18:26.295Z",
+    "location": {
+      "latitude": 50.271300676408146,
+      "longitude": -119.27174035262782
+    },
+    "status": "safe",
+    "notes": ""
+  },
+  {
+    "id": "checkin-1766295309838-w0tpoaui9",
+    "shiftId": "shift-1766286193235-8u8lafd62",
+    "userId": "user-1766213357742-eoiy0holf",
+    "timestamp": "2025-12-21T05:35:09.838Z",
+    "location": {
+      "latitude": 50.27130099091309,
+      "longitude": -119.27174030067675
+    },
+    "status": "safe",
+    "notes": ""
+  },
+  {
+    "id": "checkin-1766306676818-7xzc7a0a0",
+    "shiftId": "shift-1766306661011-3fy05vb7m",
+    "userId": "emp-001",
+    "timestamp": "2025-12-21T08:44:36.818Z",
+    "location": {
+      "latitude": 50.271292701572264,
+      "longitude": -119.27170711379284
+    },
+    "status": "safe",
+    "notes": ""
+  },
+  {
+    "id": "checkin-1766306828431-ygnt2qyu1",
+    "shiftId": "shift-1766306661011-3fy05vb7m",
+    "userId": "emp-001",
+    "timestamp": "2025-12-21T08:47:08.431Z",
+    "location": {
+      "latitude": 50.271292701572264,
+      "longitude": -119.27170711379284
+    },
+    "status": "safe",
+    "notes": ""
+  },
+  {
+    "id": "checkin-1766350200630-f3gmc834a",
+    "shiftId": "shift-1766350074092-g767q0yy2",
+    "userId": "emp-001",
+    "timestamp": "2025-12-21T20:50:00.630Z",
+    "location": {
+      "latitude": 50.271292701572264,
+      "longitude": -119.27170711379284,
+      "address": "3903 30th St, Vernon, BC, Canada",
+      "timestamp": "2025-12-21T20:49:58.970Z"
+    },
+    "status": "safe",
+    "notes": ""
+  },
+  {
+    "id": "checkin-1766350699779-c0eeb7lm9",
+    "shiftId": "shift-1766350074092-g767q0yy2",
+    "userId": "emp-001",
+    "timestamp": "2025-12-21T20:58:19.780Z",
+    "location": {
+      "latitude": 50.271384390037944,
+      "longitude": -119.27151431429213,
+      "address": "3903 30th St, Vernon, BC, Canada",
+      "timestamp": "2025-12-21T20:58:13.752Z"
+    },
+    "status": "safe",
+    "notes": ""
+  }
+]

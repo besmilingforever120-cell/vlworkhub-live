@@ -1,0 +1,438 @@
+[
+  {
+    "id": "emergency-1766212364756-pfx72rmaq",
+    "userId": "emp-001",
+    "shiftId": "shift-1766212336161-zyxkgepo4",
+    "type": "sos",
+    "location": {
+      "latitude": 50.27129237225003,
+      "longitude": -119.27170806307993
+    },
+    "timestamp": "2025-12-20T06:32:44.756Z",
+    "resolved": true,
+    "notes": "Emergency SOS triggered from mobile app",
+    "respondedBy": [],
+    "resolvedAt": "2025-12-20T07:49:06.966Z",
+    "resolvedBy": "user-1766040545788-959s22mr3"
+  },
+  {
+    "id": "emergency-1766212949079-if4efup00",
+    "userId": "emp-001",
+    "shiftId": "shift-1766212438758-yo3ma2hd3",
+    "type": "sos",
+    "location": {
+      "latitude": 50.27129237225003,
+      "longitude": -119.27170806307993
+    },
+    "timestamp": "2025-12-20T06:42:29.079Z",
+    "resolved": true,
+    "notes": "Emergency SOS triggered from mobile app",
+    "respondedBy": [],
+    "resolvedAt": "2025-12-20T07:49:07.440Z",
+    "resolvedBy": "user-1766040545788-959s22mr3"
+  },
+  {
+    "id": "emergency-1766214249850-q7h39pexg",
+    "userId": "user-1766213357742-eoiy0holf",
+    "shiftId": "shift-1766214049759-dqph229q2",
+    "type": "sos",
+    "location": {
+      "latitude": 50.27130633619451,
+      "longitude": -119.27172670068637
+    },
+    "timestamp": "2025-12-20T07:04:09.850Z",
+    "resolved": true,
+    "notes": "Emergency SOS triggered from mobile app",
+    "respondedBy": [],
+    "resolvedAt": "2025-12-20T07:55:40.839Z",
+    "resolvedBy": "user-1766040545788-959s22mr3",
+    "resolution": "The Peremedics came",
+    "employeeSafe": "yes",
+    "canResumeWork": "yes",
+    "actionsTaken": "Got medical help ",
+    "followUpRequired": false,
+    "followUpNotes": ""
+  },
+  {
+    "id": "emergency-1766214469841-9i0boga7j",
+    "userId": "emp-001",
+    "shiftId": "shift-1766214066334-t9whx3cgm",
+    "type": "sos",
+    "location": {
+      "latitude": 50.27129237225003,
+      "longitude": -119.27170806307993
+    },
+    "timestamp": "2025-12-20T07:07:49.842Z",
+    "resolved": true,
+    "notes": "Emergency SOS triggered from mobile app",
+    "respondedBy": [],
+    "resolvedAt": "2025-12-20T07:50:52.585Z",
+    "resolvedBy": "user-1766040545788-959s22mr3",
+    "resolution": "we helped him wake up.",
+    "employeeSafe": "yes",
+    "canResumeWork": "yes",
+    "actionsTaken": "gave him medication",
+    "followUpRequired": false,
+    "followUpNotes": ""
+  },
+  {
+    "id": "emergency-1766216005721-a7unm69g2",
+    "userId": "emp-001",
+    "shiftId": "shift-1766214851137-wgct4hr49",
+    "type": "sos",
+    "location": {
+      "latitude": 50.27129237225003,
+      "longitude": -119.27170806307993
+    },
+    "timestamp": "2025-12-20T07:33:25.721Z",
+    "resolved": true,
+    "notes": "Emergency SOS triggered from mobile app",
+    "respondedBy": [],
+    "resolvedAt": "2025-12-20T07:51:14.451Z",
+    "resolvedBy": "user-1766040545788-959s22mr3",
+    "resolution": "jhdsa",
+    "employeeSafe": "yes",
+    "canResumeWork": "yes",
+    "actionsTaken": "fdsfdsa",
+    "followUpRequired": false,
+    "followUpNotes": ""
+  },
+  {
+    "id": "emergency-1766217199979-blro4rua8",
+    "userId": "emp-001",
+    "shiftId": "shift-1766216660640-q1cntf8ju",
+    "type": "sos",
+    "location": {
+      "latitude": 50.27129237225003,
+      "longitude": -119.27170806307993
+    },
+    "timestamp": "2025-12-20T07:53:19.979Z",
+    "resolved": true,
+    "notes": "Emergency SOS triggered from mobile app",
+    "respondedBy": [],
+    "resolvedAt": "2025-12-20T07:54:24.805Z",
+    "resolvedBy": "user-1766040545788-959s22mr3",
+    "resolution": "fdsaf",
+    "employeeSafe": "no",
+    "canResumeWork": "requires_medical",
+    "actionsTaken": "fdsafds",
+    "followUpRequired": true,
+    "followUpNotes": "call doctor to see if the empployee is feeling better"
+  },
+  {
+    "id": "emergency-1766217690165-hcaelhbkx",
+    "userId": "emp-001",
+    "shiftId": "shift-1766217635567-ezeyv9h68",
+    "type": "sos",
+    "location": {
+      "latitude": 50.27129237225003,
+      "longitude": -119.27170806307993
+    },
+    "timestamp": "2025-12-20T08:01:30.165Z",
+    "resolved": true,
+    "notes": "Emergency SOS triggered from mobile app",
+    "respondedBy": [],
+    "resolvedAt": "2025-12-20T08:02:15.502Z",
+    "resolvedBy": "user-1766040545788-959s22mr3",
+    "resolution": "hod",
+    "employeeSafe": "yes",
+    "canResumeWork": "yes",
+    "actionsTaken": "bood",
+    "followUpRequired": false,
+    "followUpNotes": ""
+  },
+  {
+    "id": "emergency-1766217934258-c2d81ehld",
+    "userId": "emp-001",
+    "shiftId": "shift-1766217906496-kdoq6dcd0",
+    "type": "sos",
+    "location": {
+      "latitude": 50.27129237225003,
+      "longitude": -119.27170806307993
+    },
+    "timestamp": "2025-12-20T08:05:34.258Z",
+    "resolved": true,
+    "notes": "Emergency SOS triggered from mobile app",
+    "respondedBy": [],
+    "resolvedAt": "2025-12-20T08:10:21.132Z",
+    "resolvedBy": "user-1766040545788-959s22mr3"
+  },
+  {
+    "id": "emergency-1766218271561-yr969ma8c",
+    "userId": "emp-001",
+    "shiftId": "shift-1766218209573-xgozs5slb",
+    "type": "sos",
+    "location": {
+      "latitude": 50.27129237225003,
+      "longitude": -119.27170806307993
+    },
+    "timestamp": "2025-12-20T08:11:11.561Z",
+    "resolved": true,
+    "notes": "Emergency SOS triggered from mobile app",
+    "respondedBy": [],
+    "resolvedAt": "2025-12-20T08:14:36.161Z",
+    "resolvedBy": "user-1766040545788-959s22mr3"
+  },
+  {
+    "id": "emergency-1766279558354-p14p8q2pg",
+    "userId": "emp-001",
+    "shiftId": "shift-1766279477657-hjrik29d8",
+    "type": "sos",
+    "location": {
+      "latitude": 50.271292701572264,
+      "longitude": -119.27170711379284
+    },
+    "timestamp": "2025-12-21T01:12:38.354Z",
+    "resolved": true,
+    "notes": "Emergency SOS triggered from mobile app",
+    "respondedBy": [],
+    "resolvedAt": "2025-12-21T01:15:45.586Z",
+    "resolvedBy": "user-1766040545788-959s22mr3"
+  },
+  {
+    "id": "emergency-1766280020149-gz06344ur",
+    "userId": "emp-001",
+    "shiftId": "shift-1766279477657-hjrik29d8",
+    "type": "sos",
+    "location": {
+      "latitude": 50.271292701572264,
+      "longitude": -119.27170711379284
+    },
+    "timestamp": "2025-12-21T01:20:20.149Z",
+    "resolved": true,
+    "notes": "Emergency SOS triggered from mobile app",
+    "respondedBy": [],
+    "resolvedAt": "2025-12-21T01:21:47.289Z",
+    "resolvedBy": "user-1766040545788-959s22mr3",
+    "resolution": "Gave her Medicine",
+    "employeeSafe": "yes",
+    "canResumeWork": "yes",
+    "actionsTaken": "Medicine was given ",
+    "followUpRequired": false,
+    "followUpNotes": ""
+  },
+  {
+    "id": "emergency-1766283213889-z44xx4f78",
+    "userId": "user-1766213357742-eoiy0holf",
+    "shiftId": "shift-1766282474985-aqmdoq6ji",
+    "type": "sos",
+    "location": {
+      "latitude": 50.27130089597059,
+      "longitude": -119.2717399636027
+    },
+    "timestamp": "2025-12-21T02:13:33.889Z",
+    "resolved": true,
+    "notes": "Emergency SOS triggered from mobile app",
+    "respondedBy": [],
+    "resolvedAt": "2025-12-21T02:14:09.358Z",
+    "resolvedBy": "user-1766040545788-959s22mr3",
+    "resolution": "working on it",
+    "employeeSafe": "yes",
+    "canResumeWork": "yes",
+    "actionsTaken": "give medicine",
+    "followUpRequired": false,
+    "followUpNotes": ""
+  },
+  {
+    "id": "emergency-1766285444577-ocos7nqtd",
+    "userId": "emp-001",
+    "shiftId": "shift-1766284172689-gsq9u6ie6",
+    "type": "sos",
+    "location": {
+      "latitude": 50.27128524790762,
+      "longitude": -119.27165961360646
+    },
+    "timestamp": "2025-12-21T02:50:44.577Z",
+    "resolved": true,
+    "notes": "Emergency SOS triggered from mobile app",
+    "respondedBy": [],
+    "resolvedAt": "2025-12-21T02:53:58.818Z",
+    "resolvedBy": "user-1766040545788-959s22mr3",
+    "resolution": "love",
+    "employeeSafe": "yes",
+    "canResumeWork": "yes",
+    "actionsTaken": "test",
+    "followUpRequired": false,
+    "followUpNotes": ""
+  },
+  {
+    "id": "emergency-1766285877592-aq4qsvsus",
+    "userId": "emp-001",
+    "shiftId": "shift-1766284172689-gsq9u6ie6",
+    "type": "sos",
+    "location": {
+      "latitude": 50.271292701572264,
+      "longitude": -119.27170711379284
+    },
+    "timestamp": "2025-12-21T02:57:57.592Z",
+    "resolved": true,
+    "notes": "Emergency SOS triggered from mobile app",
+    "respondedBy": [],
+    "resolvedAt": "2025-12-21T02:59:18.714Z",
+    "resolvedBy": "user-1766040545788-959s22mr3",
+    "resolution": "test",
+    "employeeSafe": "yes",
+    "canResumeWork": "yes",
+    "actionsTaken": "test",
+    "followUpRequired": false,
+    "followUpNotes": ""
+  },
+  {
+    "id": "emergency-1766286957186-o77yjcbx8",
+    "userId": "emp-001",
+    "shiftId": "shift-1766284172689-gsq9u6ie6",
+    "type": "sos",
+    "location": {
+      "latitude": 50.271292701572264,
+      "longitude": -119.27170711379284
+    },
+    "timestamp": "2025-12-21T03:15:57.186Z",
+    "resolved": true,
+    "notes": "Emergency SOS triggered from mobile app",
+    "respondedBy": [],
+    "resolvedAt": "2025-12-21T03:17:47.305Z",
+    "resolvedBy": "user-1766040545788-959s22mr3",
+    "resolution": "test",
+    "employeeSafe": "yes",
+    "canResumeWork": "yes",
+    "actionsTaken": "test",
+    "followUpRequired": false,
+    "followUpNotes": ""
+  },
+  {
+    "id": "emergency-1766286980906-h7x0v1krq",
+    "userId": "user-1766213357742-eoiy0holf",
+    "shiftId": "shift-1766286193235-8u8lafd62",
+    "type": "sos",
+    "location": {
+      "latitude": 50.271300721947604,
+      "longitude": -119.27174028129448
+    },
+    "timestamp": "2025-12-21T03:16:20.906Z",
+    "resolved": true,
+    "notes": "Emergency SOS triggered from mobile app",
+    "respondedBy": [],
+    "resolvedAt": "2025-12-21T03:19:13.190Z",
+    "resolvedBy": "user-1766040545788-959s22mr3",
+    "resolution": "I am safe",
+    "employeeSafe": "yes",
+    "canResumeWork": "yes",
+    "actionsTaken": "test",
+    "followUpRequired": false,
+    "followUpNotes": ""
+  },
+  {
+    "id": "emergency-1766287753534-x4qhwmuip",
+    "userId": "emp-001",
+    "shiftId": "shift-1766284172689-gsq9u6ie6",
+    "type": "sos",
+    "location": {
+      "latitude": 50.271292701572264,
+      "longitude": -119.27170711379284
+    },
+    "timestamp": "2025-12-21T03:29:13.534Z",
+    "resolved": true,
+    "notes": "Emergency SOS triggered from mobile app",
+    "respondedBy": [],
+    "resolvedAt": "2025-12-21T03:30:48.549Z",
+    "resolvedBy": "user-1766040545788-959s22mr3",
+    "resolution": "test",
+    "employeeSafe": "yes",
+    "canResumeWork": "yes",
+    "actionsTaken": "Test",
+    "followUpRequired": false,
+    "followUpNotes": ""
+  },
+  {
+    "id": "emergency-1766287991252-g5zktau5v",
+    "userId": "emp-001",
+    "shiftId": "shift-1766284172689-gsq9u6ie6",
+    "type": "sos",
+    "location": {
+      "latitude": 50.271292701572264,
+      "longitude": -119.27170711379284
+    },
+    "timestamp": "2025-12-21T03:33:11.252Z",
+    "resolved": true,
+    "notes": "Emergency SOS triggered from mobile app",
+    "respondedBy": [],
+    "resolvedAt": "2025-12-21T03:33:33.336Z",
+    "resolvedBy": "user-1766040545788-959s22mr3",
+    "resolution": "test",
+    "employeeSafe": "yes",
+    "canResumeWork": "yes",
+    "actionsTaken": "test",
+    "followUpRequired": false,
+    "followUpNotes": ""
+  },
+  {
+    "id": "emergency-1766297789204-1tt5qof9w",
+    "userId": "emp-001",
+    "shiftId": "shift-1766297777213-r0sx5b52p",
+    "type": "sos",
+    "location": {
+      "latitude": 50.271292701572264,
+      "longitude": -119.27170711379284
+    },
+    "timestamp": "2025-12-21T06:16:29.204Z",
+    "resolved": true,
+    "notes": "Emergency SOS triggered from mobile app",
+    "respondedBy": [],
+    "resolvedAt": "2025-12-21T06:17:00.304Z",
+    "resolvedBy": "user-1766040545788-959s22mr3",
+    "resolution": "we are safe",
+    "employeeSafe": "yes",
+    "canResumeWork": "yes",
+    "actionsTaken": "Test",
+    "followUpRequired": false,
+    "followUpNotes": ""
+  },
+  {
+    "id": "emergency-1766350802403-7h7z4y67r",
+    "userId": "emp-001",
+    "shiftId": "shift-1766350074092-g767q0yy2",
+    "type": "sos",
+    "location": {
+      "latitude": 50.27138439003246,
+      "longitude": -119.27151431429941,
+      "address": "3903 30th St, Vernon, BC, Canada",
+      "timestamp": "2025-12-21T21:00:00.980Z"
+    },
+    "timestamp": "2025-12-21T21:00:02.403Z",
+    "resolved": true,
+    "notes": "Emergency SOS triggered from mobile app",
+    "respondedBy": [],
+    "resolvedAt": "2025-12-21T21:02:20.618Z",
+    "resolvedBy": "user-1766040545788-959s22mr3",
+    "resolution": "Test",
+    "employeeSafe": "yes",
+    "canResumeWork": "yes",
+    "actionsTaken": "Yes",
+    "followUpRequired": false,
+    "followUpNotes": ""
+  },
+  {
+    "id": "emergency-1766350955639-g5rpwmwb2",
+    "userId": "emp-001",
+    "shiftId": "shift-1766350074092-g767q0yy2",
+    "type": "sos",
+    "location": {
+      "latitude": 50.271292701572264,
+      "longitude": -119.27170711379284,
+      "address": "3903 30th St, Vernon, BC, Canada",
+      "timestamp": "2025-12-21T21:02:33.502Z"
+    },
+    "timestamp": "2025-12-21T21:02:35.639Z",
+    "resolved": true,
+    "notes": "Emergency SOS triggered from mobile app",
+    "respondedBy": [],
+    "resolvedAt": "2025-12-21T21:10:53.003Z",
+    "resolvedBy": "user-1766040545788-959s22mr3",
+    "resolution": "Test2",
+    "employeeSafe": "yes",
+    "canResumeWork": "yes",
+    "actionsTaken": "Thank you ",
+    "followUpRequired": false,
+    "followUpNotes": ""
+  }
+]

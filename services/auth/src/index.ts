@@ -1,5 +1,13 @@
 import jwt from "jsonwebtoken";
-import type { AuthPayload } from "@vlworkhub/types";
+
+export interface AuthPayload {
+  user_id: string;
+  organization_id: string;
+  roles: Array<"Admin" | "Manager" | "Employee" | "HR" | "IT">;
+  apps: Array<"main-platform" | "care" | "hr" | "ursafe">;
+  email: string;
+  full_name: string;
+}
 
 const TOKEN_NAME = "vlwh_session";
 

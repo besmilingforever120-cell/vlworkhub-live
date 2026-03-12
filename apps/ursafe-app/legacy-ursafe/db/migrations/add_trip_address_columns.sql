@@ -1,0 +1,9 @@
+IF COL_LENGTH('Trips', 'StartAddress') IS NULL
+BEGIN
+  ALTER TABLE Trips ADD StartAddress NVARCHAR(255) NULL;
+END
+
+IF COL_LENGTH('Trips', 'EndAddress') IS NULL
+BEGIN
+  ALTER TABLE Trips ADD EndAddress NVARCHAR(255) NULL;
+END

@@ -1,0 +1,63 @@
+{
+  "expo": {
+    "name": "mobile",
+    "slug": "mobile",
+    "version": "1.0.3",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Your location is used to keep your safety status up to date while working.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Allow background location so safety tracking stays active when the app is locked.",
+        "NSLocationAlwaysUsageDescription": "Allow background location so safety tracking stays active when the app is locked."
+      }
+    },
+    "android": {
+      "package": "ca.ursafe.app",
+      "versionCode": 4,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION",
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_BACKGROUND_LOCATION",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_LOCATION"
+      ]
+    },
+    "plugins": [
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Your location is used to keep your safety status up to date while working.",
+          "locationAlwaysAndWhenInUsePermission": "Allow background location so safety tracking stays active when the app is locked.",
+          "isAndroidBackgroundLocationEnabled": true
+        }
+      ],
+      "./plugins/withCleartextTraffic"
+    ],
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "c07b4e66-cac5-4b7b-bd75-3c9e4b87c34c"
+      }
+    },
+    "owner": "ismailapp"
+  }
+}

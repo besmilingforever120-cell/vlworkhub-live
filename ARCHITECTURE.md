@@ -19,7 +19,7 @@ Next.js Applications
 ↓
 Shared API Server
 ↓
-MySQL Database
+PostgreSQL Database
 
 ---
 
@@ -40,7 +40,7 @@ services/
 - auth (JWT authentication)
 
 infra/
-- mysql
+- pgsql
 - nginx
 - docker deployment
 

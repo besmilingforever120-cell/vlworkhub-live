@@ -1,0 +1,42 @@
+[
+  {
+    "id": "shift-1766306661011-3fy05vb7m",
+    "userId": "emp-001",
+    "startTime": "2025-12-21T08:44:21.011Z",
+    "status": "completed",
+    "checkInCount": 2,
+    "clientName": "Harmind kelly",
+    "clientAddress": "3900 Vernon Bc",
+    "expectedDuration": 60,
+    "notes": "",
+    "currentLocation": {
+      "latitude": 50.271292701572264,
+      "longitude": -119.27170711379284
+    },
+    "createdAt": "2025-12-21T08:44:21.011Z",
+    "updatedAt": "2025-12-21T08:44:21.011Z",
+    "lastCheckIn": "2025-12-21T08:47:08.431Z",
+    "endTime": "2025-12-21T08:47:53.435Z"
+  },
+  {
+    "id": "shift-1766350074092-g767q0yy2",
+    "userId": "emp-001",
+    "startTime": "2025-12-21T20:47:54.092Z",
+    "status": "completed",
+    "checkInCount": 2,
+    "clientName": "Katy bout",
+    "clientAddress": "124 12 Ave",
+    "expectedDuration": 60,
+    "notes": "",
+    "currentLocation": {
+      "latitude": 50.271292701572264,
+      "longitude": -119.27170711379284,
+      "address": "3903 30th St, Vernon, BC, Canada",
+      "timestamp": "2025-12-21T21:13:10.816Z"
+    },
+    "createdAt": "2025-12-21T20:47:54.092Z",
+    "updatedAt": "2025-12-21T20:47:54.092Z",
+    "lastCheckIn": "2025-12-21T20:58:19.780Z",
+    "endTime": "2025-12-21T21:13:10.976Z"
+  }
+]

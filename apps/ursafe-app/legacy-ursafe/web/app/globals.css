@@ -1,0 +1,55 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f3f4f6;
+  --foreground: #0f172a;
+}
+
+:root[data-theme='dark'] {
+  --background: #020617;
+  --foreground: #f8fafc;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+:root[data-theme='dark'] .bg-white {
+  background-color: #0f172a !important;
+}
+
+:root[data-theme='dark'] .bg-gray-50,
+:root[data-theme='dark'] .bg-gray-100,
+:root[data-theme='dark'] .bg-gray-200 {
+  background-color: #020617 !important;
+}
+
+:root[data-theme='dark'] .border-gray-100,
+:root[data-theme='dark'] .border-gray-200,
+:root[data-theme='dark'] .border-gray-300 {
+  border-color: rgba(148, 163, 184, 0.4) !important;
+}
+
+:root[data-theme='dark'] .text-gray-900,
+:root[data-theme='dark'] .text-gray-800 {
+  color: #f8fafc !important;
+}
+
+:root[data-theme='dark'] .text-gray-700,
+:root[data-theme='dark'] .text-gray-600 {
+  color: #e2e8f0 !important;
+}
+
+:root[data-theme='dark'] .text-gray-500,
+:root[data-theme='dark'] .text-gray-400 {
+  color: #cbd5f5 !important;
+}
+
+:root[data-theme='dark'] .shadow,
+:root[data-theme='dark'] .shadow-sm,
+:root[data-theme='dark'] .shadow-lg {
+  box-shadow: 0 15px 35px rgba(2, 6, 23, 0.65) !important;
+}

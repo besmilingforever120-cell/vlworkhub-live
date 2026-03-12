@@ -34,7 +34,11 @@ export function DocumentsWorkspace() {
   useEffect(() => { void load(); }, []);
 
   const filtered = useMemo(() => documents.filter((item) => [item.title, item.category, item.owner_name].some((value) => String(value ?? "").toLowerCase().includes(query.toLowerCase()))), [documents, query]);
-  const signatureByDocument = useMemo(() => Object.groupBy ? Object.groupBy(signatures, (item) => String(item.document_id)) : signatures.reduce((acc, item) => { const key = String(item.document_id); acc[key] = [...(acc[key] || []), item]; return acc; }, {} as Record<string, HrRecord[]>), [signatures]);
+  const signatureByDocument = useMemo(() => signatures.reduce((acc, item) => {
+    const key = String(item.document_id);
+    acc[key] = [...(acc[key] || []), item];
+    return acc;
+  }, {} as Record<string, HrRecord[]>), [signatures]);
 
   async function createDocument(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -120,7 +124,7 @@ export function DocumentsWorkspace() {
               <div className="mt-5 rounded-2xl border border-white/10 bg-slate-950/40 p-4">
                 <h3 className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-400">Signature queue</h3>
                 <div className="mt-3 space-y-3">
-                  {(signatureByDocument[String(document.id)] || []).map((signature) => (
+                  {(signatureByDocument[String(document.id)] || []).map((signature: HrRecord) => (
                     <div key={String(signature.id)} className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 px-4 py-3 text-sm text-slate-300">
                       <div>
                         <p>{String(signature.signer_name ?? "Signer")}</p>

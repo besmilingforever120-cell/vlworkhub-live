@@ -1,0 +1,9 @@
+IF COL_LENGTH('Shifts', 'StartLocation') IS NULL
+BEGIN
+  ALTER TABLE Shifts ADD StartLocation NVARCHAR(MAX) NULL;
+END
+
+IF COL_LENGTH('Shifts', 'EndLocation') IS NULL
+BEGIN
+  ALTER TABLE Shifts ADD EndLocation NVARCHAR(MAX) NULL;
+END

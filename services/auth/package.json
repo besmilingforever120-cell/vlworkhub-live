@@ -2,10 +2,12 @@
   "name": "@vlworkhub/auth",
   "version": "1.0.0",
   "private": true,
-  "main": "src/index.ts",
+  "main": "dist/index.js",
   "types": "src/index.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
   "dependencies": {
-    "@vlworkhub/types": "1.0.0",
     "jsonwebtoken": "^9.0.2"
   }
 }
