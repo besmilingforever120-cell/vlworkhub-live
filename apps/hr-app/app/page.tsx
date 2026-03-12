@@ -1,2 +1,5 @@
-import { redirect } from "next/navigation";
-export default function HrIndex() { redirect("/employees"); }
+import { HrDashboard } from "../components/hr-dashboard";
+
+export default function HrIndex() {
+  return <HrDashboard />;
+}

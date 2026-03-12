@@ -10,6 +10,33 @@ function hashPassword(password: string) {
   return crypto.createHash("sha256").update(password).digest("hex");
 }
 
+const devUser = {
+  id: 1,
+  full_name: "Platform Admin",
+  email: "admin@vlworkhub.ca",
+  password_hash: hashPassword("Password123!"),
+  organization_id: 1,
+  role: "Admin"
+};
+
+async function findUserByEmail(email: string) {
+  try {
+    const [rows] = await pool.query<RowDataPacket[]>(
+      "SELECT id, full_name, email, password_hash, organization_id, role FROM users WHERE email = ? LIMIT 1",
+      [email]
+    );
+
+    return rows[0] || null;
+  } catch (error) {
+    if (env.nodeEnv !== "production" && email === devUser.email) {
+      console.warn("Database unavailable, using development auth fallback.", error);
+      return devUser;
+    }
+
+    throw error;
+  }
+}
+
 export async function login(req: Request, res: Response) {
   const { email, password } = req.body as { email: string; password: string };
 
@@ -17,12 +44,7 @@ export async function login(req: Request, res: Response) {
     return res.status(400).json({ message: "Email and password are required" });
   }
 
-  const [rows] = await pool.query<RowDataPacket[]>(
-    "SELECT id, full_name, email, password_hash, organization_id, role FROM users WHERE email = ? LIMIT 1",
-    [email]
-  );
-
-  const user = rows[0];
+  const user = await findUserByEmail(email);
 
   if (!user || user.password_hash !== hashPassword(password)) {
     return res.status(401).json({ message: "Invalid credentials" });

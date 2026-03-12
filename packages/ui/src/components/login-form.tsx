@@ -16,12 +16,20 @@ export function LoginForm() {
     setLoading(true);
     setError("");
 
-    const response = await fetch(`${platformLinks.api}/auth/login`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({ email, password })
-    });
+    let response: Response;
+
+    try {
+      response = await fetch(`${platformLinks.api}/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ email, password })
+      });
+    } catch {
+      setLoading(false);
+      setError(`Unable to reach the API at ${platformLinks.api}. Start the API server and try again.`);
+      return;
+    }
 
     setLoading(false);
 

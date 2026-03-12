@@ -1,3 +1,5 @@
-import { ResourcePage } from "@vlworkhub/ui";
-import { hrResources } from "../../lib/resource-config";
-export default function Page() { return <ResourcePage config={hrResources.documents} />; }
+import { DocumentsWorkspace } from "../../components/documents-workspace";
+
+export default function DocumentsPage() {
+  return <DocumentsWorkspace />;
+}

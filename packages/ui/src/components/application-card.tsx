@@ -5,7 +5,7 @@ import type { AppLink } from "@vlworkhub/types";
 export function ApplicationCard({ app }: { app: AppLink }) {
   return (
     <Link
-      href={app.href}
+      href={app.href as any}
       className="group rounded-3xl border border-white/10 bg-white/5 p-6 transition hover:-translate-y-1 hover:border-cyan-300/40 hover:bg-white/10"
     >
       <div className="flex items-start justify-between gap-4">

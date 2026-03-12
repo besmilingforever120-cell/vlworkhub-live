@@ -7,12 +7,17 @@
     "services/*"
   ],
   "scripts": {
+    "dev": "concurrently -n api,main,hr -c cyan,green,magenta \"npm run dev:api:serve\" \"npm run dev:main\" \"npm run dev:hr\"",
     "dev:main": "npm run dev -w @vlworkhub/main-platform",
     "dev:care": "npm run dev -w @vlworkhub/care-app",
     "dev:hr": "npm run dev -w @vlworkhub/hr-app",
     "dev:ursafe": "npm run dev -w @vlworkhub/ursafe-app",
     "dev:api": "npm run dev -w @vlworkhub/api",
+    "dev:api:serve": "npm run build -w @vlworkhub/api && npm run start -w @vlworkhub/api",
     "build": "npm run build -ws --if-present",
     "lint": "npm run lint -ws --if-present"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
   }
 }

@@ -58,6 +58,20 @@ CREATE TABLE IF NOT EXISTS documents (
   category VARCHAR(100),
   owner_name VARCHAR(255),
   storage_path VARCHAR(255),
+  due_date DATE,
+  requires_signature VARCHAR(20),
+  status VARCHAR(100),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS document_signatures (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  organization_id INT NOT NULL,
+  document_id INT NOT NULL,
+  signer_name VARCHAR(255),
+  status VARCHAR(100),
+  signed_at DATETIME NULL,
+  note TEXT,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -75,8 +89,12 @@ CREATE TABLE IF NOT EXISTS announcements (
   id INT AUTO_INCREMENT PRIMARY KEY,
   organization_id INT NOT NULL,
   title VARCHAR(255) NOT NULL,
+  body TEXT,
   audience VARCHAR(255),
   publish_date DATE,
+  start_date DATE,
+  end_date DATE,
+  priority VARCHAR(100),
   status VARCHAR(100),
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -88,6 +106,18 @@ CREATE TABLE IF NOT EXISTS tasks (
   assigned_to VARCHAR(255),
   due_date DATE,
   status VARCHAR(100),
+  priority VARCHAR(100),
+  description TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS task_user_states (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  organization_id INT NOT NULL,
+  task_id INT NOT NULL,
+  user_name VARCHAR(255),
+  status VARCHAR(100),
+  completed_on DATETIME NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -97,7 +127,61 @@ CREATE TABLE IF NOT EXISTS training (
   title VARCHAR(255) NOT NULL,
   audience VARCHAR(255),
   delivery_mode VARCHAR(100),
+  content_url VARCHAR(255),
   status VARCHAR(100),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS training_assignments (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  organization_id INT NOT NULL,
+  title VARCHAR(255),
+  training_id INT NOT NULL,
+  assignee_name VARCHAR(255),
+  due_date DATE,
+  survey_url VARCHAR(255),
+  status VARCHAR(100),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS training_completions (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  organization_id INT NOT NULL,
+  assignment_id INT NOT NULL,
+  user_name VARCHAR(255),
+  progress_percent INT,
+  completed_on DATETIME NULL,
+  last_position_seconds INT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS surveys (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  organization_id INT NOT NULL,
+  title VARCHAR(255) NOT NULL,
+  url VARCHAR(255),
+  due_date DATE,
+  status VARCHAR(100),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS survey_assignments (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  organization_id INT NOT NULL,
+  title VARCHAR(255),
+  survey_id INT NOT NULL,
+  assignee_name VARCHAR(255),
+  due_date DATE,
+  status VARCHAR(100),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS survey_completions (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  organization_id INT NOT NULL,
+  assignment_id INT NOT NULL,
+  user_name VARCHAR(255),
+  completed_on DATETIME NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 

@@ -2,6 +2,7 @@ import type { NavItem, ResourceConfig } from "@vlworkhub/types";
 import { platformLinks } from "@vlworkhub/config";
 
 export const hrNav: NavItem[] = [
+  { label: "Dashboard", href: "/" },
   { label: "Employees", href: "/employees" },
   { label: "Announcements", href: "/announcements" },
   { label: "Tasks", href: "/tasks" },

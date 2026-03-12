@@ -1,3 +1,5 @@
-import { ResourcePage } from "@vlworkhub/ui";
-import { hrResources } from "../../lib/resource-config";
-export default function Page() { return <ResourcePage config={hrResources.training} />; }
+import { TrainingWorkspace } from "../../components/training-workspace";
+
+export default function TrainingPage() {
+  return <TrainingWorkspace />;
+}

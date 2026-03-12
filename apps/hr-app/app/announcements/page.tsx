@@ -1,3 +1,5 @@
-import { ResourcePage } from "@vlworkhub/ui";
-import { hrResources } from "../../lib/resource-config";
-export default function Page() { return <ResourcePage config={hrResources.announcements} />; }
+import { AnnouncementsWorkspace } from "../../components/announcements-workspace";
+
+export default function AnnouncementsPage() {
+  return <AnnouncementsWorkspace />;
+}
