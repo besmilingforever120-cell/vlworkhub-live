@@ -1,0 +1,626 @@
+// Modern HR Support Interface SCSS
+.container {
+  min-height: 100vh;
+  background-color: #F8FAFC;
+  padding: 2rem 1rem;
+  font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'SF Pro Text', system-ui, sans-serif;
+}
+
+.wrapper {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+/* ============================================
+   HEADER STYLES
+   ============================================ */
+
+.header {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.headerContent {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  margin-bottom: 1rem;
+
+  @media (max-width: 768px) {
+    flex-direction: column;
+    text-align: center;
+  }
+}
+
+.headerIcon {
+  width: 3rem;
+  height: 3rem;
+  background-color: #2563EB;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+
+  svg {
+    width: 1.5rem;
+    height: 1.5rem;
+  }
+}
+
+.headerText {
+  text-align: left;
+
+  @media (max-width: 768px) {
+    text-align: center;
+  }
+
+  h1 {
+    margin: 0 0 0.25rem 0;
+    color: #1F2937;
+    font-weight: 600;
+    font-size: 1.875rem;
+    line-height: 1.2;
+    letter-spacing: -0.02em;
+
+    @media (max-width: 768px) {
+      font-size: 1.5rem;
+    }
+  }
+
+  p {
+    margin: 0;
+    color: #64748B;
+    font-size: 1rem;
+    font-weight: 400;
+  }
+}
+
+/* ============================================
+   STATUS MESSAGES
+   ============================================ */
+
+.statusMessage {
+  margin-bottom: 1.5rem;
+  padding: 1rem;
+  border-radius: 8px;
+  border: 1px solid;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  animation: slideDown 0.3s ease-out;
+
+  svg {
+    width: 1.25rem;
+    height: 1.25rem;
+    margin-top: 0.125rem;
+    flex-shrink: 0;
+  }
+
+  &.success {
+    background-color: #F0FDF4;
+    border-color: #BBF7D0;
+
+    svg {
+      color: #16A34A;
+    }
+
+    .statusTitle {
+      color: #166534;
+    }
+
+    .statusText {
+      color: #15803D;
+    }
+  }
+
+  &.error {
+    background-color: #FEF2F2;
+    border-color: #FECACA;
+
+    svg {
+      color: #DC2626;
+    }
+
+    .statusTitle {
+      color: #991B1B;
+    }
+
+    .statusText {
+      color: #DC2626;
+    }
+  }
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.statusTitle {
+  font-weight: 500;
+  margin: 0 0 0.25rem 0;
+  font-size: 0.875rem;
+}
+
+.statusText {
+  margin: 0;
+  font-size: 0.875rem;
+}
+
+/* ============================================
+   LAYOUT
+   ============================================ */
+
+.content {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 2rem;
+  align-items: start;
+
+  @media (max-width: 1024px) {
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+  }
+}
+
+/* ============================================
+   CARDS
+   ============================================ */
+
+.card {
+  background: #FFFFFF;
+  border: 1px solid #E5E7EB;
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  transition: all 180ms ease-out;
+
+  &:hover {
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.06);
+    border-color: #CBD5E1;
+  }
+}
+
+.cardHeader {
+  padding: 1.5rem 1.5rem 1rem 1.5rem;
+  
+  h2, h3 {
+    margin: 0 0 0.5rem 0;
+    color: #1F2937;
+    font-weight: 500;
+  }
+
+  h2 {
+    font-size: 1.25rem;
+  }
+
+  h3 {
+    font-size: 1.125rem;
+  }
+
+  p {
+    margin: 0;
+    color: #64748B;
+    font-size: 0.875rem;
+  }
+}
+
+/* ============================================
+   FORM STYLES
+   ============================================ */
+
+.formSection {
+  @media (max-width: 1024px) {
+    order: 1;
+  }
+}
+
+.formContent {
+  padding: 1.5rem;
+}
+
+.formGroup {
+  margin-bottom: 2rem;
+
+  h3 {
+    margin: 0 0 1rem 0;
+    color: #0F172A;
+    font-weight: 500;
+    font-size: 1.125rem;
+  }
+}
+
+.requestTypeGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+
+  @media (max-width: 768px) {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.75rem;
+  }
+
+  @media (max-width: 480px) {
+    grid-template-columns: 1fr;
+  }
+}
+
+.requestTypeCard {
+  padding: 1.25rem;
+  border: 1.5px solid #E5E7EB;
+  border-radius: 10px;
+  background: #FFFFFF;
+  cursor: pointer;
+  transition: all 180ms ease-out;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: transparent;
+    transition: all 180ms ease-out;
+  }
+
+  &:hover:not(:disabled) {
+    border-color: #CBD5E1;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.06);
+  }
+
+  &:active:not(:disabled) {
+    transform: translateY(1px);
+  }
+
+  &.selected {
+    border-color: #2563EB;
+    background: #F8FAFC;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.35);
+
+    &::before {
+      background: #2563EB;
+    }
+
+    .requestTypeIcon {
+      transform: scale(1.05);
+    }
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  
+  &:focus {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.35);
+  }
+
+  p {
+    margin: 0;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: #1F2937;
+    line-height: 1.4;
+  }
+}
+
+.requestTypeIcon {
+  width: 3rem;
+  height: 3rem;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 180ms ease-out;
+
+  svg {
+    width: 1.5rem;
+    height: 1.5rem;
+  }
+  
+  .requestTypeCard.blue & { 
+    color: #2563EB; 
+    background-color: #DBEAFE; 
+  }
+  .requestTypeCard.green & { 
+    color: #16A34A; 
+    background-color: #DCFCE7; 
+  }
+  .requestTypeCard.orange & { 
+    color: #EA580C; 
+    background-color: #FED7AA; 
+  }
+  .requestTypeCard.purple & { 
+    color: #9333EA; 
+    background-color: #F3E8FF; 
+  }
+  .requestTypeCard.red & { 
+    color: #DC2626; 
+    background-color: #FEE2E2; 
+  }
+  .requestTypeCard.gray & { 
+    color: #64748B; 
+    background-color: #F1F5F9; 
+  }
+}
+
+.formRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+
+  @media (max-width: 768px) {
+    grid-template-columns: 1fr;
+  }
+}
+
+.formField {
+  margin-bottom: 1.5rem;
+
+  label {
+    display: block;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: #475569;
+    margin-bottom: 0.5rem;
+  }
+
+  input, select, textarea {
+    width: 100%;
+    padding: 0.75rem;
+    border: 1px solid #E5E7EB;
+    border-radius: 8px;
+    font-size: 0.875rem;
+    font-family: inherit;
+    transition: all 180ms ease-out;
+    box-sizing: border-box;
+    background: #FFFFFF;
+    color: #1F2937;
+
+    &:hover {
+      box-shadow: 0 0 0 1px rgba(148, 163, 184, 0.3);
+    }
+
+    &:focus {
+      outline: none;
+      border-color: #2563EB;
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+    }
+
+    &:disabled {
+      background: #F8FAFC;
+      cursor: not-allowed;
+      opacity: 0.5;
+    }
+
+    &::placeholder {
+      color: rgba(15, 23, 42, 0.5);
+    }
+  }
+
+  textarea {
+    resize: vertical;
+    line-height: 1.5;
+    min-height: 120px;
+  }
+}
+
+.required {
+  color: #DC2626;
+}
+
+.charCount {
+  display: block;
+  margin-top: 0.25rem;
+  font-size: 0.75rem;
+  color: #64748B;
+  text-align: right;
+}
+
+.formDivider {
+  border-top: 1px solid #E5E7EB;
+  margin: 2rem 0 1.5rem 0;
+  padding-top: 1.5rem;
+
+  h3 {
+    margin: 0 0 1rem 0;
+    color: #1F2937;
+    font-weight: 500;
+    font-size: 1.125rem;
+  }
+}
+
+.formActions {
+  padding-top: 1rem;
+  display: flex;
+  gap: 1rem;
+}
+
+.submitButton {
+  background-color: #2563EB;
+  color: white;
+  padding: 0.875rem 1.75rem;
+  border: none;
+  border-radius: 8px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 180ms ease-out;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9375rem;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+
+  svg {
+    width: 1rem;
+    height: 1rem;
+  }
+
+  &:hover:not(:disabled) {
+    background-color: #1D4ED8;
+  }
+
+  &:active:not(:disabled) {
+    transform: translateY(1px);
+  }
+
+  &:focus {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.35);
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+  }
+}
+
+/* ============================================
+   SIDEBAR
+   ============================================ */
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+
+  @media (max-width: 1024px) {
+    order: 0;
+  }
+}
+
+/* ============================================
+   CONTACT STYLES
+   ============================================ */
+
+.contactList {
+  padding: 0 1.5rem 1.5rem 1.5rem;
+}
+
+.contactItem {
+  padding: 1.25rem;
+  background: #FFFFFF;
+  border: 1px solid #E5E7EB;
+  border-radius: 10px;
+  margin-bottom: 1rem;
+  transition: all 180ms ease-out;
+
+  &:hover {
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.06);
+    border-color: #CBD5E1;
+  }
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+}
+
+.contactHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+
+  @media (max-width: 768px) {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+}
+
+.contactInfo {
+  h4 {
+    margin: 0 0 0.375rem 0;
+    color: #1F2937;
+    font-weight: 500;
+    font-size: 1rem;
+  }
+}
+
+.contactRole {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  background-color: #DBEAFE;
+  color: #1E40AF;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.statusIndicator {
+  width: 0.75rem;
+  height: 0.75rem;
+  border-radius: 50%;
+  flex-shrink: 0;
+  box-shadow: 0 0 0 2px white, 0 0 0 3px currentColor;
+
+  &.available { 
+    background-color: #16A34A;
+    color: #DCFCE7;
+  }
+  &.busy { 
+    background-color: #F59E0B;
+    color: #FEF3C7;
+  }
+  &.away { 
+    background-color: #64748B;
+    color: #F1F5F9;
+  }
+}
+
+.contactDetails {
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+}
+
+.contactDetail {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  font-size: 0.875rem;
+  color: #64748B;
+  transition: all 180ms ease-out;
+
+  svg {
+    width: 1rem;
+    height: 1rem;
+    flex-shrink: 0;
+  }
+
+  a {
+    color: #2563EB;
+    text-decoration: none;
+    transition: all 180ms ease-out;
+
+    &:hover {
+      color: #1D4ED8;
+      text-decoration: underline;
+    }
+    
+    &:focus {
+      outline: none;
+      text-decoration: underline;
+      color: #1D4ED8;
+    }
+  }
+}

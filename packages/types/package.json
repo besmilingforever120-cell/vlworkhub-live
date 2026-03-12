@@ -1,0 +1,6 @@
+{
+  "name": "@vlworkhub/types",
+  "version": "1.0.0",
+  "private": true,
+  "types": "index.ts"
+}

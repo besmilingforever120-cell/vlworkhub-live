@@ -1,0 +1,18 @@
+{
+  "name": "vlworkhub",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "services/*"
+  ],
+  "scripts": {
+    "dev:main": "npm run dev -w @vlworkhub/main-platform",
+    "dev:care": "npm run dev -w @vlworkhub/care-app",
+    "dev:hr": "npm run dev -w @vlworkhub/hr-app",
+    "dev:ursafe": "npm run dev -w @vlworkhub/ursafe-app",
+    "dev:api": "npm run dev -w @vlworkhub/api",
+    "build": "npm run build -ws --if-present",
+    "lint": "npm run lint -ws --if-present"
+  }
+}

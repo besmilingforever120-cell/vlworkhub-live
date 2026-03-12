@@ -1,0 +1,9 @@
+FROM node:20-alpine
+WORKDIR /app
+COPY package.json ./
+COPY services ./services
+COPY packages ./packages
+COPY tsconfig.base.json ./
+RUN npm install
+RUN npm run build -w @vlworkhub/api
+CMD ["npm", "run", "start", "-w", "@vlworkhub/api"]
