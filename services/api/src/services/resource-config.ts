@@ -1,11 +1,11 @@
 export const resourceMap = {
   clients: { table: "clients", fields: ["full_name", "status", "program", "primary_contact"] },
-  staff: { table: "staff", fields: ["full_name", "role", "email", "phone"] },
+  staff: { table: "staff", fields: ["full_name", "role", "email", "phone", "department", "manager_name", "status"] },
   notes: { table: "notes", fields: ["client_id", "staff_id", "note_text", "visibility"] },
   incidents: { table: "incidents", fields: ["title", "severity", "reported_by", "status"] },
   documents: {
     table: "documents",
-    fields: ["title", "category", "owner_name", "storage_path", "due_date", "requires_signature", "status"]
+    fields: ["title", "category", "owner_name", "storage_path", "due_date", "requires_signature", "status", "file_name", "mime_type", "file_size", "description", "department"]
   },
   employees: { table: "employees", fields: ["full_name", "department", "job_title", "email"] },
   announcements: {

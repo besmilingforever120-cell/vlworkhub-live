@@ -1,0 +1,131 @@
+{
+  "systemLabel": "ShareVision Style Dashboard",
+  "organizationName": "Vernon & District Association for Community Living",
+  "userName": "Ismail Ismaili",
+  "quickStartItems": [
+    {
+      "label": "Home",
+      "icon": "🏠"
+    },
+    {
+      "label": "Managers",
+      "icon": "📇"
+    },
+    {
+      "label": "Site Administrator",
+      "icon": "🗄️"
+    },
+    {
+      "label": "Reports",
+      "icon": "📊"
+    },
+    {
+      "label": "Training",
+      "icon": "🎓"
+    },
+    {
+      "label": "Individuals",
+      "icon": "🧑‍🤝‍🧑"
+    },
+    {
+      "label": "Health & Safety",
+      "icon": "🛡️"
+    },
+    {
+      "label": "Programs",
+      "icon": "📋"
+    },
+    {
+      "label": "Community Housing",
+      "icon": "🏘️"
+    },
+    {
+      "label": "Maintenance",
+      "icon": "🛠️"
+    }
+  ],
+  "homePages": [
+    "Home",
+    "Case Queue",
+    "Team Assignments",
+    "Service Requests"
+  ],
+  "announcements": [
+    {
+      "id": 2,
+      "category": "Operations",
+      "title": "Policy update: overnight incident workflow now requires dual sign-off.",
+      "timestamp": "10:42"
+    }
+  ],
+  "links": [
+    "ComVida",
+    "Employee of the Month",
+    "Office 365",
+    "Safety Concern or Near Miss"
+  ],
+  "spotlight": {
+    "title": "Care Spotlight",
+    "description": "Team members can pin success stories, client milestones, and community highlights directly to the home screen."
+  },
+  "eventsByDate": {
+    "2026-02-22": [
+      "2:30 PM - Community transport planning"
+    ],
+    "2026-02-24": [
+      "9:00 AM - Incident review board"
+    ],
+    "2026-02-27": [
+      "4:00 PM - Funding report submission",
+      "12:10 take garbage out",
+      "You are a second test"
+    ],
+    "2026-03-04": [
+      "8:00 AM Telus communication technician arrived."
+    ],
+    "2026-04-09": [
+      "hope is the thing with feathers"
+    ]
+  },
+  "incidents": [
+    {
+      "id": 1,
+      "title": "Nurse call system latency at Vernon residence",
+      "severity": "Critical",
+      "owner": "IT Ops",
+      "status": "Investigating"
+    },
+    {
+      "id": 2,
+      "title": "Missed medication scan in overnight shift",
+      "severity": "High",
+      "owner": "Clinical Lead",
+      "status": "Mitigated"
+    },
+    {
+      "id": 3,
+      "title": "Transport no-show affecting two clients",
+      "severity": "Medium",
+      "owner": "Scheduling",
+      "status": "Mitigated"
+    }
+  ],
+  "rotatingAlerts": [
+    {
+      "level": "critical",
+      "message": "3 records waiting for immediate incident sign-off."
+    },
+    {
+      "level": "warning",
+      "message": "Two certifications expire within 5 days."
+    },
+    {
+      "level": "info",
+      "message": "Calendar sync completed with 12 updates."
+    },
+    {
+      "level": "warning",
+      "message": "Medication audit queue exceeds target by 4."
+    }
+  ]
+}

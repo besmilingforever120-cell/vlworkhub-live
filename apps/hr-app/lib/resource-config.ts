@@ -2,11 +2,11 @@ import type { NavItem, ResourceConfig } from "@vlworkhub/types";
 import { platformLinks } from "@vlworkhub/config";
 
 export const hrNav: NavItem[] = [
-  { label: "Dashboard", href: "/" },
-  { label: "Employees", href: "/employees" },
+  { label: "Dashboard", href: "/dashboard" },
   { label: "Announcements", href: "/announcements" },
   { label: "Tasks", href: "/tasks" },
   { label: "Training", href: "/training" },
+  { label: "Surveys", href: "/surveys" },
   { label: "Documents", href: "/documents" },
   { label: "Admin", href: "/admin" }
 ];
@@ -17,18 +17,6 @@ export const hrMeta = {
 };
 
 export const hrResources: Record<string, ResourceConfig> = {
-  employees: {
-    title: "Employee Directory",
-    description: "Searchable employee records migrated from the SharePoint HR portal.",
-    resource: "employees",
-    columns: [
-      { key: "full_name", label: "Employee" },
-      { key: "department", label: "Department" },
-      { key: "job_title", label: "Job Title" },
-      { key: "email", label: "Email" }
-    ],
-    fields: ["full_name", "department", "job_title", "email"]
-  },
   announcements: {
     title: "Announcements",
     description: "Internal communications and policy updates for the organization.",
@@ -64,6 +52,18 @@ export const hrResources: Record<string, ResourceConfig> = {
       { key: "status", label: "Status" }
     ],
     fields: ["title", "audience", "delivery_mode", "status"]
+  },
+  surveys: {
+    title: "Surveys",
+    description: "Survey templates and completion assignments linked to training.",
+    resource: "surveys",
+    columns: [
+      { key: "title", label: "Title" },
+      { key: "url", label: "URL" },
+      { key: "due_date", label: "Due Date" },
+      { key: "status", label: "Status" }
+    ],
+    fields: ["title", "url", "due_date", "status"]
   },
   documents: {
     title: "HR Documents",

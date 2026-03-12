@@ -1,2 +1,5 @@
 import { redirect } from "next/navigation";
-export default function CareIndex() { redirect("/clients"); }
+
+export default function CareIndex() {
+  redirect("/dashboard");
+}

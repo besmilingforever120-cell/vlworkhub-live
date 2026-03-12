@@ -4,5 +4,5 @@
     "plugins": [{ "name": "next" }]
   },
   "include": ["next-env.d.ts", "next-shim.d.ts", "**/*.ts", "**/*.tsx"],
-  "exclude": ["node_modules"]
+  "exclude": ["node_modules", "legacy-care"]
 }

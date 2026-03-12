@@ -520,3 +520,25 @@ SELECT
 WHERE NOT EXISTS (
   SELECT 1 FROM ursafe_active_sessions uas WHERE uas.organization_id = '11111111-1111-1111-1111-111111111111' AND uas.user_id = '44444444-4444-4444-4444-444444444444'
 );
+ALTER TABLE staff ADD COLUMN IF NOT EXISTS department TEXT;
+ALTER TABLE staff ADD COLUMN IF NOT EXISTS manager_name TEXT;
+ALTER TABLE staff ADD COLUMN IF NOT EXISTS status TEXT;
+
+INSERT INTO staff (organization_id, full_name, role, email, phone, department, manager_name, status)
+SELECT *
+FROM (
+  VALUES
+    ('11111111-1111-1111-1111-111111111111'::uuid, 'Jamie Lee', 'Life Skills Worker', 'jamie.lee@vlcare.ca', '250-555-0100', 'Community Inclusion', 'Casey Morgan', 'Active'),
+    ('11111111-1111-1111-1111-111111111111'::uuid, 'Marcus Chen', 'Residential Coordinator', 'marcus.chen@vlcare.ca', '250-555-0101', 'Community Housing', 'Alex Morgan', 'Archived'),
+    ('11111111-1111-1111-1111-111111111111'::uuid, 'Priya Shah', 'Program Supervisor', 'priya.shah@vlcare.ca', '250-555-0102', 'Supported Employment', 'Platform Admin', 'Active')
+) AS staff_seed(organization_id, full_name, role, email, phone, department, manager_name, status)
+WHERE NOT EXISTS (
+  SELECT 1 FROM staff s WHERE s.organization_id = staff_seed.organization_id AND s.email = staff_seed.email
+);
+
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS file_name TEXT;
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS mime_type TEXT;
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS file_size BIGINT;
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS description TEXT;
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS department TEXT;
+

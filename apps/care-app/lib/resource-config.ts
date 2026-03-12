@@ -2,6 +2,7 @@ import type { NavItem, ResourceConfig } from "@vlworkhub/types";
 import { platformLinks } from "@vlworkhub/config";
 
 export const careNav: NavItem[] = [
+  { label: "Dashboard", href: "/dashboard" },
   { label: "Clients", href: "/clients" },
   { label: "Staff", href: "/staff" },
   { label: "Case Notes", href: "/notes" },
@@ -28,16 +29,17 @@ export const careResources: Record<string, ResourceConfig> = {
     fields: ["full_name", "status", "program", "primary_contact"]
   },
   staff: {
-    title: "Staff Assignments",
-    description: "Staff directory and assignment ownership for care services.",
+    title: "Staff Management",
+    description: "Site administrator workflow for employee records, manager ownership, and staff lifecycle state.",
     resource: "staff",
     columns: [
       { key: "full_name", label: "Staff" },
       { key: "role", label: "Role" },
-      { key: "email", label: "Email" },
-      { key: "phone", label: "Phone" }
+      { key: "department", label: "Department" },
+      { key: "manager_name", label: "Manager" },
+      { key: "status", label: "Status" }
     ],
-    fields: ["full_name", "role", "email", "phone"]
+    fields: ["full_name", "role", "email", "phone", "department", "manager_name", "status"]
   },
   notes: {
     title: "Case Notes",

@@ -4,9 +4,10 @@ import { platformLinks } from "@vlworkhub/config";
 import type { SessionUser } from "@vlworkhub/types";
 
 export type HrResourceName =
-  | "employees"
+  | "users"
   | "announcements"
   | "tasks"
+  | "task_user_states"
   | "training"
   | "training_assignments"
   | "training_completions"
@@ -17,6 +18,14 @@ export type HrResourceName =
   | "document_signatures";
 
 export type HrRecord = Record<string, string | number | null>;
+
+export type HrUser = {
+  id: string;
+  fullName: string;
+  email: string;
+  roles: string[];
+  status: string;
+};
 
 export class ApiOfflineError extends Error {
   constructor() {
@@ -107,4 +116,26 @@ export async function deleteResource(resource: HrResourceName, id: number) {
   return request<{ success: true }>(`/resources/${resource}/${id}`, {
     method: "DELETE"
   });
+}
+
+export async function getSharedUsers() {
+  const [users, session] = await Promise.all([getResource("users"), getCurrentUser()]);
+  const currentUser: HrUser = {
+    id: session.id,
+    fullName: session.fullName,
+    email: session.email,
+    roles: session.roles,
+    status: "active"
+  };
+
+  const mapped = users.map((item) => ({
+    id: String(item.id ?? ""),
+    fullName: [String(item.first_name ?? "").trim(), String(item.last_name ?? "").trim()].filter(Boolean).join(" ") || String(item.email ?? "User"),
+    email: String(item.email ?? ""),
+    roles: String(item.role ?? item.roles ?? "Employee").split(",").map((value) => value.trim()).filter(Boolean),
+    status: String(item.status ?? "active")
+  }));
+
+  const existing = mapped.find((item) => item.email.toLowerCase() === currentUser.email.toLowerCase() || item.id === currentUser.id);
+  return existing ? mapped : [currentUser, ...mapped];
 }

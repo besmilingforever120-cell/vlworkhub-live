@@ -1,148 +1,352 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { FileSignature, FolderUp, PenSquare, Search } from "lucide-react";
-import { createResource, getApiErrorMessage, getCurrentUser, getResource, type HrRecord, updateResource } from "../lib/hr-client";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { FileSignature, FolderUp, PenSquare, Save, Search, Shield, Upload, Users, X } from "lucide-react";
+import type { SessionUser } from "@vlworkhub/types";
+import {
+  createResource,
+  getApiErrorMessage,
+  getCurrentUser,
+  getResource,
+  getSharedUsers,
+  type HrRecord,
+  type HrUser
+} from "../lib/hr-client";
 import { HrPortalHeader } from "./hr-portal-header";
+import { formatDate, isHrManager, splitAssignees } from "../lib/workflow-utils";
+
+type DetailTab = "metadata" | "signatures";
+
+type DocumentForm = {
+  title: string;
+  category: string;
+  owner_name: string;
+  storage_path: string;
+  due_date: string;
+  requires_signature: string;
+  status: string;
+  file_name: string;
+  mime_type: string;
+  file_size: string;
+  description: string;
+  department: string;
+};
+
+type ValidationState = Partial<Record<keyof DocumentForm | "upload_file", string>>;
+
+const detailStorageKey = "vlworkhub.hr.documents.detail-tab";
+
+function emptyDocumentForm(): DocumentForm {
+  return {
+    title: "",
+    category: "Policy",
+    owner_name: "",
+    storage_path: "",
+    due_date: "",
+    requires_signature: "Yes",
+    status: "Pending Signature",
+    file_name: "",
+    mime_type: "",
+    file_size: "",
+    description: "",
+    department: "HR"
+  };
+}
+
+function validateDocumentForm(form: DocumentForm, uploadFile: File | null): ValidationState {
+  const next: ValidationState = {};
+  if (!uploadFile) next.upload_file = "Select a file to upload.";
+  if (!form.title.trim()) next.title = "Document title is required.";
+  if (!form.category.trim()) next.category = "Category is required.";
+  return next;
+}
 
 export function DocumentsWorkspace() {
-  const documentForm = { title: "", category: "Policy", owner_name: "", storage_path: "", due_date: "", requires_signature: "Yes", status: "Pending Signature" };
-  const signatureForm = { document_id: "", signer_name: "", status: "Pending", signed_at: "", note: "" };
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [user, setUser] = useState<SessionUser | null>(null);
+  const [users, setUsers] = useState<HrUser[]>([]);
   const [documents, setDocuments] = useState<HrRecord[]>([]);
   const [signatures, setSignatures] = useState<HrRecord[]>([]);
-  const [documentDraft, setDocumentDraft] = useState(documentForm);
-  const [signatureDraft, setSignatureDraft] = useState(signatureForm);
   const [query, setQuery] = useState("");
-  const [userName, setUserName] = useState("Platform Admin");
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [showRegisterForm, setShowRegisterForm] = useState(false);
+  const [detailTab, setDetailTab] = useState<DetailTab>("metadata");
+  const [documentForm, setDocumentForm] = useState<DocumentForm>(emptyDocumentForm());
+  const [signatureNote, setSignatureNote] = useState("");
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [dragActive, setDragActive] = useState(false);
+  const [validationErrors, setValidationErrors] = useState<ValidationState>({});
   const [error, setError] = useState("");
 
   async function load() {
     try {
-      const [documentData, signatureData, user] = await Promise.all([
+      setError("");
+      const [session, platformUsers, documentData, signatureData] = await Promise.all([
+        getCurrentUser(),
+        getSharedUsers(),
         getResource("documents"),
-        getResource("document_signatures"),
-        getCurrentUser()
+        getResource("document_signatures")
       ]);
+      setUser(session);
+      setUsers(platformUsers);
       setDocuments(documentData);
       setSignatures(signatureData);
-      setUserName(user.fullName);
-    } catch (err) {
-      setError(getApiErrorMessage(err));
+      setSelectedId((current) => current ?? Number(documentData[0]?.id ?? null));
+    } catch (loadError) {
+      setError(getApiErrorMessage(loadError));
     }
   }
 
-  useEffect(() => { void load(); }, []);
+  useEffect(() => {
+    void load();
+  }, []);
 
-  const filtered = useMemo(() => documents.filter((item) => [item.title, item.category, item.owner_name].some((value) => String(value ?? "").toLowerCase().includes(query.toLowerCase()))), [documents, query]);
-  const signatureByDocument = useMemo(() => signatures.reduce((acc, item) => {
-    const key = String(item.document_id);
-    acc[key] = [...(acc[key] || []), item];
-    return acc;
-  }, {} as Record<string, HrRecord[]>), [signatures]);
+  useEffect(() => {
+    const saved = window.sessionStorage.getItem(detailStorageKey) as DetailTab | null;
+    if (saved === "metadata" || saved === "signatures") setDetailTab(saved);
+  }, []);
 
-  async function createDocument(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    try {
-      const created = await createResource("documents", documentDraft);
-      if (documentDraft.requires_signature === "Yes") {
-        await createResource("document_signatures", {
-          document_id: String(created.id),
-          signer_name: documentDraft.owner_name || userName,
-          status: "Pending",
-          signed_at: "",
-          note: "Awaiting signature capture"
-        });
-      }
-      setDocumentDraft(documentForm);
-      await load();
-    } catch (err) {
-      setError(getApiErrorMessage(err));
-    }
+  useEffect(() => {
+    window.sessionStorage.setItem(detailStorageKey, detailTab);
+  }, [detailTab]);
+
+  const canManage = isHrManager(user);
+
+  const filteredDocuments = useMemo(() => {
+    return documents.filter((document) =>
+      [document.title, document.category, document.owner_name, document.storage_path, document.department, document.description]
+        .map((value) => String(value ?? "").toLowerCase())
+        .some((value) => value.includes(query.toLowerCase()))
+    );
+  }, [documents, query]);
+
+  const signatureMap = useMemo(() => {
+    return signatures.reduce<Record<string, HrRecord[]>>((acc, item) => {
+      const key = String(item.document_id ?? "");
+      acc[key] = [...(acc[key] || []), item];
+      return acc;
+    }, {});
+  }, [signatures]);
+
+  const selectedDocument = useMemo(
+    () => filteredDocuments.find((document) => Number(document.id) === selectedId) || filteredDocuments[0] || null,
+    [filteredDocuments, selectedId]
+  );
+
+  const stats = {
+    documents: documents.length,
+    signatures: signatures.length,
+    pending: signatures.filter((item) => String(item.status ?? "") !== "Signed").length
+  };
+
+  function resetUploadState() {
+    setDocumentForm(emptyDocumentForm());
+    setUploadFile(null);
+    setValidationErrors({});
   }
 
-  async function captureSignature(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  function handleFileSelect(file: File | null) {
+    setUploadFile(file);
+    if (!file) return;
+    setValidationErrors((current) => ({ ...current, upload_file: undefined }));
+    setDocumentForm((current) => ({
+      ...current,
+      title: current.title || file.name.replace(/\.[^.]+$/, ""),
+      file_name: file.name,
+      mime_type: file.type || "application/octet-stream",
+      file_size: String(file.size),
+      storage_path: current.storage_path || `/hr-documents/${file.name}`
+    }));
+  }
+
+  async function registerDocument() {
+    const nextErrors = validateDocumentForm(documentForm, uploadFile);
+    setValidationErrors(nextErrors);
+    if (Object.keys(nextErrors).length) return;
+
     try {
-      await createResource("document_signatures", {
-        ...signatureDraft,
-        signed_at: signatureDraft.signed_at || new Date().toISOString(),
-        status: signatureDraft.status || "Signed"
-      });
-      if (signatureDraft.document_id) {
-        const doc = documents.find((item) => Number(item.id) === Number(signatureDraft.document_id));
-        if (doc) {
-          await updateResource("documents", Number(doc.id), {
-            title: String(doc.title ?? ""),
-            category: String(doc.category ?? ""),
-            owner_name: String(doc.owner_name ?? ""),
-            storage_path: String(doc.storage_path ?? ""),
-            due_date: String(doc.due_date ?? ""),
-            requires_signature: String(doc.requires_signature ?? "No"),
-            status: "Signed"
+      const created = await createResource("documents", documentForm);
+      const signers = documentForm.owner_name ? splitAssignees(documentForm.owner_name) : [user?.fullName || ""];
+      if (documentForm.requires_signature === "Yes") {
+        for (const signer of signers) {
+          await createResource("document_signatures", {
+            document_id: String(created.id),
+            signer_name: signer,
+            status: "Pending",
+            signed_at: "",
+            note: "Awaiting acknowledgement"
           });
         }
       }
-      setSignatureDraft(signatureForm);
+      resetUploadState();
+      setShowRegisterForm(false);
       await load();
-    } catch (err) {
-      setError(getApiErrorMessage(err));
+    } catch (submitError) {
+      setError(getApiErrorMessage(submitError));
+    }
+  }
+
+  async function signSelectedDocument() {
+    if (!selectedDocument) return;
+    try {
+      await createResource("document_signatures", {
+        document_id: String(selectedDocument.id),
+        signer_name: user?.fullName || "",
+        status: "Signed",
+        signed_at: new Date().toISOString(),
+        note: signatureNote || "Signed in VLWorkHub"
+      });
+      setSignatureNote("");
+      await load();
+    } catch (signError) {
+      setError(getApiErrorMessage(signError));
     }
   }
 
   return (
-    <div>
-      <HrPortalHeader title="Document and Signature Workflow" description="Restored document upload, assignment, and signature capture patterns from the SharePoint document center." breadcrumb="Documents" />
-      {error ? <p className="mb-6 rounded-2xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">{error}</p> : null}
-      <section className="mb-8 grid gap-4 lg:grid-cols-[1fr_0.7fr_0.7fr]">
-        <div className="relative"><Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search document title, category, owner" className="w-full rounded-2xl border border-white/10 bg-slate-950 px-11 py-3 text-sm text-white" /></div>
-        <div className="rounded-2xl border border-white/10 bg-white/5 p-4"><p className="text-sm text-slate-400">Documents</p><p className="mt-2 text-2xl font-semibold text-white">{documents.length}</p></div>
-        <div className="rounded-2xl border border-white/10 bg-white/5 p-4"><p className="text-sm text-slate-400">Signature records</p><p className="mt-2 text-2xl font-semibold text-white">{signatures.length}</p></div>
-      </section>
-      <section className="grid gap-8 xl:grid-cols-[0.95fr_1.05fr]">
-        <div className="space-y-8">
-          <form onSubmit={createDocument} className="rounded-[2rem] border border-white/10 bg-slate-900/60 p-6">
-            <div className="mb-5 flex items-center gap-3"><div className="rounded-2xl bg-cyan-400/10 p-3 text-cyan-300"><FolderUp className="h-5 w-5" /></div><div><h2 className="text-xl font-semibold text-white">Register document upload</h2><p className="mt-1 text-sm text-slate-400">Store metadata and initialize the signature workflow.</p></div></div>
-            <div className="space-y-4">{Object.entries(documentDraft).map(([key, value]) => <div key={key}><label className="mb-2 block text-sm capitalize text-slate-300">{key.replaceAll("_", " ")}</label><input value={value} onChange={(event) => setDocumentDraft((current) => ({ ...current, [key]: event.target.value }))} className="w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-sm text-white" /></div>)}</div>
-            <button className="mt-4 w-full rounded-2xl bg-cyan-400 px-4 py-3 font-medium text-slate-950">Create document workflow</button>
-          </form>
-          <form onSubmit={captureSignature} className="rounded-[2rem] border border-white/10 bg-slate-900/60 p-6">
-            <div className="mb-5 flex items-center gap-3"><div className="rounded-2xl bg-cyan-400/10 p-3 text-cyan-300"><PenSquare className="h-5 w-5" /></div><div><h2 className="text-xl font-semibold text-white">Capture signature</h2><p className="mt-1 text-sm text-slate-400">Record signer, timestamp, and note for the signature queue.</p></div></div>
-            <div className="space-y-4">{Object.entries(signatureDraft).map(([key, value]) => <div key={key}><label className="mb-2 block text-sm capitalize text-slate-300">{key.replaceAll("_", " ")}</label><input value={value} onChange={(event) => setSignatureDraft((current) => ({ ...current, [key]: event.target.value }))} className="w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-sm text-white" /></div>)}</div>
-            <button className="mt-4 w-full rounded-2xl bg-cyan-400 px-4 py-3 font-medium text-slate-950">Record signature</button>
-          </form>
+    <div className="legacy-portal">
+      <HrPortalHeader
+        title="Documents"
+        description="The document center now mirrors the SharePoint portal layout with upload authoring, registry browsing, metadata review, and signature tracking in the side pane."
+        breadcrumb="Documents"
+      />
+      {error ? <div className="hr-card" style={{ marginBottom: 20, color: "#b91c1c", borderColor: "#fecaca", background: "#fff1f2" }}>{error}</div> : null}
+
+      <div className="legacy-header">
+        <div>
+          <h1 className="legacy-header__title">Documents</h1>
+          <p className="legacy-header__subtitle">Publish operational documents, request acknowledgement, and track signature completion.</p>
+          <div className="legacy-role"><Shield className="h-4 w-4" />Role: {user?.roles?.join(", ") || user?.role || "Employee"}</div>
         </div>
-        <div className="space-y-4">
-          {filtered.map((document) => (
-            <article key={String(document.id)} className="rounded-[2rem] border border-white/10 bg-white/5 p-6">
-              <div className="flex items-start justify-between gap-4"><div className="flex items-center gap-3"><div className="rounded-2xl bg-cyan-400/10 p-3 text-cyan-300"><FileSignature className="h-5 w-5" /></div><div><h2 className="text-xl font-semibold text-white">{String(document.title ?? "Document")}</h2><p className="mt-1 text-sm text-slate-400">{String(document.category ?? "Category")}</p></div></div><span className="rounded-full bg-white/5 px-3 py-1 text-xs uppercase tracking-[0.2em] text-slate-300">{String(document.status ?? "Pending")}</span></div>
-              <div className="mt-4 grid gap-3 text-sm text-slate-300 md:grid-cols-2">
-                <p>Owner: {String(document.owner_name ?? "-")}</p>
-                <p>Path: {String(document.storage_path ?? "-")}</p>
-                <p>Due: {String(document.due_date ?? "-")}</p>
-                <p>Requires signature: {String(document.requires_signature ?? "No")}</p>
-              </div>
-              <div className="mt-5 rounded-2xl border border-white/10 bg-slate-950/40 p-4">
-                <h3 className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-400">Signature queue</h3>
-                <div className="mt-3 space-y-3">
-                  {(signatureByDocument[String(document.id)] || []).map((signature: HrRecord) => (
-                    <div key={String(signature.id)} className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 px-4 py-3 text-sm text-slate-300">
+        {canManage ? <button type="button" className="legacy-primary-btn" onClick={() => setShowRegisterForm(true)}><Upload className="h-4 w-4" />Upload Document</button> : null}
+      </div>
+
+      <section className="legacy-stats-grid">
+        {[{ label: "Documents", value: stats.documents, icon: FolderUp, color: "blue" }, { label: "Signature Records", value: stats.signatures, icon: FileSignature, color: "amber" }, { label: "Pending", value: stats.pending, icon: PenSquare, color: "red" }].map((stat) => (
+          <div key={stat.label} className={`legacy-stat-card ${stat.color}`}>
+            <div className="legacy-stat-icon"><stat.icon className="h-5 w-5" /></div>
+            <div><p className="legacy-stat-value">{stat.value}</p><p className="legacy-stat-title">{stat.label}</p></div>
+          </div>
+        ))}
+      </section>
+
+      <section className="legacy-toolbar">
+        <div className="legacy-toolbar__row">
+          <div className="legacy-search"><Search className="h-4 w-4" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search title, category, owner, or storage path..." /></div>
+        </div>
+      </section>
+
+      <div className="legacy-doc-layout">
+        <div className="legacy-panel">
+          <div className="legacy-panel-header"><div><h2>Document Registry</h2><p>Published items remain visible in the same registry-first layout as the SPFx portal.</p></div></div>
+          <div className="legacy-panel-body">
+            <div className="legacy-doc-grid">
+              {filteredDocuments.length ? filteredDocuments.map((document) => {
+                const queue = signatureMap[String(document.id)] || [];
+                const isSelected = Number(document.id) === Number(selectedDocument?.id);
+                return (
+                  <article key={String(document.id)} className={`legacy-doc-card ${isSelected ? "is-selected" : ""}`} onClick={() => setSelectedId(Number(document.id))}>
+                    <div className="legacy-card-header">
                       <div>
-                        <p>{String(signature.signer_name ?? "Signer")}</p>
-                        <p className="mt-1 text-xs uppercase tracking-[0.2em] text-slate-500">{String(signature.note ?? "")}</p>
+                        <h3 className="legacy-card-title">{String(document.title ?? "Document")}</h3>
+                        <p className="legacy-card-muted">{String(document.category ?? "Category")} · {String(document.file_name ?? document.storage_path ?? "No path")}</p>
                       </div>
-                      <div className="text-right">
-                        <p className="text-cyan-300">{String(signature.status ?? "Pending")}</p>
-                        <p className="mt-1 text-xs uppercase tracking-[0.2em] text-slate-500">{String(signature.signed_at ?? "Not signed")}</p>
+                      <span className={`legacy-status ${String(document.status ?? "") === "Signed" ? "completed" : "progress"}`}>{String(document.status ?? "Pending")}</span>
+                    </div>
+                    <div className="legacy-meta-list">
+                      <div className="legacy-meta-item"><Users className="h-4 w-4" />{String(document.owner_name ?? "No owner")}</div>
+                      <div className="legacy-meta-item"><FileSignature className="h-4 w-4" />Queue: {queue.length}</div>
+                      <div className="legacy-meta-item">Due: {formatDate(document.due_date)}</div>
+                    </div>
+                  </article>
+                );
+              }) : <div className="legacy-empty">No documents match the current search.</div>}
+            </div>
+          </div>
+        </div>
+
+        <aside className="legacy-panel">
+          <div className="legacy-panel-header"><div><h2>Document Detail</h2><p>Use the right-side pane to review metadata and signature state for the selected document.</p></div></div>
+          <div className="legacy-panel-body">
+            {selectedDocument ? (
+              <>
+                <div className="legacy-tabs legacy-tabs--compact">
+                  <button type="button" className={`legacy-tab-btn ${detailTab === "metadata" ? "is-active" : ""}`} onClick={() => setDetailTab("metadata")}>Metadata</button>
+                  <button type="button" className={`legacy-tab-btn ${detailTab === "signatures" ? "is-active" : ""}`} onClick={() => setDetailTab("signatures")}>Signatures</button>
+                </div>
+
+                {detailTab === "metadata" ? (
+                  <div className="legacy-detail-stack">
+                    <div className="legacy-detail-card">
+                      <h3>{String(selectedDocument.title ?? "Document")}</h3>
+                      <p>{String(selectedDocument.file_name ?? selectedDocument.storage_path ?? "No storage path")}</p>
+                      <p>Category: {String(selectedDocument.category ?? "-")}</p>
+                      <p>Department: {String(selectedDocument.department ?? "-")}</p>
+                      <p>Due: {formatDate(selectedDocument.due_date)}</p>
+                    </div>
+                    <div className="legacy-detail-card">
+                      <h4>Description</h4>
+                      <p>{String(selectedDocument.description ?? "No description provided.")}</p>
+                    </div>
+                    <div className="legacy-detail-card"><div className="legacy-role"><Shield className="h-4 w-4" />Role: {user?.roles?.join(", ") || user?.role || "Employee"}</div></div>
+                  </div>
+                ) : (
+                  <div className="legacy-detail-stack">
+                    <div className="legacy-detail-card">
+                      <h4>Signature Queue</h4>
+                      <div className="legacy-chip-list">
+                        {(signatureMap[String(selectedDocument.id)] || []).map((signature) => (
+                          <span key={String(signature.id)} className={`legacy-chip ${String(signature.status ?? "") === "Signed" ? "complete" : "pending"}`}>{String(signature.signer_name ?? "Signer")}</span>
+                        ))}
+                        {!(signatureMap[String(selectedDocument.id)] || []).length ? <div className="legacy-card-muted">No signature rows have been created yet.</div> : null}
                       </div>
                     </div>
-                  ))}
-                  {!(signatureByDocument[String(document.id)] || []).length ? <p className="text-sm text-slate-500">No signatures recorded for this document.</p> : null}
+                    <div className="legacy-detail-card">
+                      <h4>Acknowledge / Sign</h4>
+                      <input value={signatureNote} onChange={(event) => setSignatureNote(event.target.value)} placeholder="Optional signature note" />
+                      <div className="legacy-actions-row" style={{ marginTop: 16 }}>
+                        <button type="button" className="legacy-primary-btn" onClick={() => void signSelectedDocument()}><PenSquare className="h-4 w-4" />Sign Document</button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </>
+            ) : <div className="legacy-empty">Select a document to inspect the signature queue.</div>}
+          </div>
+        </aside>
+      </div>
+
+      {showRegisterForm ? (
+        <div className="legacy-modal-overlay">
+          <div className="legacy-modal legacy-modal--wide">
+            <div className="legacy-modal-header"><h2>Upload Document</h2><button type="button" className="legacy-icon-btn" onClick={() => { setShowRegisterForm(false); resetUploadState(); }}><X className="h-4 w-4" /></button></div>
+            <div className="legacy-modal-body">
+              <div className="legacy-form-grid">
+                <div className="legacy-form-group legacy-form-group--full">
+                  <label>File Upload <span className="legacy-required">*</span></label>
+                  <input ref={fileInputRef} type="file" hidden onChange={(event) => handleFileSelect(event.target.files?.[0] || null)} />
+                  <button type="button" className={`legacy-dropzone ${dragActive ? "is-active" : ""}`} onClick={() => fileInputRef.current?.click()} onDragOver={(event) => { event.preventDefault(); setDragActive(true); }} onDragLeave={() => setDragActive(false)} onDrop={(event) => { event.preventDefault(); setDragActive(false); handleFileSelect(event.dataTransfer.files?.[0] || null); }}>
+                    <Upload className="h-5 w-5" />
+                    <span>{uploadFile ? uploadFile.name : "Drag and drop a document here, or click to browse."}</span>
+                    <small>{uploadFile ? `${uploadFile.type || "Unknown type"} · ${uploadFile.size.toLocaleString()} bytes` : "PDF, DOCX, and image files are supported in this workflow metadata layer."}</small>
+                  </button>
+                  {validationErrors.upload_file ? <p className="legacy-field-error">{validationErrors.upload_file}</p> : null}
                 </div>
+                <div className="legacy-form-group"><label>Title <span className="legacy-required">*</span></label><input value={documentForm.title} onChange={(event) => { setDocumentForm((current) => ({ ...current, title: event.target.value })); setValidationErrors((current) => ({ ...current, title: undefined })); }} />{validationErrors.title ? <p className="legacy-field-error">{validationErrors.title}</p> : null}</div>
+                <div className="legacy-form-group"><label>Category <span className="legacy-required">*</span></label><input value={documentForm.category} onChange={(event) => { setDocumentForm((current) => ({ ...current, category: event.target.value })); setValidationErrors((current) => ({ ...current, category: undefined })); }} />{validationErrors.category ? <p className="legacy-field-error">{validationErrors.category}</p> : null}</div>
+                <div className="legacy-form-group"><label>Department</label><input value={documentForm.department} onChange={(event) => setDocumentForm((current) => ({ ...current, department: event.target.value }))} /></div>
+                <div className="legacy-form-group"><label>Due Date</label><input type="date" value={documentForm.due_date} onChange={(event) => setDocumentForm((current) => ({ ...current, due_date: event.target.value }))} /></div>
+                <div className="legacy-form-group legacy-form-group--full"><label>Description</label><textarea value={documentForm.description} onChange={(event) => setDocumentForm((current) => ({ ...current, description: event.target.value }))} /></div>
+                <div className="legacy-form-group legacy-form-group--full"><label>Owner / Required Signers</label><input value={documentForm.owner_name} onChange={(event) => setDocumentForm((current) => ({ ...current, owner_name: event.target.value }))} placeholder="Comma-separated names" /></div>
+                <div className="legacy-form-group legacy-form-group--full"><label>Storage Path</label><input value={documentForm.storage_path} onChange={(event) => setDocumentForm((current) => ({ ...current, storage_path: event.target.value }))} /></div>
+                <div className="legacy-form-group"><label>Requires Signature</label><select value={documentForm.requires_signature} onChange={(event) => setDocumentForm((current) => ({ ...current, requires_signature: event.target.value }))}>{["Yes", "No"].map((value) => <option key={value} value={value}>{value}</option>)}</select></div>
+                <div className="legacy-form-group"><label>Status</label><select value={documentForm.status} onChange={(event) => setDocumentForm((current) => ({ ...current, status: event.target.value }))}>{["Pending Signature", "Published", "Signed"].map((value) => <option key={value} value={value}>{value}</option>)}</select></div>
               </div>
-            </article>
-          ))}
+            </div>
+            <div className="legacy-modal-footer"><button type="button" className="legacy-secondary-btn" onClick={() => { setShowRegisterForm(false); resetUploadState(); }}>Cancel</button><button type="button" className="legacy-primary-btn" onClick={() => void registerDocument()}><Save className="h-4 w-4" />Upload Document</button></div>
+          </div>
         </div>
-      </section>
+      ) : null}
     </div>
   );
 }

@@ -1,6 +1,5 @@
 import "./globals.css";
-import { AppShell } from "@vlworkhub/ui";
-import { hrMeta, hrNav } from "../lib/resource-config";
+import { HrPortalShell } from "../components/hr-portal-shell";
 
 export const metadata = { title: "VLWorkHub HR System" };
 
@@ -8,9 +7,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body>
-        <AppShell appName={hrMeta.appName} rootHref={hrMeta.rootHref} navItems={hrNav}>
-          {children}
-        </AppShell>
+        <HrPortalShell>{children}</HrPortalShell>
       </body>
     </html>
   );

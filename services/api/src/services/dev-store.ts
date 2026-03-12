@@ -4,6 +4,12 @@ type StoreValue = string | number | boolean | null;
 type StoreItem = Record<string, StoreValue> & { id: number; organization_id: string };
 
 type StoreKey =
+  | "clients"
+  | "staff"
+  | "notes"
+  | "incidents"
+  | "documents"
+  | "users"
   | "employees"
   | "announcements"
   | "tasks"
@@ -14,7 +20,6 @@ type StoreKey =
   | "surveys"
   | "survey_assignments"
   | "survey_completions"
-  | "documents"
   | "document_signatures"
   | "emergency_contacts"
   | "safety_checklists"
@@ -30,6 +35,34 @@ const URSAFE_MANAGER_ID = "33333333-3333-3333-3333-333333333333";
 const URSAFE_EMPLOYEE_ID = "44444444-4444-4444-4444-444444444444";
 
 let devStore: Record<StoreKey, StoreItem[]> = {
+  clients: [
+    { id: 1, organization_id: DEV_ORG_ID, full_name: "Jamie Lee", status: "Active", program: "Community Inclusion", primary_contact: "Martha Singh" },
+    { id: 2, organization_id: DEV_ORG_ID, full_name: "Noah Patel", status: "Pending", program: "Community Housing", primary_contact: "Casey Morgan" },
+    { id: 3, organization_id: DEV_ORG_ID, full_name: "Emma Rivera", status: "Waitlist", program: "Supported Employment", primary_contact: "Alex Morgan" }
+  ],
+  staff: [
+    { id: 1, organization_id: DEV_ORG_ID, full_name: "Jamie Lee", role: "Life Skills Worker", email: "jamie.lee@vlcare.ca", phone: "250-555-0100", department: "Community Inclusion", manager_name: "Casey Morgan", status: "Active" },
+    { id: 2, organization_id: DEV_ORG_ID, full_name: "Marcus Chen", role: "Residential Coordinator", email: "marcus.chen@vlcare.ca", phone: "250-555-0101", department: "Community Housing", manager_name: "Alex Morgan", status: "Archived" },
+    { id: 3, organization_id: DEV_ORG_ID, full_name: "Priya Shah", role: "Program Supervisor", email: "priya.shah@vlcare.ca", phone: "250-555-0102", department: "Supported Employment", manager_name: "Platform Admin", status: "Active" }
+  ],
+  notes: [
+    { id: 1, organization_id: DEV_ORG_ID, client_id: 1, staff_id: 1, note_text: "Morning community support completed successfully.", visibility: "Team" },
+    { id: 2, organization_id: DEV_ORG_ID, client_id: 2, staff_id: 3, note_text: "Housing intake assessment scheduled for Friday.", visibility: "Leadership" }
+  ],
+  incidents: [
+    { id: 1, organization_id: DEV_ORG_ID, title: "Nurse call system latency at Vernon residence", severity: "Critical", reported_by: "IT Ops", status: "Investigating" },
+    { id: 2, organization_id: DEV_ORG_ID, title: "Missed medication scan in overnight shift", severity: "High", reported_by: "Clinical Lead", status: "Mitigated" }
+  ],
+  documents: [
+    { id: 1, organization_id: DEV_ORG_ID, title: "Care Intake Checklist", category: "Onboarding", owner_name: "Jamie Lee", storage_path: "/documents/care-intake.pdf", due_date: "2026-03-20", requires_signature: "No", status: "Published" },
+    { id: 2, organization_id: DEV_ORG_ID, title: "Overnight Incident Protocol", category: "Policy", owner_name: "Clinical Lead", storage_path: "/documents/overnight-incident.pdf", due_date: "2026-03-25", requires_signature: "Yes", status: "Review" }
+  ],
+  users: [
+    { id: 1, organization_id: DEV_ORG_ID, email: "admin@vlworkhub.ca", password_hash: "dev-only", first_name: "Platform", last_name: "Admin", status: "active", role: "Admin" },
+    { id: 2, organization_id: DEV_ORG_ID, email: "alex@vlworkhub.ca", password_hash: "dev-only", first_name: "Alex", last_name: "Morgan", status: "active", role: "HR" },
+    { id: 3, organization_id: DEV_ORG_ID, email: "sam@vlworkhub.ca", password_hash: "dev-only", first_name: "Sam", last_name: "Rivera", status: "active", role: "Manager" },
+    { id: 4, organization_id: DEV_ORG_ID, email: "jordan@vlworkhub.ca", password_hash: "dev-only", first_name: "Jordan", last_name: "Lee", status: "active", role: "Employee" }
+  ],
   employees: [
     { id: 1, organization_id: DEV_ORG_ID, full_name: "Alex Morgan", department: "People & Culture", job_title: "HR Manager", email: "alex@vlworkhub.ca" },
     { id: 2, organization_id: DEV_ORG_ID, full_name: "Sam Rivera", department: "Operations", job_title: "Program Coordinator", email: "sam@vlworkhub.ca" }
@@ -62,10 +95,6 @@ let devStore: Record<StoreKey, StoreItem[]> = {
     { id: 1, organization_id: DEV_ORG_ID, title: "Feedback survey for March cohort", survey_id: 1, assignee_name: "Sam Rivera", due_date: "2026-03-22", status: "Assigned" }
   ],
   survey_completions: [],
-  documents: [
-    { id: 1, organization_id: DEV_ORG_ID, title: "Offer Letter - Sam Rivera", category: "Onboarding", owner_name: "Alex Morgan", storage_path: "/documents/offer-letter-sam.pdf", due_date: "2026-03-16", requires_signature: "Yes", status: "Pending Signature" },
-    { id: 2, organization_id: DEV_ORG_ID, title: "Employee Handbook", category: "Policy", owner_name: "HR Team", storage_path: "/documents/employee-handbook.pdf", due_date: "2026-03-30", requires_signature: "No", status: "Published" }
-  ],
   document_signatures: [
     { id: 1, organization_id: DEV_ORG_ID, document_id: 1, signer_name: "Sam Rivera", status: "Pending", signed_at: null, note: "Awaiting onboarding signature" }
   ],
@@ -132,3 +161,6 @@ export function deleteDevResource(resource: StoreKey, organizationId: string, id
   devStore[resource] = devStore[resource].filter((item) => !(item.id === id && item.organization_id === organizationId));
   return before !== devStore[resource].length;
 }
+
+
+

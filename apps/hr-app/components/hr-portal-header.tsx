@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ChevronRight, Home, ShieldCheck } from "lucide-react";
+import { ChevronRight, ShieldCheck } from "lucide-react";
 
 export function HrPortalHeader({
   title,
@@ -20,28 +20,27 @@ export function HrPortalHeader({
   });
 
   return (
-    <section className="mb-8 rounded-[2rem] border border-white/10 bg-gradient-to-br from-white/8 via-white/4 to-cyan-400/10 p-8">
-      <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
-        <div>
-          <div className="flex items-center gap-2 text-sm text-slate-400">
-            <Home className="h-4 w-4" />
-            <span>HR Portal</span>
-            <ChevronRight className="h-4 w-4" />
-            <span>{breadcrumb}</span>
-          </div>
-          <h1 className="mt-4 text-3xl font-semibold text-white">{title}</h1>
-          <p className="mt-3 max-w-3xl text-sm leading-7 text-slate-300">{description}</p>
+    <section className="hr-page-header">
+      <div>
+        <div className="hr-page-header__eyebrow">
+          <span>HR Portal</span>
+          <ChevronRight className="h-4 w-4" />
+          <span>{breadcrumb}</span>
         </div>
-        <div className="flex flex-col items-start gap-3 rounded-2xl border border-white/10 bg-slate-950/40 px-5 py-4 text-sm text-slate-300">
-          <div className="flex items-center gap-2 text-cyan-300">
+        <h1 className="hr-page-header__title">{title}</h1>
+        <p className="hr-page-header__description">{description}</p>
+      </div>
+      <div className="hr-page-header__meta">
+        <div className="hr-page-summary">
+          <div className="hr-role-indicator">
             <ShieldCheck className="h-4 w-4" />
             Shared JWT session active
           </div>
-          <p>{today}</p>
-          <Link href="/" className="text-cyan-200">
-            Open dashboard overview
-          </Link>
+          <span>{today}</span>
         </div>
+        <Link href="/dashboard" className="hr-card__action">
+          Open dashboard overview
+        </Link>
       </div>
     </section>
   );

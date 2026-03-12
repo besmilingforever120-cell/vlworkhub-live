@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
@@ -6,6 +7,7 @@ import { verifyDatabaseConnection } from "./config/db";
 import { authRouter } from "./routes/auth-routes";
 import { resourceRouter } from "./routes/resource-routes";
 import { ursafeRouter } from "./routes/ursafe-routes";
+
 
 const app = express();
 
