@@ -10,7 +10,7 @@ type FormState = {
   email: string;
   password: string;
   enabled: boolean;
-  role: "super_admin" | "user";
+  role: "SUPER_ADMIN" | "ADMIN" | "USER";
   apps: Record<"HR" | "CARE" | "URSAFE", boolean>;
 };
 
@@ -20,7 +20,7 @@ function emptyForm(): FormState {
     email: "",
     password: "",
     enabled: true,
-    role: "user",
+    role: "USER",
     apps: { HR: false, CARE: false, URSAFE: false }
   };
 }
@@ -115,6 +115,7 @@ export function SuperAdminPanel() {
             <label className="text-sm text-slate-300">Full name<input value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white" /></label>
             <label className="text-sm text-slate-300">Email<input value={form.email} onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))} className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white" /></label>
             <label className="text-sm text-slate-300">Password<input type="password" value={form.password} onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))} className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white" placeholder={form.id ? "Leave blank to keep current password" : "Set password"} /></label>
+            <label className="text-sm text-slate-300">Platform role<select value={form.role} onChange={(event) => setForm((current) => ({ ...current, role: event.target.value as FormState["role"] }))} className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white"><option value="USER">USER</option><option value="ADMIN">ADMIN</option><option value="SUPER_ADMIN">SUPER_ADMIN</option></select></label>
             <label className="inline-flex items-center gap-3 text-sm text-slate-300"><input type="checkbox" checked={form.enabled} onChange={(event) => setForm((current) => ({ ...current, enabled: event.target.checked }))} />Active account</label>
             <div>
               <p className="text-sm text-slate-300">Assign apps</p>
@@ -148,6 +149,7 @@ export function SuperAdminPanel() {
                   <th className="px-3 py-3">Last name</th>
                   <th className="px-3 py-3">Email</th>
                   <th className="px-3 py-3">Status</th>
+                  <th className="px-3 py-3">Role</th>
                   <th className="px-3 py-3">Organization</th>
                   <th className="px-3 py-3">Apps</th>
                   <th className="px-3 py-3">Actions</th>
@@ -159,20 +161,11 @@ export function SuperAdminPanel() {
                     <td className="px-3 py-4">{user.first_name}</td>
                     <td className="px-3 py-4">{user.last_name}</td>
                     <td className="px-3 py-4">{user.email}</td>
-                    <td className="px-3 py-4">
-                      <span className={`rounded-full px-3 py-1 text-xs ${user.status === "active" ? "bg-emerald-500/15 text-emerald-200" : "bg-rose-500/15 text-rose-200"}`}>{user.status}</span>
-                    </td>
+                    <td className="px-3 py-4"><span className={`rounded-full px-3 py-1 text-xs ${user.status === "active" ? "bg-emerald-500/15 text-emerald-200" : "bg-rose-500/15 text-rose-200"}`}>{user.status}</span></td>
+                    <td className="px-3 py-4 text-xs font-semibold text-cyan-300">{user.role}</td>
                     <td className="px-3 py-4 text-xs text-slate-400">{user.organization_id}</td>
-                    <td className="px-3 py-4">
-                      <div className="flex flex-wrap gap-2">
-                        {(user.app_access || []).filter((item) => item.enabled).map((item) => (
-                          <span key={`${user.id}-${item.app}`} className="rounded-full bg-white/10 px-3 py-1 text-xs text-white">{item.app}</span>
-                        ))}
-                      </div>
-                    </td>
-                    <td className="px-3 py-4">
-                      <button type="button" onClick={() => startEdit(user)} className="rounded-xl border border-white/10 px-4 py-2 text-sm text-white">Edit</button>
-                    </td>
+                    <td className="px-3 py-4"><div className="flex flex-wrap gap-2">{(user.app_access || []).filter((item) => item.enabled).map((item) => (<span key={`${user.id}-${item.app}`} className="rounded-full bg-white/10 px-3 py-1 text-xs text-white">{item.app}</span>))}</div></td>
+                    <td className="px-3 py-4"><button type="button" onClick={() => startEdit(user)} className="rounded-xl border border-white/10 px-4 py-2 text-sm text-white">Edit</button></td>
                   </tr>
                 ))}
               </tbody>

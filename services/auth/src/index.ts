@@ -3,11 +3,12 @@ import jwt from "jsonwebtoken";
 export interface AuthPayload {
   user_id: string;
   organization_id: string;
+  role: "SUPER_ADMIN" | "ADMIN" | "USER";
   roles: Array<"Admin" | "Manager" | "Employee" | "HR" | "IT">;
   apps: Array<"HR" | "CARE" | "URSAFE">;
   email: string;
   full_name: string;
-  platform_role: "super_admin" | "user";
+  platform_role: "SUPER_ADMIN" | "ADMIN" | "USER";
 }
 
 const TOKEN_NAME = "vlwh_session";

@@ -14,7 +14,7 @@ export default async function DashboardPage() {
 
   const enabledApps = new Set((access || []).filter((item) => item.enabled).map((item) => item.app));
   const visibleApps = appCards.filter((app) => enabledApps.has(app.appKey));
-  const dashboardCards = user.platformRole === "super_admin"
+  const dashboardCards = user.platformRole === "SUPER_ADMIN"
     ? [...visibleApps, { appKey: "ADMIN", name: "Admin", description: "Create users, update status, and assign app access.", href: "/admin" }]
     : visibleApps;
 
@@ -26,7 +26,7 @@ export default async function DashboardPage() {
             <p className="text-sm uppercase tracking-[0.3em] text-cyan-300">Dashboard</p>
             <h1 className="mt-3 text-3xl font-semibold">Welcome back, {user.fullName}</h1>
             <p className="mt-3 text-slate-300">Launch the applications assigned to your VLWorkHub account. Platform role: {user.platformRole}.</p>
-            {user.platformRole === "super_admin" ? <Link href="/admin" className="mt-6 inline-flex rounded-2xl bg-cyan-400 px-5 py-3 font-medium text-slate-950">Open Admin</Link> : null}
+            {user.platformRole === "SUPER_ADMIN" ? <Link href="/admin" className="mt-6 inline-flex rounded-2xl bg-cyan-400 px-5 py-3 font-medium text-slate-950">Open Admin</Link> : null}
           </div>
           <LogoutButton />
         </div>

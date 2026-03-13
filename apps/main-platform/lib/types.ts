@@ -9,6 +9,6 @@ export type AdminUserRecord = {
   email: string;
   status: string;
   enabled: boolean;
-  role: "super_admin" | "user";
+  role: "SUPER_ADMIN" | "ADMIN" | "USER";
   app_access: AdminAppAccess[];
 };

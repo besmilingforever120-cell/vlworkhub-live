@@ -8,7 +8,7 @@ export default async function PlatformAdminPage() {
     redirect("/login");
   }
 
-  if (user.platformRole !== "super_admin") {
+  if (user.platformRole !== "SUPER_ADMIN") {
     redirect("/dashboard");
   }
 

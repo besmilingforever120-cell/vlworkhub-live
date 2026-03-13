@@ -3,7 +3,7 @@ import type { Response } from "express";
 import { pool } from "../config/db";
 import type { AuthenticatedRequest } from "../middleware/auth";
 
-type PlatformRole = "super_admin" | "user";
+type PlatformRole = "SUPER_ADMIN" | "ADMIN" | "USER";
 type AppAccess = "HR" | "CARE" | "URSAFE";
 
 type AppAccessInput = { app: AppAccess; enabled: boolean };
@@ -13,7 +13,7 @@ function hashPassword(password: string) {
 }
 
 function isSuperAdmin(req: AuthenticatedRequest) {
-  return req.user?.platform_role === "super_admin";
+  return req.user?.platform_role === "SUPER_ADMIN" || req.user?.role === "SUPER_ADMIN";
 }
 
 export async function listUsers(_: AuthenticatedRequest, res: Response) {
@@ -70,7 +70,7 @@ export async function listAdminUsers(req: AuthenticatedRequest, res: Response) {
          u.email,
          u.status,
          (u.status = 'active') AS enabled,
-         'super_admin'::text AS role,
+         COALESCE(u.role, 'USER') AS role,
          COALESCE(
            json_agg(
              json_build_object('app', UPPER(uaa.app), 'enabled', TRUE)
@@ -80,7 +80,7 @@ export async function listAdminUsers(req: AuthenticatedRequest, res: Response) {
          ) AS app_access
        FROM users u
        LEFT JOIN user_app_access uaa ON uaa.user_id = u.id
-       GROUP BY u.id, u.organization_id, u.first_name, u.last_name, u.email, u.status
+       GROUP BY u.id, u.organization_id, u.first_name, u.last_name, u.email, u.status, u.role
        ORDER BY u.first_name ASC, u.last_name ASC, u.email ASC`
     );
 
@@ -96,7 +96,7 @@ export async function createAdminUser(req: AuthenticatedRequest, res: Response) 
     return res.status(403).json({ message: "Access denied" });
   }
 
-  const { name, email, password, enabled = true, apps = [] } = req.body as {
+  const { name, email, password, enabled = true, role = "USER", apps = [] } = req.body as {
     name: string;
     email: string;
     password: string;
@@ -117,10 +117,10 @@ export async function createAdminUser(req: AuthenticatedRequest, res: Response) 
   try {
     await client.query("BEGIN");
     const result = await client.query(
-      `INSERT INTO users (organization_id, email, password_hash, first_name, last_name, status)
-       VALUES ($1, $2, $3, $4, $5, $6)
+      `INSERT INTO users (organization_id, email, password_hash, first_name, last_name, status, role)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
        RETURNING id`,
-      [req.user?.organization_id, email.trim().toLowerCase(), hashPassword(password), firstName, lastName || firstName, enabled ? "active" : "inactive"]
+      [req.user?.organization_id, email.trim().toLowerCase(), hashPassword(password), firstName, lastName || firstName, enabled ? "active" : "inactive", role]
     );
 
     for (const item of apps.filter((entry) => entry.enabled)) {
@@ -148,7 +148,7 @@ export async function updateAdminUser(req: AuthenticatedRequest, res: Response) 
   }
 
   const userId = String(req.params.id || "");
-  const { name, email, password, enabled, apps } = req.body as {
+  const { name, email, password, enabled, role = "USER", apps } = req.body as {
     name: string;
     email: string;
     password?: string;
@@ -176,9 +176,10 @@ export async function updateAdminUser(req: AuthenticatedRequest, res: Response) 
              password_hash = $2,
              first_name = $3,
              last_name = $4,
-             status = $5
-         WHERE id = $6`,
-        [email.trim().toLowerCase(), hashPassword(password), firstName, lastName || firstName, enabled ? "active" : "inactive", userId]
+             status = $5,
+             role = $6
+         WHERE id = $7`,
+        [email.trim().toLowerCase(), hashPassword(password), firstName, lastName || firstName, enabled ? "active" : "inactive", role, userId]
       );
     } else {
       await client.query(
@@ -186,9 +187,10 @@ export async function updateAdminUser(req: AuthenticatedRequest, res: Response) 
          SET email = $1,
              first_name = $2,
              last_name = $3,
-             status = $4
-         WHERE id = $5`,
-        [email.trim().toLowerCase(), firstName, lastName || firstName, enabled ? "active" : "inactive", userId]
+             status = $4,
+             role = $5
+         WHERE id = $6`,
+        [email.trim().toLowerCase(), firstName, lastName || firstName, enabled ? "active" : "inactive", role, userId]
       );
     }
 

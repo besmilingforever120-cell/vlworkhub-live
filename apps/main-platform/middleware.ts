@@ -14,7 +14,7 @@ async function getSession(request: NextRequest) {
     return null;
   }
 
-  return response.json() as Promise<{ user: { platformRole?: string; apps?: string[] } }>;
+  return response.json() as Promise<{ user: { role?: string; platformRole?: string; apps?: string[] } }>;
 }
 
 export async function middleware(request: NextRequest) {
@@ -42,7 +42,7 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL("/login", request.url));
   }
 
-  if ((pathname.startsWith("/platform/admin") || pathname.startsWith("/admin")) && session.user.platformRole !== "super_admin") {
+  if ((pathname.startsWith("/platform/admin") || pathname.startsWith("/admin")) && (session.user.role || session.user.platformRole) !== "SUPER_ADMIN") {
     return NextResponse.redirect(new URL("/dashboard", request.url));
   }
 

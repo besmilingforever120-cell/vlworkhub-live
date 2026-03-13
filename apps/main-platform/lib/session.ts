@@ -5,7 +5,8 @@ type PlatformSessionUser = {
   id: string;
   fullName: string;
   email: string;
-  platformRole: "super_admin" | "user";
+  role: "SUPER_ADMIN" | "ADMIN" | "USER";
+  platformRole: "SUPER_ADMIN" | "ADMIN" | "USER";
   apps: Array<"HR" | "CARE" | "URSAFE">;
 };
 

@@ -8,14 +8,14 @@ import type { AuthenticatedRequest } from "../middleware/auth";
 
 type UserRole = "Admin" | "Manager" | "Employee" | "HR" | "IT";
 type AppAccess = "HR" | "CARE" | "URSAFE";
-type PlatformRole = "super_admin" | "user";
+type PlatformRole = "SUPER_ADMIN" | "ADMIN" | "USER";
 
 type SessionUser = {
   id: string;
   fullName: string;
   email: string;
   organizationId: string;
-  role: UserRole;
+  role: PlatformRole;
   roles: UserRole[];
   apps: AppAccess[];
   platformRole: PlatformRole;
@@ -29,6 +29,7 @@ type UserRecord = QueryResultRow & {
   first_name: string | null;
   last_name: string | null;
   status: string | null;
+  role: PlatformRole | null;
 };
 
 function hashPassword(password: string) {
@@ -48,7 +49,8 @@ async function findUserByEmail(email: string) {
        u.password_hash,
        u.first_name,
        u.last_name,
-       u.status
+       u.status,
+       COALESCE(u.role, 'USER') AS role
      FROM users u
      WHERE u.email = $1`,
     [email]
@@ -74,15 +76,16 @@ function buildDisplayName(user: UserRecord) {
 }
 
 async function toSessionUser(user: UserRecord): Promise<SessionUser> {
+  const platformRole = user.role || "USER";
   return {
     id: user.id,
     fullName: buildDisplayName(user),
     email: user.email,
     organizationId: user.organization_id,
-    role: "Employee",
+    role: platformRole,
     roles: ["Employee"],
     apps: await findUserApps(user.id),
-    platformRole: "user"
+    platformRole
   };
 }
 
@@ -105,6 +108,7 @@ export async function login(req: Request, res: Response) {
       {
         user_id: sessionUser.id,
         organization_id: sessionUser.organizationId,
+        role: sessionUser.role,
         roles: sessionUser.roles,
         apps: sessionUser.apps,
         email: sessionUser.email,
@@ -135,16 +139,17 @@ export async function logout(_: Request, res: Response) {
 export async function me(req: AuthenticatedRequest, res: Response) {
   try {
     const roles = req.user?.roles || ["Employee"];
+    const platformRole = req.user?.platform_role || req.user?.role || "USER";
     return res.json({
       user: {
         id: req.user?.user_id,
         fullName: req.user?.full_name,
         email: req.user?.email,
         organizationId: req.user?.organization_id,
-        role: roles[0],
+        role: platformRole,
         roles,
         apps: req.user?.apps || [],
-        platformRole: req.user?.platform_role || "user"
+        platformRole
       }
     });
   } catch (error) {

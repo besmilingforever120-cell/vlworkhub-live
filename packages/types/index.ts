@@ -1,5 +1,5 @@
 export type UserRole = "Admin" | "Manager" | "Employee" | "HR" | "IT";
-export type PlatformRole = "super_admin" | "user";
+export type PlatformRole = "SUPER_ADMIN" | "ADMIN" | "USER";
 export type AppAccess = "HR" | "CARE" | "URSAFE";
 
 export interface SessionUser {
@@ -7,7 +7,7 @@ export interface SessionUser {
   fullName: string;
   email: string;
   organizationId: string;
-  role: UserRole;
+  role: PlatformRole | UserRole;
   roles: UserRole[];
   apps: AppAccess[];
   platformRole: PlatformRole;
@@ -16,6 +16,7 @@ export interface SessionUser {
 export interface AuthPayload {
   user_id: string;
   organization_id: string;
+  role: PlatformRole;
   roles: UserRole[];
   apps: AppAccess[];
   email: string;

@@ -10,7 +10,7 @@ export default async function AdminUsersPage() {
     redirect("/login");
   }
 
-  if (user.platformRole !== "super_admin") {
+  if (user.platformRole !== "SUPER_ADMIN") {
     redirect("/dashboard");
   }
 

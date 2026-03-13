@@ -573,3 +573,10 @@ UPDATE users SET enabled = CASE WHEN status = 'active' THEN TRUE ELSE FALSE END 
 UPDATE users SET role = CASE WHEN email = 'admin@vlworkhub.ca' THEN 'super_admin' ELSE COALESCE(role, 'user') END WHERE role IS NULL OR role NOT IN ('super_admin','user');
 UPDATE user_app_access SET app = UPPER(app) WHERE app IN ('main-platform','care','hr','ursafe','HR','CARE','URSAFE');
 
+
+ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(20) DEFAULT 'USER';
+UPDATE users SET role = UPPER(COALESCE(role, 'USER'));
+UPDATE users SET role = 'SUPER_ADMIN' WHERE email = 'admin@vlworkhub.ca';
+UPDATE users SET role = 'USER' WHERE role NOT IN ('SUPER_ADMIN', 'ADMIN', 'USER');
+ALTER TABLE users ALTER COLUMN role SET DEFAULT 'USER';
+
