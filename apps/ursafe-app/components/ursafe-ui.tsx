@@ -30,7 +30,7 @@ export function ShellHero({
             </div>
           ) : null}
           {ctaHref && ctaLabel ? (
-            <Link href={ctaHref} className="rounded-full border border-white/15 bg-white/5 px-5 py-2 text-sm font-semibold text-slate-100 transition hover:border-cyan-300 hover:text-cyan-200">
+            <Link href={ctaHref as any} className="rounded-full border border-white/15 bg-white/5 px-5 py-2 text-sm font-semibold text-slate-100 transition hover:border-cyan-300 hover:text-cyan-200">
               {ctaLabel}
             </Link>
           ) : null}
@@ -82,3 +82,4 @@ export function EmptyState({ title, description }: { title: string; description:
     </div>
   );
 }
+

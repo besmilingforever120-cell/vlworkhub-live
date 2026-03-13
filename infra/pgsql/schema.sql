@@ -103,6 +103,14 @@ CREATE TABLE IF NOT EXISTS employees (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS hr_user_roles (
+  id BIGSERIAL PRIMARY KEY,
+  organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  role TEXT NOT NULL CHECK (role IN (''admin'',''manager'',''employee'')),
+  department_id TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 CREATE TABLE IF NOT EXISTS announcements (
   id BIGSERIAL PRIMARY KEY,
   organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
@@ -341,11 +349,11 @@ INSERT INTO organizations (id, name)
 VALUES ('11111111-1111-1111-1111-111111111111', 'VLWorkHub Demo Org')
 ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name;
 
-INSERT INTO users (id, organization_id, email, password_hash, first_name, last_name, status)
+INSERT INTO users (id, organization_id, name, email, password_hash, first_name, last_name, enabled, status, role)
 VALUES
-  ('22222222-2222-2222-2222-222222222222', '11111111-1111-1111-1111-111111111111', 'admin@vlworkhub.ca', 'a109e36947ad56de1dca1cc49f0ef8ac9ad9a7b1aa0df41fb3c4cb73c1ff01ea', 'Platform', 'Admin', 'active'),
-  ('33333333-3333-3333-3333-333333333333', '11111111-1111-1111-1111-111111111111', 'manager@vlworkhub.ca', 'a109e36947ad56de1dca1cc49f0ef8ac9ad9a7b1aa0df41fb3c4cb73c1ff01ea', 'Casey', 'Morgan', 'active'),
-  ('44444444-4444-4444-4444-444444444444', '11111111-1111-1111-1111-111111111111', 'employee@vlworkhub.ca', 'a109e36947ad56de1dca1cc49f0ef8ac9ad9a7b1aa0df41fb3c4cb73c1ff01ea', 'Jordan', 'Lee', 'active')
+  ('22222222-2222-2222-2222-222222222222', '11111111-1111-1111-1111-111111111111', 'Platform Admin', 'admin@vlworkhub.ca', 'a109e36947ad56de1dca1cc49f0ef8ac9ad9a7b1aa0df41fb3c4cb73c1ff01ea', 'Platform', 'Admin', TRUE, 'active', 'super_admin'),
+  ('33333333-3333-3333-3333-333333333333', '11111111-1111-1111-1111-111111111111', 'Casey Morgan', 'manager@vlworkhub.ca', 'a109e36947ad56de1dca1cc49f0ef8ac9ad9a7b1aa0df41fb3c4cb73c1ff01ea', 'Casey', 'Morgan', TRUE, 'active', 'user'),
+  ('44444444-4444-4444-4444-444444444444', '11111111-1111-1111-1111-111111111111', 'Jordan Lee', 'employee@vlworkhub.ca', 'a109e36947ad56de1dca1cc49f0ef8ac9ad9a7b1aa0df41fb3c4cb73c1ff01ea', 'Jordan', 'Lee', TRUE, 'active', 'user')
 ON CONFLICT (email) DO UPDATE
 SET organization_id = EXCLUDED.organization_id,
     password_hash = EXCLUDED.password_hash,
@@ -541,4 +549,27 @@ ALTER TABLE documents ADD COLUMN IF NOT EXISTS mime_type TEXT;
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS file_size BIGINT;
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS description TEXT;
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS department TEXT;
+
+
+INSERT INTO hr_user_roles (organization_id, user_id, role, department_id)
+SELECT org_id, user_id, role_value, department_value
+FROM (
+  VALUES
+    (''11111111-1111-1111-1111-111111111111''::uuid, ''22222222-2222-2222-2222-222222222222''::uuid, ''admin'', ''people''),
+    (''11111111-1111-1111-1111-111111111111''::uuid, ''33333333-3333-3333-3333-333333333333''::uuid, ''manager'', ''operations''),
+    (''11111111-1111-1111-1111-111111111111''::uuid, ''44444444-4444-4444-4444-444444444444''::uuid, ''employee'', ''operations'')
+) AS hr_roles(org_id, user_id, role_value, department_value)
+WHERE NOT EXISTS (
+  SELECT 1 FROM hr_user_roles hur WHERE hur.organization_id = hr_roles.org_id AND hur.user_id = hr_roles.user_id
+);
+
+ALTER TABLE users ADD COLUMN IF NOT EXISTS name TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS enabled BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'user';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE user_app_access ADD COLUMN IF NOT EXISTS enabled BOOLEAN NOT NULL DEFAULT TRUE;
+UPDATE users SET name = COALESCE(name, TRIM(first_name || ' ' || last_name));
+UPDATE users SET enabled = CASE WHEN status = 'active' THEN TRUE ELSE FALSE END WHERE enabled IS DISTINCT FROM CASE WHEN status = 'active' THEN TRUE ELSE FALSE END;
+UPDATE users SET role = CASE WHEN email = 'admin@vlworkhub.ca' THEN 'super_admin' ELSE COALESCE(role, 'user') END WHERE role IS NULL OR role NOT IN ('super_admin','user');
+UPDATE user_app_access SET app = UPPER(app) WHERE app IN ('main-platform','care','hr','ursafe','HR','CARE','URSAFE');
 

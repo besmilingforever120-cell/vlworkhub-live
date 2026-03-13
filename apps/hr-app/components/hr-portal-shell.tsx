@@ -5,7 +5,6 @@ import type { Route } from "next";
 import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import {
-  Bell,
   BookOpen,
   Briefcase,
   ChevronRight,
@@ -20,7 +19,8 @@ import {
 } from "lucide-react";
 import type { SessionUser, UserRole } from "@vlworkhub/types";
 import { platformLinks } from "@vlworkhub/config";
-import { getCurrentUser, getResource } from "../lib/hr-client";
+import { getCurrentUser } from "../lib/hr-client";
+import { NotificationsDropdown } from "./notifications-dropdown";
 
 type ShellItem = {
   label: string;
@@ -58,22 +58,14 @@ export function HrPortalShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   const [user, setUser] = useState<SessionUser | null>(null);
-  const [alertCount, setAlertCount] = useState(0);
 
   useEffect(() => {
     async function loadShell() {
       try {
-        const [session, announcements, tasks] = await Promise.all([
-          getCurrentUser(),
-          getResource("announcements"),
-          getResource("tasks")
-        ]);
+        const session = await getCurrentUser();
         setUser(session);
-        const announcementAlerts = announcements.filter((item) => String(item.priority || "").toLowerCase().includes("important")).length;
-        const taskAlerts = tasks.filter((item) => String(item.status || "").toLowerCase() !== "completed").length;
-        setAlertCount(announcementAlerts + taskAlerts);
       } catch {
-        setAlertCount(0);
+        setUser(null);
       }
     }
 
@@ -144,10 +136,7 @@ export function HrPortalShell({ children }: { children: React.ReactNode }) {
           </div>
 
           <div className="hr-header__actions">
-            <button type="button" className="hr-header__icon" aria-label="Notifications">
-              <Bell className="h-5 w-5" />
-              {alertCount > 0 ? <span className="hr-header__badge">{alertCount}</span> : null}
-            </button>
+            <NotificationsDropdown />
             <span className="hr-header__date">{today}</span>
             <div className="hr-header__user">
               <div className="hr-header__avatar">{initialsFromName(user?.fullName || "HR User")}</div>

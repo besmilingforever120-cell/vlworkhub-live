@@ -7,7 +7,8 @@ import { pool } from "../config/db";
 import type { AuthenticatedRequest } from "../middleware/auth";
 
 type UserRole = "Admin" | "Manager" | "Employee" | "HR" | "IT";
-type AppAccess = "main-platform" | "care" | "hr" | "ursafe";
+type AppAccess = "HR" | "CARE" | "URSAFE";
+type PlatformRole = "super_admin" | "user";
 
 type SessionUser = {
   id: string;
@@ -17,79 +18,62 @@ type SessionUser = {
   role: UserRole;
   roles: UserRole[];
   apps: AppAccess[];
+  platformRole: PlatformRole;
 };
 
-const DEV_ORG_ID = "11111111-1111-1111-1111-111111111111";
-const DEV_USER_ID = "22222222-2222-2222-2222-222222222222";
+type UserRecord = QueryResultRow & {
+  id: string;
+  name: string | null;
+  email: string;
+  password_hash: string;
+  enabled: boolean;
+  role: PlatformRole;
+  apps: AppAccess[];
+};
+
+const DEFAULT_ORG_ID = "00000000-0000-0000-0000-000000000001";
 
 function hashPassword(password: string) {
   return crypto.createHash("sha256").update(password).digest("hex");
 }
 
-type UserRecord = QueryResultRow & {
-  id: string;
-  email: string;
-  password_hash: string;
-  first_name: string;
-  last_name: string;
-  organization_id: string;
-  roles: UserRole[];
-  apps: AppAccess[];
-};
-
-const devUser: UserRecord = {
-  id: DEV_USER_ID,
-  email: "admin@vlworkhub.ca",
-  password_hash: hashPassword("Password123!"),
-  first_name: "Platform",
-  last_name: "Admin",
-  organization_id: DEV_ORG_ID,
-  roles: ["Admin"],
-  apps: ["main-platform", "care", "hr", "ursafe"]
-};
+function passwordMatches(password: string, storedPasswordHash: string) {
+  return storedPasswordHash === password || storedPasswordHash === hashPassword(password);
+}
 
 async function findUserByEmail(email: string) {
-  try {
-    const result = await pool.query<UserRecord>(
-      `SELECT
-         u.id,
-         u.email,
-         u.password_hash,
-         u.first_name,
-         u.last_name,
-         u.organization_id,
-         COALESCE(array_remove(array_agg(DISTINCT ur.role), NULL), '{}') AS roles,
-         COALESCE(array_remove(array_agg(DISTINCT uaa.app), NULL), '{}') AS apps
-       FROM users u
-       LEFT JOIN user_roles ur ON ur.user_id = u.id
-       LEFT JOIN user_app_access uaa ON uaa.user_id = u.id
-       WHERE u.email = $1 AND u.status = 'active'
-       GROUP BY u.id
-       LIMIT 1`,
-      [email]
-    );
+  const result = await pool.query<UserRecord>(
+    `SELECT
+       u.id,
+       u.name,
+       u.email,
+       u.password_hash,
+       u.enabled,
+       u.role,
+       COALESCE(array_remove(array_agg(DISTINCT CASE WHEN uaa.enabled THEN UPPER(uaa.app) END), NULL), '{}') AS apps
+     FROM users u
+     LEFT JOIN user_app_access uaa ON uaa.user_id = u.id
+     WHERE LOWER(u.email) = LOWER($1) AND u.enabled = TRUE
+     GROUP BY u.id, u.name, u.email, u.password_hash, u.enabled, u.role
+     LIMIT 1`,
+    [email]
+  );
 
-    return result.rows[0] || null;
-  } catch (error) {
-    if (env.nodeEnv !== "production" && email === devUser.email) {
-      console.warn("Database unavailable, using development auth fallback.", error);
-      return devUser;
-    }
-
-    throw error;
-  }
+  return result.rows[0] || null;
 }
 
 function toSessionUser(user: UserRecord): SessionUser {
-  const fullName = `${user.first_name} ${user.last_name}`.trim();
+  const fullName = String(user.name || user.email).trim();
+  const fallbackRole: UserRole = user.role === "super_admin" ? "Admin" : "Employee";
   return {
     id: user.id,
     fullName,
     email: user.email,
-    organizationId: user.organization_id,
-    role: user.roles[0] || "Employee",
-    roles: user.roles,
-    apps: user.apps
+    organizationId: DEFAULT_ORG_ID,
+    role: fallbackRole,
+    roles: [fallbackRole],
+    apps: (user.apps || []).filter(Boolean),
+    platformRole: user.role
   };
 }
 
@@ -100,9 +84,9 @@ export async function login(req: Request, res: Response) {
     return res.status(400).json({ message: "Email and password are required" });
   }
 
-  const user = await findUserByEmail(email);
+  const user = await findUserByEmail(email.trim().toLowerCase());
 
-  if (!user || user.password_hash !== hashPassword(password)) {
+  if (!user || !passwordMatches(password, user.password_hash)) {
     return res.status(401).json({ message: "Invalid credentials" });
   }
 
@@ -114,7 +98,8 @@ export async function login(req: Request, res: Response) {
       roles: sessionUser.roles,
       apps: sessionUser.apps,
       email: sessionUser.email,
-      full_name: sessionUser.fullName
+      full_name: sessionUser.fullName,
+      platform_role: sessionUser.platformRole
     },
     env.jwtSecret
   );
@@ -135,10 +120,11 @@ export async function me(req: AuthenticatedRequest, res: Response) {
       id: req.user?.user_id,
       fullName: req.user?.full_name,
       email: req.user?.email,
-      organizationId: req.user?.organization_id,
-      role: roles[0],
+      organizationId: req.user?.organization_id || DEFAULT_ORG_ID,
+      role: req.user?.platform_role || "user",
       roles,
-      apps: req.user?.apps || []
+      apps: req.user?.apps || [],
+      platformRole: req.user?.platform_role || "user"
     }
   });
 }

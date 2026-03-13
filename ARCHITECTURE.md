@@ -40,7 +40,7 @@ services/
 - auth (JWT authentication)
 
 infra/
-- pgsql
+- psql
 - nginx
 - docker deployment
 

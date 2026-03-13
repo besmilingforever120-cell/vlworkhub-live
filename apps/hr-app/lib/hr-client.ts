@@ -15,7 +15,8 @@ export type HrResourceName =
   | "survey_assignments"
   | "survey_completions"
   | "documents"
-  | "document_signatures";
+  | "document_signatures"
+  | "hr_user_roles";
 
 export type HrRecord = Record<string, string | number | null>;
 
@@ -25,6 +26,18 @@ export type HrUser = {
   email: string;
   roles: string[];
   status: string;
+};
+
+export type HrNotification = {
+  type: "task" | "training" | "survey" | "document";
+  title: string;
+  link: string;
+  created_at: string;
+};
+
+export type HrNotificationSummary = {
+  count: number;
+  items: HrNotification[];
 };
 
 export class ApiOfflineError extends Error {
@@ -89,6 +102,14 @@ export async function getCurrentUser() {
   return data.user;
 }
 
+export async function getNotifications() {
+  return request<HrNotificationSummary>("/notifications");
+}
+
+export async function getPlatformUsers() {
+  return request<{ items: Array<{ id: string; name: string; email: string }> }>("/api/users");
+}
+
 export async function getResource(resource: HrResourceName) {
   const data = await request<{ items: HrRecord[] }>(`/resources/${resource}`);
   return data.items;
@@ -101,11 +122,7 @@ export async function createResource(resource: HrResourceName, payload: Record<s
   });
 }
 
-export async function updateResource(
-  resource: HrResourceName,
-  id: number,
-  payload: Record<string, string>
-) {
+export async function updateResource(resource: HrResourceName, id: number, payload: Record<string, string>) {
   return request<{ success: true }>(`/resources/${resource}/${id}`, {
     method: "PUT",
     body: JSON.stringify(payload)
@@ -130,9 +147,15 @@ export async function getSharedUsers() {
 
   const mapped = users.map((item) => ({
     id: String(item.id ?? ""),
-    fullName: [String(item.first_name ?? "").trim(), String(item.last_name ?? "").trim()].filter(Boolean).join(" ") || String(item.email ?? "User"),
+    fullName:
+      String(item.name ?? "").trim() ||
+      [String(item.first_name ?? "").trim(), String(item.last_name ?? "").trim()].filter(Boolean).join(" ") ||
+      String(item.email ?? "User"),
     email: String(item.email ?? ""),
-    roles: String(item.role ?? item.roles ?? "Employee").split(",").map((value) => value.trim()).filter(Boolean),
+    roles: String(item.role ?? item.roles ?? "Employee")
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean),
     status: String(item.status ?? "active")
   }));
 

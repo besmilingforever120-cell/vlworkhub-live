@@ -61,7 +61,7 @@ export default function CareDashboardPage() {
           <span className="care-live-dot" />
           <span>Live monitoring connected</span>
           <span className="care-user-pill">{user ? user.fullName : "Session loading"}</span>
-          <Link href={`${platformLinks.root}/dashboard`} className="care-link-pill">
+          <Link href={`${platformLinks.root}/dashboard` as any} className="care-link-pill">
             Back to VLWorkHub
           </Link>
         </div>
@@ -108,7 +108,7 @@ export default function CareDashboardPage() {
             </div>
             <div className="care-quick-grid">
               {careDashboardReference.quickStartItems.map((item) => (
-                <Link key={item.label} href={item.href} className="care-quick-tile">
+                <Link key={item.label} href={item.href as any} className="care-quick-tile">
                   <span className="care-quick-icon">{item.icon}</span>
                   <span>{item.label}</span>
                 </Link>

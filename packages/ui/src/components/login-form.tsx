@@ -6,8 +6,8 @@ import { platformLinks } from "@vlworkhub/config";
 
 export function LoginForm() {
   const router = useRouter();
-  const [email, setEmail] = useState("admin@vlworkhub.ca");
-  const [password, setPassword] = useState("Password123!");
+  const [email, setEmail] = useState("admin@vlworkhub.local");
+  const [password, setPassword] = useState("admin123");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 

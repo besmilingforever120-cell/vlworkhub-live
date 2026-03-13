@@ -18,18 +18,21 @@ export const platformLinks = {
 
 export const appCards = [
   {
+    appKey: "CARE",
     name: "Care System",
     description: "Client records, assignments, case notes, incidents, and documents.",
     href: platformLinks.care
   },
   {
+    appKey: "HR",
     name: "HR System",
     description: "Employee directory, documents, onboarding, tasks, and training.",
     href: platformLinks.hr
   },
   {
+    appKey: "URSAFE",
     name: "UR Safe",
     description: "Mileage, incidents, checklists, and emergency contacts.",
     href: platformLinks.ursafe
   }
-];
+] as const;

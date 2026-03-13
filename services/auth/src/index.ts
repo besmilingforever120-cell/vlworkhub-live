@@ -4,9 +4,10 @@ export interface AuthPayload {
   user_id: string;
   organization_id: string;
   roles: Array<"Admin" | "Manager" | "Employee" | "HR" | "IT">;
-  apps: Array<"main-platform" | "care" | "hr" | "ursafe">;
+  apps: Array<"HR" | "CARE" | "URSAFE">;
   email: string;
   full_name: string;
+  platform_role: "super_admin" | "user";
 }
 
 const TOKEN_NAME = "vlwh_session";

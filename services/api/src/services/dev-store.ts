@@ -21,6 +21,7 @@ type StoreKey =
   | "survey_assignments"
   | "survey_completions"
   | "document_signatures"
+  | "hr_user_roles"
   | "emergency_contacts"
   | "safety_checklists"
   | "ursafe_user_profiles"
@@ -98,7 +99,11 @@ let devStore: Record<StoreKey, StoreItem[]> = {
   document_signatures: [
     { id: 1, organization_id: DEV_ORG_ID, document_id: 1, signer_name: "Sam Rivera", status: "Pending", signed_at: null, note: "Awaiting onboarding signature" }
   ],
-  emergency_contacts: [
+  hr_user_roles: [
+    { id: 1, organization_id: DEV_ORG_ID, user_id: "22222222-2222-2222-2222-222222222222", user_name: "Platform Admin", role: "admin", department_id: "people" },
+    { id: 2, organization_id: DEV_ORG_ID, user_id: "33333333-3333-3333-3333-333333333333", user_name: "Casey Morgan", role: "manager", department_id: "operations" },
+    { id: 3, organization_id: DEV_ORG_ID, user_id: "44444444-4444-4444-4444-444444444444", user_name: "Jordan Lee", role: "employee", department_id: "operations" }
+  ],  emergency_contacts: [
     { id: 1, organization_id: DEV_ORG_ID, full_name: "Dana Rivera", relation: "Spouse", phone: "604-555-0192", employee_name: "Jordan Lee" },
     { id: 2, organization_id: DEV_ORG_ID, full_name: "Mina Patel", relation: "Parent", phone: "604-555-0111", employee_name: "Jordan Lee" }
   ],
@@ -161,6 +166,11 @@ export function deleteDevResource(resource: StoreKey, organizationId: string, id
   devStore[resource] = devStore[resource].filter((item) => !(item.id === id && item.organization_id === organizationId));
   return before !== devStore[resource].length;
 }
+
+
+
+
+
 
 
 

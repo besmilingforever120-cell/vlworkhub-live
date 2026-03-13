@@ -1,5 +1,6 @@
 export type UserRole = "Admin" | "Manager" | "Employee" | "HR" | "IT";
-export type AppAccess = "main-platform" | "care" | "hr" | "ursafe";
+export type PlatformRole = "super_admin" | "user";
+export type AppAccess = "HR" | "CARE" | "URSAFE";
 
 export interface SessionUser {
   id: string;
@@ -9,6 +10,7 @@ export interface SessionUser {
   role: UserRole;
   roles: UserRole[];
   apps: AppAccess[];
+  platformRole: PlatformRole;
 }
 
 export interface AuthPayload {
@@ -18,6 +20,7 @@ export interface AuthPayload {
   apps: AppAccess[];
   email: string;
   full_name: string;
+  platform_role: PlatformRole;
 }
 
 export interface NavItem {
