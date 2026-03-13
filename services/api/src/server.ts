@@ -44,8 +44,17 @@ async function start() {
     process.exit(1);
   }
 
-  app.listen(env.port, () => {
-    console.log(`VLWorkHub API running on port ${env.port}`);
+  const server = app.listen(env.port, env.host, () => {
+    console.log(`VLWorkHub API running on http://${env.host}:${env.port}`);
+  });
+
+  server.on("error", (error: NodeJS.ErrnoException) => {
+    if (error.code === "EADDRINUSE") {
+      console.error(`Port ${env.port} is already in use. The API could not start.`);
+    } else {
+      console.error("VLWorkHub API failed to start.", error);
+    }
+    process.exit(1);
   });
 }
 

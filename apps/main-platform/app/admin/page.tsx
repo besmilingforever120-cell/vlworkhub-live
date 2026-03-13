@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
-import { getPlatformSession } from "../../../lib/session";
+import { getPlatformSession } from "../../lib/session";
 
-export default async function PlatformAdminPage() {
+export default async function AdminIndexPage() {
   const user = await getPlatformSession();
 
   if (!user) {

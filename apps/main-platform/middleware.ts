@@ -32,7 +32,7 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  const protectedPath = pathname.startsWith("/dashboard") || pathname.startsWith("/applications") || pathname.startsWith("/platform");
+  const protectedPath = pathname.startsWith("/dashboard") || pathname.startsWith("/applications") || pathname.startsWith("/platform") || pathname.startsWith("/admin");
   if (!protectedPath) {
     return NextResponse.next();
   }
@@ -42,7 +42,7 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL("/login", request.url));
   }
 
-  if (pathname.startsWith("/platform/admin") && session.user.platformRole !== "super_admin") {
+  if ((pathname.startsWith("/platform/admin") || pathname.startsWith("/admin")) && session.user.platformRole !== "super_admin") {
     return NextResponse.redirect(new URL("/dashboard", request.url));
   }
 

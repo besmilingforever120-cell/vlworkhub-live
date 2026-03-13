@@ -23,15 +23,13 @@ type SessionUser = {
 
 type UserRecord = QueryResultRow & {
   id: string;
-  name: string | null;
+  organization_id: string;
   email: string;
   password_hash: string;
-  enabled: boolean;
-  role: PlatformRole;
-  apps: AppAccess[];
+  first_name: string | null;
+  last_name: string | null;
+  status: string | null;
 };
-
-const DEFAULT_ORG_ID = "00000000-0000-0000-0000-000000000001";
 
 function hashPassword(password: string) {
   return crypto.createHash("sha256").update(password).digest("hex");
@@ -45,86 +43,112 @@ async function findUserByEmail(email: string) {
   const result = await pool.query<UserRecord>(
     `SELECT
        u.id,
-       u.name,
+       u.organization_id,
        u.email,
        u.password_hash,
-       u.enabled,
-       u.role,
-       COALESCE(array_remove(array_agg(DISTINCT CASE WHEN uaa.enabled THEN UPPER(uaa.app) END), NULL), '{}') AS apps
+       u.first_name,
+       u.last_name,
+       u.status
      FROM users u
-     LEFT JOIN user_app_access uaa ON uaa.user_id = u.id
-     WHERE LOWER(u.email) = LOWER($1) AND u.enabled = TRUE
-     GROUP BY u.id, u.name, u.email, u.password_hash, u.enabled, u.role
-     LIMIT 1`,
+     WHERE u.email = $1`,
     [email]
   );
 
   return result.rows[0] || null;
 }
 
-function toSessionUser(user: UserRecord): SessionUser {
-  const fullName = String(user.name || user.email).trim();
-  const fallbackRole: UserRole = user.role === "super_admin" ? "Admin" : "Employee";
+async function findUserApps(userId: string) {
+  const result = await pool.query<{ app: AppAccess }>(
+    `SELECT UPPER(app) AS app
+     FROM user_app_access
+     WHERE user_id = $1
+     ORDER BY UPPER(app) ASC`,
+    [userId]
+  );
+
+  return result.rows.map((row) => row.app);
+}
+
+function buildDisplayName(user: UserRecord) {
+  return `${String(user.first_name || "").trim()} ${String(user.last_name || "").trim()}`.trim() || user.email;
+}
+
+async function toSessionUser(user: UserRecord): Promise<SessionUser> {
   return {
     id: user.id,
-    fullName,
+    fullName: buildDisplayName(user),
     email: user.email,
-    organizationId: DEFAULT_ORG_ID,
-    role: fallbackRole,
-    roles: [fallbackRole],
-    apps: (user.apps || []).filter(Boolean),
-    platformRole: user.role
+    organizationId: user.organization_id,
+    role: "Employee",
+    roles: ["Employee"],
+    apps: await findUserApps(user.id),
+    platformRole: "user"
   };
 }
 
 export async function login(req: Request, res: Response) {
-  const { email, password } = req.body as { email: string; password: string };
+  try {
+    const { email, password } = req.body as { email: string; password: string };
 
-  if (!email || !password) {
-    return res.status(400).json({ message: "Email and password are required" });
+    if (!email || !password) {
+      return res.status(400).json({ message: "Email and password are required" });
+    }
+
+    const user = await findUserByEmail(email.trim());
+
+    if (!user || user.status !== "active" || !passwordMatches(password, user.password_hash)) {
+      return res.status(401).json({ message: "Invalid credentials" });
+    }
+
+    const sessionUser = await toSessionUser(user);
+    const token = signAuthToken(
+      {
+        user_id: sessionUser.id,
+        organization_id: sessionUser.organizationId,
+        roles: sessionUser.roles,
+        apps: sessionUser.apps,
+        email: sessionUser.email,
+        full_name: sessionUser.fullName,
+        platform_role: sessionUser.platformRole
+      },
+      env.jwtSecret
+    );
+
+    res.setHeader("Set-Cookie", buildCookie(token, env.cookieDomain));
+    return res.json({ token, user: sessionUser });
+  } catch (error) {
+    console.error("API error in POST /auth/login", error);
+    return res.status(500).json({ error: "Internal server error" });
   }
-
-  const user = await findUserByEmail(email.trim().toLowerCase());
-
-  if (!user || !passwordMatches(password, user.password_hash)) {
-    return res.status(401).json({ message: "Invalid credentials" });
-  }
-
-  const sessionUser = toSessionUser(user);
-  const token = signAuthToken(
-    {
-      user_id: sessionUser.id,
-      organization_id: sessionUser.organizationId,
-      roles: sessionUser.roles,
-      apps: sessionUser.apps,
-      email: sessionUser.email,
-      full_name: sessionUser.fullName,
-      platform_role: sessionUser.platformRole
-    },
-    env.jwtSecret
-  );
-
-  res.setHeader("Set-Cookie", buildCookie(token, env.cookieDomain));
-  return res.json({ token, user: sessionUser });
 }
 
 export async function logout(_: Request, res: Response) {
-  res.setHeader("Set-Cookie", clearCookie(env.cookieDomain));
-  return res.json({ success: true });
+  try {
+    res.setHeader("Set-Cookie", clearCookie(env.cookieDomain));
+    return res.json({ success: true });
+  } catch (error) {
+    console.error("API error in POST /auth/logout", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
 }
 
 export async function me(req: AuthenticatedRequest, res: Response) {
-  const roles = req.user?.roles || ["Employee"];
-  return res.json({
-    user: {
-      id: req.user?.user_id,
-      fullName: req.user?.full_name,
-      email: req.user?.email,
-      organizationId: req.user?.organization_id || DEFAULT_ORG_ID,
-      role: req.user?.platform_role || "user",
-      roles,
-      apps: req.user?.apps || [],
-      platformRole: req.user?.platform_role || "user"
-    }
-  });
+  try {
+    const roles = req.user?.roles || ["Employee"];
+    return res.json({
+      user: {
+        id: req.user?.user_id,
+        fullName: req.user?.full_name,
+        email: req.user?.email,
+        organizationId: req.user?.organization_id,
+        role: roles[0],
+        roles,
+        apps: req.user?.apps || [],
+        platformRole: req.user?.platform_role || "user"
+      }
+    });
+  } catch (error) {
+    console.error("API error in GET /auth/me", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
 }

@@ -31,6 +31,8 @@ export function SuperAdminPanel() {
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
 
+  const appOptions = useMemo(() => ["HR", "CARE", "URSAFE"] as const, []);
+
   async function loadUsers() {
     const response = await fetch(`${platformLinks.api}/api/admin/users`, { credentials: "include" });
     if (!response.ok) {
@@ -44,8 +46,6 @@ export function SuperAdminPanel() {
     void loadUsers().catch((loadError) => setError(loadError instanceof Error ? loadError.message : "Failed to load users."));
   }, []);
 
-  const appOptions = useMemo(() => ["HR", "CARE", "URSAFE"] as const, []);
-
   function startEdit(user: AdminUserRecord) {
     const appMap = { HR: false, CARE: false, URSAFE: false };
     for (const item of user.app_access || []) {
@@ -53,7 +53,16 @@ export function SuperAdminPanel() {
         appMap[item.app] = true;
       }
     }
-    setForm({ id: user.id, name: user.name, email: user.email, password: "", enabled: user.enabled, role: user.role, apps: appMap });
+
+    setForm({
+      id: user.id,
+      name: `${user.first_name || ""} ${user.last_name || ""}`.trim() || user.name,
+      email: user.email,
+      password: "",
+      enabled: user.enabled,
+      role: user.role,
+      apps: appMap
+    });
   }
 
   async function saveUser() {
@@ -68,6 +77,7 @@ export function SuperAdminPanel() {
         role: form.role,
         apps: appOptions.map((app) => ({ app, enabled: form.apps[app] }))
       };
+
       const url = form.id ? `${platformLinks.api}/api/admin/users/${form.id}` : `${platformLinks.api}/api/admin/users`;
       const method = form.id ? "PUT" : "POST";
       const response = await fetch(url, {
@@ -76,10 +86,12 @@ export function SuperAdminPanel() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)
       });
+
       if (!response.ok) {
         const message = await response.text();
         throw new Error(message || "Failed to save user.");
       }
+
       setForm(emptyForm());
       await loadUsers();
     } catch (saveError) {
@@ -92,21 +104,20 @@ export function SuperAdminPanel() {
   return (
     <div className="space-y-8">
       <section className="rounded-3xl border border-white/10 bg-white/5 p-8">
-        <h2 className="text-2xl font-semibold text-white">Global User Management</h2>
-        <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-300">Create users once at the platform level, enable or disable their account, and assign access to HR, Care, and URSafe.</p>
+        <h2 className="text-2xl font-semibold text-white">Platform User Management</h2>
+        <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-300">Create users, edit their account details, disable access, and assign Care, HR, and URSafe permissions from the platform UI.</p>
       </section>
 
       <section className="grid gap-8 lg:grid-cols-[0.95fr_1.05fr]">
         <div className="rounded-3xl border border-white/10 bg-slate-900/60 p-6">
           <h3 className="text-xl font-semibold text-white">{form.id ? "Edit User" : "Create User"}</h3>
           <div className="mt-6 grid gap-4">
-            <label className="text-sm text-slate-300">Name<input value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white" /></label>
+            <label className="text-sm text-slate-300">Full name<input value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white" /></label>
             <label className="text-sm text-slate-300">Email<input value={form.email} onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))} className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white" /></label>
             <label className="text-sm text-slate-300">Password<input type="password" value={form.password} onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))} className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white" placeholder={form.id ? "Leave blank to keep current password" : "Set password"} /></label>
-            <label className="text-sm text-slate-300">Platform Role<select value={form.role} onChange={(event) => setForm((current) => ({ ...current, role: event.target.value as FormState["role"] }))} className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white"><option value="user">User</option><option value="super_admin">Super Admin</option></select></label>
-            <label className="inline-flex items-center gap-3 text-sm text-slate-300"><input type="checkbox" checked={form.enabled} onChange={(event) => setForm((current) => ({ ...current, enabled: event.target.checked }))} />Enabled</label>
+            <label className="inline-flex items-center gap-3 text-sm text-slate-300"><input type="checkbox" checked={form.enabled} onChange={(event) => setForm((current) => ({ ...current, enabled: event.target.checked }))} />Active account</label>
             <div>
-              <p className="text-sm text-slate-300">Application Access</p>
+              <p className="text-sm text-slate-300">Assign apps</p>
               <div className="mt-3 grid gap-3 sm:grid-cols-3">
                 {appOptions.map((app) => (
                   <label key={app} className="inline-flex items-center gap-3 rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-sm text-slate-200">
@@ -125,24 +136,47 @@ export function SuperAdminPanel() {
         </div>
 
         <div className="rounded-3xl border border-white/10 bg-slate-900/60 p-6">
-          <h3 className="text-xl font-semibold text-white">Existing Users</h3>
-          <div className="mt-6 space-y-4">
-            {users.map((user) => (
-              <article key={user.id} className="rounded-2xl border border-white/10 bg-slate-950/70 p-4">
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <h4 className="text-lg font-medium text-white">{user.name}</h4>
-                    <p className="text-sm text-slate-400">{user.email}</p>
-                    <p className="mt-2 text-xs uppercase tracking-[0.2em] text-cyan-300">{user.role}</p>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {(user.app_access || []).filter((item) => item.enabled).map((item) => <span key={`${user.id}-${item.app}`} className="rounded-full bg-white/10 px-3 py-1 text-xs text-white">{item.app}</span>)}
-                      {!user.enabled ? <span className="rounded-full bg-rose-500/20 px-3 py-1 text-xs text-rose-200">Disabled</span> : null}
-                    </div>
-                  </div>
-                  <button type="button" onClick={() => startEdit(user)} className="rounded-xl border border-white/10 px-4 py-2 text-sm text-white">Edit</button>
-                </div>
-              </article>
-            ))}
+          <div className="flex items-center justify-between gap-4">
+            <h3 className="text-xl font-semibold text-white">Users</h3>
+            <span className="text-sm text-slate-400">{users.length} total</span>
+          </div>
+          <div className="mt-6 overflow-x-auto">
+            <table className="min-w-full text-left text-sm text-slate-200">
+              <thead className="text-xs uppercase tracking-[0.16em] text-slate-400">
+                <tr>
+                  <th className="px-3 py-3">First name</th>
+                  <th className="px-3 py-3">Last name</th>
+                  <th className="px-3 py-3">Email</th>
+                  <th className="px-3 py-3">Status</th>
+                  <th className="px-3 py-3">Organization</th>
+                  <th className="px-3 py-3">Apps</th>
+                  <th className="px-3 py-3">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {users.map((user) => (
+                  <tr key={user.id} className="border-t border-white/10">
+                    <td className="px-3 py-4">{user.first_name}</td>
+                    <td className="px-3 py-4">{user.last_name}</td>
+                    <td className="px-3 py-4">{user.email}</td>
+                    <td className="px-3 py-4">
+                      <span className={`rounded-full px-3 py-1 text-xs ${user.status === "active" ? "bg-emerald-500/15 text-emerald-200" : "bg-rose-500/15 text-rose-200"}`}>{user.status}</span>
+                    </td>
+                    <td className="px-3 py-4 text-xs text-slate-400">{user.organization_id}</td>
+                    <td className="px-3 py-4">
+                      <div className="flex flex-wrap gap-2">
+                        {(user.app_access || []).filter((item) => item.enabled).map((item) => (
+                          <span key={`${user.id}-${item.app}`} className="rounded-full bg-white/10 px-3 py-1 text-xs text-white">{item.app}</span>
+                        ))}
+                      </div>
+                    </td>
+                    <td className="px-3 py-4">
+                      <button type="button" onClick={() => startEdit(user)} className="rounded-xl border border-white/10 px-4 py-2 text-sm text-white">Edit</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       </section>

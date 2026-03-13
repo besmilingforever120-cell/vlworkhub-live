@@ -6,13 +6,19 @@ import { platformLinks } from "@vlworkhub/config";
 
 export function LoginForm() {
   const router = useRouter();
-  const [email, setEmail] = useState("admin@vlworkhub.local");
-  const [password, setPassword] = useState("admin123");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
+    if (!email.trim() || !password) {
+      setError("Enter both email and password.");
+      return;
+    }
+
     setLoading(true);
     setError("");
 
@@ -23,7 +29,7 @@ export function LoginForm() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ email, password })
+        body: JSON.stringify({ email: email.trim(), password })
       });
     } catch {
       setLoading(false);
@@ -34,7 +40,12 @@ export function LoginForm() {
     setLoading(false);
 
     if (!response.ok) {
-      setError("Authentication failed. Check credentials and API configuration.");
+      try {
+        const data = await response.json();
+        setError(data.message || "Authentication failed. Check credentials and API configuration.");
+      } catch {
+        setError("Authentication failed. Check credentials and API configuration.");
+      }
       return;
     }
 
@@ -50,6 +61,7 @@ export function LoginForm() {
           value={email}
           onChange={(event) => setEmail(event.target.value)}
           className="w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white outline-none ring-0"
+          autoComplete="username"
         />
       </div>
       <div>
@@ -59,6 +71,7 @@ export function LoginForm() {
           value={password}
           onChange={(event) => setPassword(event.target.value)}
           className="w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white outline-none ring-0"
+          autoComplete="current-password"
         />
       </div>
       {error ? <p className="text-sm text-rose-300">{error}</p> : null}

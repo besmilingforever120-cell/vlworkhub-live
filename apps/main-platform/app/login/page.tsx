@@ -1,6 +1,13 @@
+import { redirect } from "next/navigation";
 import { LoginForm } from "@vlworkhub/ui";
+import { getPlatformSession } from "../../lib/session";
 
-export default function LoginPage() {
+export default async function LoginPage() {
+  const user = await getPlatformSession();
+  if (user) {
+    redirect("/dashboard");
+  }
+
   return (
     <main className="mx-auto grid min-h-screen max-w-6xl items-center gap-12 px-6 py-20 lg:grid-cols-[1.1fr_0.9fr]">
       <section>
