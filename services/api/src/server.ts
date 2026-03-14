@@ -9,6 +9,7 @@ import { resourceRouter } from "./routes/resource-routes";
 import { notificationRouter } from "./routes/notification-routes";
 import { adminUserRouter, userRouter } from "./routes/user-routes";
 import { ursafeRouter } from "./routes/ursafe-routes";
+import { hrRouter } from "./routes/hr-routes";
 
 const app = express();
 
@@ -33,6 +34,7 @@ app.use("/resources", resourceRouter);
 app.use("/notifications", notificationRouter);
 app.use("/api", userRouter);
 app.use("/api/admin", adminUserRouter);
+app.use("/hr", hrRouter);
 app.use("/ursafe", ursafeRouter);
 
 async function start() {

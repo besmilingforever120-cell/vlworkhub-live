@@ -7,14 +7,17 @@ import {
   createResource,
   getApiErrorMessage,
   getCurrentUser,
+  getHrAssignments,
   getResource,
   getSharedUsers,
   updateResource,
+  type HrAssignment,
   type HrRecord,
   type HrUser
 } from "../lib/hr-client";
+import { useHrRole } from "../lib/use-hr-role";
 import { HrPortalHeader } from "./hr-portal-header";
-import { formatDate, isHrManager, joinAssignees, splitAssignees } from "../lib/workflow-utils";
+import { canCreateForHrRole, formatDate, formatHrRoleLabel, getVisibleHrUserNames, joinAssignees, splitAssignees } from "../lib/workflow-utils";
 
 type SurveyForm = {
   title: string;
@@ -39,8 +42,10 @@ function emptyAssignmentForm(): SurveyAssignmentForm {
 }
 
 export function SurveysWorkspace() {
+  const { role: hrRole } = useHrRole();
   const [user, setUser] = useState<SessionUser | null>(null);
   const [users, setUsers] = useState<HrUser[]>([]);
+  const [hrAssignments, setHrAssignments] = useState<HrAssignment[]>([]);
   const [surveys, setSurveys] = useState<HrRecord[]>([]);
   const [assignments, setAssignments] = useState<HrRecord[]>([]);
   const [completions, setCompletions] = useState<HrRecord[]>([]);
@@ -55,15 +60,17 @@ export function SurveysWorkspace() {
   async function load() {
     try {
       setError("");
-      const [session, platformUsers, surveyData, assignmentData, completionData] = await Promise.all([
+      const [session, platformUsers, roleRows, surveyData, assignmentData, completionData] = await Promise.all([
         getCurrentUser(),
         getSharedUsers(),
+        getHrAssignments(),
         getResource("surveys"),
         getResource("survey_assignments"),
         getResource("survey_completions")
       ]);
       setUser(session);
       setUsers(platformUsers);
+      setHrAssignments(roleRows.items || []);
       setSurveys(surveyData);
       setAssignments(assignmentData);
       setCompletions(completionData);
@@ -77,7 +84,11 @@ export function SurveysWorkspace() {
     void load();
   }, []);
 
-  const canManage = isHrManager(user);
+  const canManage = canCreateForHrRole(hrRole);
+  const visibleNames = useMemo(
+    () => getVisibleHrUserNames(hrRole, user?.id || "", user?.fullName || "", hrAssignments, users),
+    [hrAssignments, hrRole, user?.fullName, user?.id, users]
+  );
 
   const completionMap = useMemo(() => {
     return completions.reduce<Record<string, HrRecord[]>>((acc, item) => {
@@ -88,16 +99,16 @@ export function SurveysWorkspace() {
   }, [completions]);
 
   const filteredAssignments = useMemo(() => {
-    const visible = canManage
+    const visible = hrRole === "admin"
       ? assignments
-      : assignments.filter((assignment) => splitAssignees(assignment.assignee_name).includes(user?.fullName || ""));
+      : assignments.filter((assignment) => splitAssignees(assignment.assignee_name).some((name) => visibleNames.includes(name)));
     return visible.filter((assignment) => {
       const survey = surveys.find((item) => Number(item.id) === Number(assignment.survey_id));
       const haystack = [assignment.title, assignment.assignee_name, survey?.title]
         .map((value) => String(value ?? "").toLowerCase());
       return haystack.some((value) => value.includes(query.toLowerCase()));
     });
-  }, [assignments, canManage, query, surveys, user?.fullName]);
+  }, [assignments, hrRole, query, surveys, visibleNames]);
 
   const selected = useMemo(
     () => filteredAssignments.find((assignment) => Number(assignment.id) === selectedId) || filteredAssignments[0] || null,
@@ -106,7 +117,7 @@ export function SurveysWorkspace() {
 
   const stats = {
     library: surveys.length,
-    assignments: assignments.length,
+    assignments: filteredAssignments.length,
     completions: completions.length
   };
 
@@ -171,7 +182,7 @@ export function SurveysWorkspace() {
         <div>
           <h1 className="legacy-header__title">Surveys</h1>
           <p className="legacy-header__subtitle">Distribute surveys, monitor completion, and keep compliance workflows visible across the portal.</p>
-          <div className="legacy-role"><Shield className="h-4 w-4" />Role: {user?.roles?.join(", ") || user?.role || "Employee"}</div>
+          <div className="legacy-role"><Shield className="h-4 w-4" />HR Role: {formatHrRoleLabel(hrRole)}</div>
         </div>
         {canManage ? (
           <div className="legacy-actions-row">
@@ -182,7 +193,7 @@ export function SurveysWorkspace() {
       </div>
 
       <section className="legacy-stats-grid">
-        {[{ label: "Survey Library", value: stats.library, icon: ClipboardList, color: "blue" }, { label: "Assignments", value: stats.assignments, icon: Plus, color: "amber" }, { label: "Completed", value: stats.completions, icon: CheckCircle2, color: "green" }].map((stat) => (
+        {[{ label: "Survey Library", value: stats.library, icon: ClipboardList, color: "blue" }, { label: "Visible Assignments", value: stats.assignments, icon: Plus, color: "amber" }, { label: "Completed", value: stats.completions, icon: CheckCircle2, color: "green" }].map((stat) => (
           <div key={stat.label} className={`legacy-stat-card ${stat.color}`}>
             <div className="legacy-stat-icon"><stat.icon className="h-5 w-5" /></div>
             <div><p className="legacy-stat-value">{stat.value}</p><p className="legacy-stat-title">{stat.label}</p></div>
@@ -269,7 +280,7 @@ export function SurveysWorkspace() {
                     })}
                   </div>
                 </div>
-                <div className="legacy-detail-card"><div className="legacy-role"><Shield className="h-4 w-4" />Role: {user?.roles?.join(", ") || user?.role || "Employee"}</div></div>
+                <div className="legacy-detail-card"><div className="legacy-role"><Shield className="h-4 w-4" />HR Role: {formatHrRoleLabel(hrRole)}</div></div>
               </div>
             ) : <div className="legacy-empty">Select an assignment to inspect survey completion detail.</div>}
           </div>
@@ -302,7 +313,7 @@ export function SurveysWorkspace() {
                 <div className="legacy-form-group legacy-form-group--full"><label>Survey</label><select value={assignmentForm.survey_id} onChange={(event) => setAssignmentForm((current) => ({ ...current, survey_id: event.target.value }))}><option value="">Select survey</option>{surveys.map((survey) => <option key={String(survey.id)} value={String(survey.id)}>{String(survey.title ?? "Survey")}</option>)}</select></div>
                 <div className="legacy-form-group"><label>Due Date</label><input type="date" value={assignmentForm.due_date} onChange={(event) => setAssignmentForm((current) => ({ ...current, due_date: event.target.value }))} /></div>
                 <div className="legacy-form-group"><label>Status</label><select value={assignmentForm.status} onChange={(event) => setAssignmentForm((current) => ({ ...current, status: event.target.value }))}>{["Assigned", "Completed"].map((value) => <option key={value} value={value}>{value}</option>)}</select></div>
-                <div className="legacy-form-group legacy-form-group--full"><label>Assigned To</label><div className="legacy-chip-list">{users.map((option) => { const selected = assignmentForm.assignees.includes(option.fullName); return <button key={option.id} type="button" className={`legacy-filter-btn ${selected ? "is-active" : ""}`} onClick={() => setAssignmentForm((current) => ({ ...current, assignees: selected ? current.assignees.filter((name) => name !== option.fullName) : [...current.assignees, option.fullName] }))}>{option.fullName}</button>; })}</div></div>
+                <div className="legacy-form-group legacy-form-group--full"><label>Assigned To</label><div className="legacy-chip-list">{users.filter((option) => hrRole === "admin" || visibleNames.includes(option.fullName) || option.id === user?.id).map((option) => { const selected = assignmentForm.assignees.includes(option.fullName); return <button key={option.id} type="button" className={`legacy-filter-btn ${selected ? "is-active" : ""}`} onClick={() => setAssignmentForm((current) => ({ ...current, assignees: selected ? current.assignees.filter((name) => name !== option.fullName) : [...current.assignees, option.fullName] }))}>{option.fullName}</button>; })}</div></div>
               </div>
             </div>
             <div className="legacy-modal-footer"><button type="button" className="legacy-secondary-btn" onClick={() => setShowAssignmentForm(false)}>Cancel</button><button type="button" className="legacy-primary-btn" onClick={() => void assignSurvey()}><Save className="h-4 w-4" />Create Assignment</button></div>

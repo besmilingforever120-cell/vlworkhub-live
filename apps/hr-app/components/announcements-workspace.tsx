@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Calendar, CheckCircle, Edit, Info, Megaphone, Plus, Save, Search, Shield, Trash2, User, X } from "lucide-react";
+import { AlertTriangle, Calendar, CheckCircle, Edit, Info, Megaphone, Plus, Save, Search, Shield, Trash2, X } from "lucide-react";
 import type { SessionUser } from "@vlworkhub/types";
 import { createResource, deleteResource, getApiErrorMessage, getCurrentUser, getResource, updateResource, type HrRecord } from "../lib/hr-client";
+import { useHrRole } from "../lib/use-hr-role";
 import { HrPortalHeader } from "./hr-portal-header";
-import { formatDate, isHrAdmin } from "../lib/workflow-utils";
+import { canCreateForHrRole, canEditForHrRole, formatDate, formatHrRoleLabel } from "../lib/workflow-utils";
 
 const priorities = ["All", "Highly Important", "Important", "Normal"] as const;
 
@@ -34,6 +35,7 @@ function emptyForm(): FormState {
 }
 
 export function AnnouncementsWorkspace() {
+  const { role: hrRole } = useHrRole();
   const [user, setUser] = useState<SessionUser | null>(null);
   const [items, setItems] = useState<HrRecord[]>([]);
   const [query, setQuery] = useState("");
@@ -58,7 +60,8 @@ export function AnnouncementsWorkspace() {
     void load();
   }, []);
 
-  const canManage = isHrAdmin(user);
+  const canManage = canCreateForHrRole(hrRole);
+  const canEdit = canEditForHrRole(hrRole);
 
   const filtered = useMemo(() => items.filter((item) => {
     const matchesPriority = priorityFilter === "All" || String(item.priority ?? "Normal") === priorityFilter;
@@ -127,12 +130,12 @@ export function AnnouncementsWorkspace() {
         <div>
           <h1 className="legacy-header__title">Announcements</h1>
           <p className="legacy-header__subtitle">Stay updated with the latest company news and updates.</p>
-          <div className="legacy-role"><Shield className="h-4 w-4" />Role: {user?.roles?.join(", ") || user?.role || "Employee"}</div>
+          <div className="legacy-role"><Shield className="h-4 w-4" />HR Role: {formatHrRoleLabel(hrRole)}</div>
         </div>
         {canManage ? <button type="button" className="legacy-primary-btn" onClick={openCreate}><Plus className="h-4 w-4" />New Announcement</button> : null}
       </div>
 
-      {!canManage ? <div className="legacy-panel" style={{ marginBottom: 20 }}><div className="legacy-panel-body" style={{ color: "#1e40af", background: "#eff6ff" }}><Info className="mr-2 inline h-4 w-4" />You have read-only access to announcements. Publishing remains limited to HR administrators.</div></div> : null}
+      {!canManage ? <div className="legacy-panel" style={{ marginBottom: 20 }}><div className="legacy-panel-body" style={{ color: "#1e40af", background: "#eff6ff" }}><Info className="mr-2 inline h-4 w-4" />You have read-only access to announcements. Publishing remains limited to HR admins.</div></div> : null}
 
       <section className="legacy-stats-grid">
         {[{ label: "All Announcements", value: stats.total, icon: Megaphone, color: "blue" }, { label: "Important", value: stats.important, icon: AlertTriangle, color: "amber" }, { label: "Published", value: stats.published, icon: CheckCircle, color: "green" }].map((stat) => <div key={stat.label} className={`legacy-stat-card ${stat.color}`}><div className="legacy-stat-icon"><stat.icon className="h-5 w-5" /></div><div><p className="legacy-stat-value">{stat.value}</p><p className="legacy-stat-title">{stat.label}</p></div></div>)}
@@ -165,7 +168,7 @@ export function AnnouncementsWorkspace() {
                     <div className="legacy-card-muted"><Calendar className="mr-1 inline h-3 w-3" />Publish: {formatDate(item.publish_date)} · Start: {formatDate(item.start_date)} · End: {formatDate(item.end_date)}</div>
                   </div>
                 </div>
-                {canManage ? <div className="legacy-actions-row"><button type="button" className="legacy-icon-btn" onClick={() => openEdit(item)}><Edit className="h-4 w-4" /></button><button type="button" className="legacy-icon-btn" onClick={() => void remove(Number(item.id))}><Trash2 className="h-4 w-4" /></button></div> : null}
+                {canManage ? <div className="legacy-actions-row">{canEdit ? <button type="button" className="legacy-icon-btn" onClick={() => openEdit(item)}><Edit className="h-4 w-4" /></button> : null}{canEdit ? <button type="button" className="legacy-icon-btn" onClick={() => void remove(Number(item.id))}><Trash2 className="h-4 w-4" /></button> : null}</div> : null}
               </div>
             </article>
           );
@@ -195,3 +198,4 @@ export function AnnouncementsWorkspace() {
     </div>
   );
 }
+

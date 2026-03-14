@@ -25,14 +25,17 @@ import {
   deleteResource,
   getApiErrorMessage,
   getCurrentUser,
+  getHrAssignments,
   getResource,
   getSharedUsers,
   updateResource,
+  type HrAssignment,
   type HrRecord,
   type HrUser
 } from "../lib/hr-client";
+import { useHrRole } from "../lib/use-hr-role";
 import { HrPortalHeader } from "./hr-portal-header";
-import { formatDate, isHrAdmin, isHrManager, isOverdue, joinAssignees, splitAssignees } from "../lib/workflow-utils";
+import { canCreateForHrRole, canEditForHrRole, formatDate, formatHrRoleLabel, getVisibleHrUserNames, isOverdue, joinAssignees, splitAssignees } from "../lib/workflow-utils";
 
 const statusOptions = ["All", "Not Started", "In Progress", "Completed", "Blocked"] as const;
 const priorityOptions = ["All", "Low", "Normal", "High", "Critical"] as const;
@@ -80,8 +83,10 @@ function nextStatus(current: string) {
 }
 
 export function TasksWorkspace() {
+  const { role: hrRole } = useHrRole();
   const [user, setUser] = useState<SessionUser | null>(null);
   const [users, setUsers] = useState<HrUser[]>([]);
+  const [hrAssignments, setHrAssignments] = useState<HrAssignment[]>([]);
   const [tasks, setTasks] = useState<HrRecord[]>([]);
   const [taskStates, setTaskStates] = useState<HrRecord[]>([]);
   const [query, setQuery] = useState("");
@@ -95,14 +100,16 @@ export function TasksWorkspace() {
   async function load() {
     try {
       setError("");
-      const [session, sharedUsers, taskItems, stateItems] = await Promise.all([
+      const [session, sharedUsers, assignments, taskItems, stateItems] = await Promise.all([
         getCurrentUser(),
         getSharedUsers(),
+        getHrAssignments(),
         getResource("tasks"),
         getResource("task_user_states")
       ]);
       setUser(session);
       setUsers(sharedUsers);
+      setHrAssignments(assignments.items || []);
       setTasks(taskItems);
       setTaskStates(stateItems);
     } catch (loadError) {
@@ -114,8 +121,12 @@ export function TasksWorkspace() {
     void load();
   }, []);
 
-  const canManage = isHrManager(user);
-  const canEdit = isHrAdmin(user);
+  const canManage = canCreateForHrRole(hrRole);
+  const canEdit = canEditForHrRole(hrRole);
+  const visibleNames = useMemo(
+    () => getVisibleHrUserNames(hrRole, user?.id || "", user?.fullName || "", hrAssignments, users),
+    [hrAssignments, hrRole, user?.fullName, user?.id, users]
+  );
 
   const stateMap = useMemo(() => taskStates.reduce<Record<string, HrRecord[]>>((acc, state) => {
     const key = String(state.task_id ?? "");
@@ -124,20 +135,23 @@ export function TasksWorkspace() {
   }, {}), [taskStates]);
 
   const filtered = useMemo(() => {
-    const visibleByRole = canManage ? tasks : tasks.filter((task) => splitAssignees(task.assigned_to).includes(user?.fullName || ""));
+    const visibleByRole = hrRole === "admin"
+      ? tasks
+      : tasks.filter((task) => splitAssignees(task.assigned_to).some((name) => visibleNames.includes(name)));
+
     return visibleByRole.filter((task) => {
       const matchesStatus = statusFilter === "All" || String(task.status ?? "Not Started") === statusFilter;
       const matchesPriority = priorityFilter === "All" || String(task.priority ?? "Normal") === priorityFilter;
       const text = [task.title, task.description, task.assigned_to].map((value) => String(value ?? "").toLowerCase());
       return matchesStatus && matchesPriority && text.some((value) => value.includes(query.toLowerCase()));
     });
-  }, [canManage, priorityFilter, query, statusFilter, tasks, user?.fullName]);
+  }, [hrRole, priorityFilter, query, statusFilter, tasks, visibleNames]);
 
   const stats = {
-    total: tasks.length,
-    progress: tasks.filter((task) => String(task.status ?? "") === "In Progress").length,
-    critical: tasks.filter((task) => ["High", "Critical"].includes(String(task.priority ?? ""))).length,
-    completed: tasks.filter((task) => String(task.status ?? "") === "Completed").length
+    total: filtered.length,
+    progress: filtered.filter((task) => String(task.status ?? "") === "In Progress").length,
+    critical: filtered.filter((task) => ["High", "Critical"].includes(String(task.priority ?? ""))).length,
+    completed: filtered.filter((task) => String(task.status ?? "") === "Completed").length
   };
 
   function openCreate() {
@@ -265,13 +279,13 @@ export function TasksWorkspace() {
         <div>
           <h1 className="legacy-header__title">Task Management</h1>
           <p className="legacy-header__subtitle">Organize, track, and manage your team&apos;s tasks efficiently.</p>
-          <div className="legacy-role"><Shield className="h-4 w-4" />Role: {user?.roles?.join(", ") || user?.role || "Employee"}</div>
+          <div className="legacy-role"><Shield className="h-4 w-4" />HR Role: {formatHrRoleLabel(hrRole)}</div>
         </div>
         {canManage ? <button type="button" className="legacy-primary-btn" onClick={openCreate}><Plus className="h-4 w-4" />{showForm ? "Edit Task" : "New Task"}</button> : null}
       </div>
 
       <section className="legacy-stats-grid">
-        {[{ label: "Total Tasks", value: stats.total, icon: Target, color: "blue" }, { label: "In Progress", value: stats.progress, icon: Play, color: "amber" }, { label: "High Priority", value: stats.critical, icon: AlertCircle, color: "red" }, { label: "Completed", value: stats.completed, icon: CheckCircle, color: "green" }].map((stat) => (
+        {[{ label: "Visible Tasks", value: stats.total, icon: Target, color: "blue" }, { label: "In Progress", value: stats.progress, icon: Play, color: "amber" }, { label: "High Priority", value: stats.critical, icon: AlertCircle, color: "red" }, { label: "Completed", value: stats.completed, icon: CheckCircle, color: "green" }].map((stat) => (
           <div key={stat.label} className={`legacy-stat-card ${stat.color}`}>
             <div className="legacy-stat-icon"><stat.icon className="h-5 w-5" /></div>
             <div><p className="legacy-stat-value">{stat.value}</p><p className="legacy-stat-title">{stat.label}</p></div>
@@ -345,7 +359,7 @@ export function TasksWorkspace() {
                 <div className="legacy-form-group"><label>Status</label><select value={form.status} onChange={(event) => setForm((current) => ({ ...current, status: event.target.value }))}>{statusOptions.filter((value) => value !== "All").map((value) => <option key={value} value={value}>{value}</option>)}</select></div>
                 <div className="legacy-form-group"><label>Priority</label><select value={form.priority} onChange={(event) => setForm((current) => ({ ...current, priority: event.target.value }))}>{priorityOptions.filter((value) => value !== "All").map((value) => <option key={value} value={value}>{value}</option>)}</select></div>
                 <div className="legacy-form-group legacy-form-group--full"><label>Description</label><textarea value={form.description} onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))} /></div>
-                <div className="legacy-form-group legacy-form-group--full"><label>Assigned To</label><div className="legacy-chip-list">{users.map((option) => { const selected = form.assignees.includes(option.fullName); return <button key={option.id} type="button" className={`legacy-filter-btn ${selected ? "is-active" : ""}`} onClick={() => setForm((current) => ({ ...current, assignees: selected ? current.assignees.filter((name) => name !== option.fullName) : [...current.assignees, option.fullName] }))}>{option.fullName}</button>; })}</div></div>
+                <div className="legacy-form-group legacy-form-group--full"><label>Assigned To</label><div className="legacy-chip-list">{users.filter((option) => hrRole === "admin" || visibleNames.includes(option.fullName) || option.id === user?.id).map((option) => { const selected = form.assignees.includes(option.fullName); return <button key={option.id} type="button" className={`legacy-filter-btn ${selected ? "is-active" : ""}`} onClick={() => setForm((current) => ({ ...current, assignees: selected ? current.assignees.filter((name) => name !== option.fullName) : [...current.assignees, option.fullName] }))}>{option.fullName}</button>; })}</div></div>
               </div>
             </div>
             <div className="legacy-modal-footer"><button type="button" className="legacy-secondary-btn" onClick={() => setShowForm(false)}>Cancel</button><button type="button" className="legacy-primary-btn" onClick={() => void submit()}><Save className="h-4 w-4" />{editingId ? "Save Changes" : "Create Task"}</button></div>
@@ -355,3 +369,5 @@ export function TasksWorkspace() {
     </div>
   );
 }
+
+

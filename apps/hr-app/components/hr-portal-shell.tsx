@@ -17,7 +17,7 @@ import {
   Shield,
   SquareCheckBig
 } from "lucide-react";
-import type { SessionUser, UserRole } from "@vlworkhub/types";
+import type { SessionUser } from "@vlworkhub/types";
 import { platformLinks } from "@vlworkhub/config";
 import { getCurrentUser } from "../lib/hr-client";
 import { NotificationsDropdown } from "./notifications-dropdown";
@@ -26,7 +26,7 @@ type ShellItem = {
   label: string;
   href: Route;
   icon: React.ComponentType<{ className?: string }>;
-  roles?: UserRole[];
+  adminOnly?: boolean;
 };
 
 const navItems: ShellItem[] = [
@@ -36,7 +36,7 @@ const navItems: ShellItem[] = [
   { label: "Training", href: "/training", icon: BookOpen },
   { label: "Surveys", href: "/surveys", icon: ClipboardList },
   { label: "Documents", href: "/documents", icon: FileText },
-  { label: "Admin", href: "/admin", icon: Briefcase, roles: ["Admin", "HR", "IT"] }
+  { label: "Admin", href: "/admin", icon: Briefcase, adminOnly: true }
 ];
 
 const pageTitles: Record<string, string> = {
@@ -73,8 +73,8 @@ export function HrPortalShell({ children }: { children: React.ReactNode }) {
   }, []);
 
   const visibleNav = useMemo(() => {
-    const roles = user?.roles || (user?.role ? [user.role] : []);
-    return navItems.filter((item) => !item.roles || item.roles.some((role) => roles.includes(role)));
+    const platformRole = String(user?.platformRole || user?.role || "USER").toUpperCase();
+    return navItems.filter((item) => !item.adminOnly || platformRole === "SUPER_ADMIN" || platformRole === "ADMIN");
   }, [user]);
 
   const breadcrumb = pageTitles[pathname] || "Dashboard";

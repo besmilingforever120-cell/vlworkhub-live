@@ -40,6 +40,30 @@ export type HrNotificationSummary = {
   items: HrNotification[];
 };
 
+export type HrDashboardSummary = {
+  documents: number;
+  training: number;
+  tasks: number;
+  surveys: number;
+};
+
+export type HrAssignment = {
+  id: number;
+  user_id: string;
+  hr_role: "ADMIN" | "MANAGER" | "EMPLOYEE";
+  manager_id: string | null;
+  created_at?: string;
+  updated_at?: string;
+};
+
+export type HrRoleSummary = {
+  userId: string;
+  role: "admin" | "manager" | "employee";
+  managerId: string | null;
+};
+
+let hrRoleCache: Promise<HrRoleSummary> | null = null;
+
 export class ApiOfflineError extends Error {
   constructor() {
     super(`The HR portal cannot reach the API at ${platformLinks.api}. Start the API server and try again.`);
@@ -86,7 +110,19 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   clearTimeout(timer);
 
   if (!response.ok) {
-    const detail = await response.text().catch(() => "Request failed");
+    let detail = "Request failed";
+    try {
+      const contentType = response.headers.get("content-type") || "";
+      if (contentType.includes("application/json")) {
+        const body = await response.json();
+        detail = String(body.message || body.error || detail);
+      } else {
+        detail = await response.text();
+      }
+    } catch {
+      detail = "Request failed";
+    }
+
     throw new Error(detail || "Request failed");
   }
 
@@ -95,6 +131,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   }
 
   return response.json() as Promise<T>;
+}
+
+export function invalidateHrRoleCache() {
+  hrRoleCache = null;
 }
 
 export async function getCurrentUser() {
@@ -106,8 +146,33 @@ export async function getNotifications() {
   return request<HrNotificationSummary>("/notifications");
 }
 
+export async function getDashboardSummary() {
+  return request<HrDashboardSummary>("/hr/dashboard");
+}
+
+export async function getMyHrRole(forceRefresh = false) {
+  if (forceRefresh || !hrRoleCache) {
+    hrRoleCache = request<HrRoleSummary>("/hr/my-role");
+  }
+  return hrRoleCache;
+}
+
 export async function getPlatformUsers() {
   return request<{ items: Array<{ id: string; name: string; email: string }> }>("/api/users");
+}
+
+export async function getHrAssignments() {
+  return request<{ items: HrAssignment[] }>("/hr/user-roles");
+}
+
+export async function saveHrAssignment(payload: { userId: string; hrRole: "ADMIN" | "MANAGER" | "EMPLOYEE"; managerId: string | null }) {
+  console.log("[HR Admin] POST /hr/user-roles payload", payload);
+  const response = await request<{ success: true; item: HrAssignment }>("/hr/user-roles", {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+  invalidateHrRoleCache();
+  return response;
 }
 
 export async function getResource(resource: HrResourceName) {
@@ -136,7 +201,7 @@ export async function deleteResource(resource: HrResourceName, id: number) {
 }
 
 export async function getSharedUsers() {
-  const [users, session] = await Promise.all([getResource("users"), getCurrentUser()]);
+  const [userData, session] = await Promise.all([getPlatformUsers(), getCurrentUser()]);
   const currentUser: HrUser = {
     id: session.id,
     fullName: session.fullName,
@@ -145,18 +210,12 @@ export async function getSharedUsers() {
     status: "active"
   };
 
-  const mapped = users.map((item) => ({
+  const mapped = (userData.items || []).map((item) => ({
     id: String(item.id ?? ""),
-    fullName:
-      String(item.name ?? "").trim() ||
-      [String(item.first_name ?? "").trim(), String(item.last_name ?? "").trim()].filter(Boolean).join(" ") ||
-      String(item.email ?? "User"),
+    fullName: String(item.name ?? "User").trim() || String(item.email ?? "User"),
     email: String(item.email ?? ""),
-    roles: String(item.role ?? item.roles ?? "Employee")
-      .split(",")
-      .map((value) => value.trim())
-      .filter(Boolean),
-    status: String(item.status ?? "active")
+    roles: session.roles,
+    status: "active"
   }));
 
   const existing = mapped.find((item) => item.email.toLowerCase() === currentUser.email.toLowerCase() || item.id === currentUser.id);

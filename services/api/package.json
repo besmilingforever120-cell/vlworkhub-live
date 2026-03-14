@@ -4,7 +4,7 @@
   "private": true,
   "main": "dist/server.js",
   "scripts": {
-    "dev": "npm run build && node dist/server.js",
+    "dev": "tsx watch src/server.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/server.js"
   },
@@ -27,3 +27,4 @@
     "typescript": "^5.7.2"
   }
 }
+

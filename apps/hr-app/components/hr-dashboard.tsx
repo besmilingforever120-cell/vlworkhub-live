@@ -14,7 +14,7 @@ import {
   SquareCheckBig
 } from "lucide-react";
 import type { SessionUser } from "@vlworkhub/types";
-import { getApiErrorMessage, getCurrentUser, getResource, getSharedUsers, type HrRecord } from "../lib/hr-client";
+import { getCurrentUser, getDashboardSummary, getHrAssignments, getSharedUsers, getResource, type HrDashboardSummary, type HrRecord } from "../lib/hr-client";
 import { HrPortalHeader } from "./hr-portal-header";
 
 type StatCard = {
@@ -29,7 +29,7 @@ type HrAppRole = "admin" | "manager" | "employee";
 
 type HrAccessContext = {
   role: HrAppRole;
-  departmentId: string | null;
+  managerId: string | null;
   visibleNames: string[];
 };
 
@@ -56,28 +56,38 @@ function daysUntil(value: string) {
 
 function resolveAccessContext(user: SessionUser | null, sharedUsers: Array<{ id: string; fullName: string }>, hrRoles: HrRecord[]): HrAccessContext {
   if (!user) {
-    return { role: "employee", departmentId: null, visibleNames: [] };
+    console.log("[HR Dashboard] no session user, using empty access context");
+    return { role: "employee", managerId: null, visibleNames: [] };
+  }
+
+  const platformRole = String(user.platformRole || user.role || "USER").toUpperCase();
+  if (platformRole === "SUPER_ADMIN" || platformRole === "ADMIN") {
+    console.log("[HR Dashboard] platform admin access", { userId: user.id, platformRole, userName: user.fullName });
+    return { role: "admin", managerId: null, visibleNames: sharedUsers.map((item) => item.fullName) };
   }
 
   const currentRole = hrRoles.find((item) => String(item.user_id ?? "") === user.id);
-  const role = String(currentRole?.role ?? "employee").toLowerCase() as HrAppRole;
-  const departmentId = currentRole?.department_id ? String(currentRole.department_id) : null;
+  if (!currentRole) {
+    console.log("[HR Dashboard] no HR role assignment found for current user", { userId: user.id, userName: user.fullName, hrRoleCount: hrRoles.length });
+    return { role: "employee", managerId: null, visibleNames: [user.fullName] };
+  }
+
+  const role = String(currentRole.hr_role ?? currentRole.role ?? "employee").toLowerCase() as HrAppRole;
+  const managerId = currentRole.manager_id ? String(currentRole.manager_id) : null;
   const namesByUserId = new Map(sharedUsers.map((item) => [item.id, item.fullName]));
 
-  if (role === "admin") {
-    return { role, departmentId, visibleNames: sharedUsers.map((item) => item.fullName) };
-  }
-
-  if (role === "manager" && departmentId) {
+  if (role === "manager") {
     const visibleNames = hrRoles
-      .filter((item) => String(item.department_id ?? "") === departmentId)
-      .map((item) => String(item.user_name ?? namesByUserId.get(String(item.user_id ?? "")) ?? ""))
+      .filter((item) => String(item.manager_id ?? "") === user.id)
+      .map((item) => String(namesByUserId.get(String(item.user_id ?? "")) ?? ""))
       .filter(Boolean);
     if (!visibleNames.includes(user.fullName)) visibleNames.unshift(user.fullName);
-    return { role, departmentId, visibleNames };
+    console.log("[HR Dashboard] manager visibility derived from reports_to hierarchy", { userId: user.id, userName: user.fullName, visibleNames });
+    return { role, managerId, visibleNames };
   }
 
-  return { role, departmentId, visibleNames: [user.fullName] };
+  console.log("[HR Dashboard] employee visibility only", { userId: user.id, userName: user.fullName, role, managerId });
+  return { role, managerId, visibleNames: [user.fullName] };
 }
 
 function filterByAssignees(items: HrRecord[], field: string, visibleNames: string[]) {
@@ -100,35 +110,67 @@ export function HrDashboard() {
   const [surveyAssignments, setSurveyAssignments] = useState<HrRecord[]>([]);
   const [documents, setDocuments] = useState<HrRecord[]>([]);
   const [documentSignatures, setDocumentSignatures] = useState<HrRecord[]>([]);
+  const [summary, setSummary] = useState<HrDashboardSummary>({ documents: 0, training: 0, tasks: 0, surveys: 0 });
   const [error, setError] = useState("");
 
   async function load() {
-    try {
-      setError("");
-      const [session, users, roleRows, announcementData, taskData, trainingData, surveyData, documentData, signatureData] = await Promise.all([
-        getCurrentUser(),
-        getSharedUsers(),
-        getResource("hr_user_roles"),
-        getResource("announcements"),
-        getResource("tasks"),
-        getResource("training_assignments"),
-        getResource("survey_assignments"),
-        getResource("documents"),
-        getResource("document_signatures")
-      ]);
+    setError("");
 
-      setUser(session);
-      setSharedUsers(users.map((item) => ({ id: item.id, fullName: item.fullName })));
-      setHrRoles(roleRows);
-      setAnnouncements(announcementData);
-      setTasks(taskData);
-      setTrainingAssignments(trainingData);
-      setSurveyAssignments(surveyData);
-      setDocuments(documentData);
-      setDocumentSignatures(signatureData);
-    } catch (loadError) {
-      setError(getApiErrorMessage(loadError));
+    const summaryResult = await getDashboardSummary()
+      .then((result) => {
+        console.log("[HR Dashboard] GET /hr/dashboard response", result);
+        return result;
+      })
+      .catch((loadError) => {
+        console.error("[HR Dashboard] GET /hr/dashboard failed", loadError);
+        return null;
+      });
+
+    if (!summaryResult) {
+      setError("Unable to load dashboard data.");
+      return;
     }
+
+    setSummary({
+      documents: Number(summaryResult.documents || 0),
+      training: Number(summaryResult.training || 0),
+      tasks: Number(summaryResult.tasks || 0),
+      surveys: Number(summaryResult.surveys || 0)
+    });
+
+    const [sessionResult, usersResult, hrRolesResult, announcementsResult, tasksResult, trainingResult, surveysResult, documentsResult, signaturesResult] = await Promise.allSettled([
+      getCurrentUser(),
+      getSharedUsers(),
+      getHrAssignments(),
+      getResource("announcements"),
+      getResource("tasks"),
+      getResource("training_assignments"),
+      getResource("survey_assignments"),
+      getResource("documents"),
+      getResource("document_signatures")
+    ]);
+
+    if (sessionResult.status === "fulfilled") setUser(sessionResult.value);
+    else console.error("[HR Dashboard] GET /auth/me failed", sessionResult.reason);
+
+    if (usersResult.status === "fulfilled") setSharedUsers(usersResult.value.map((item) => ({ id: item.id, fullName: item.fullName })));
+    else console.error("[HR Dashboard] platform users failed", usersResult.reason);
+
+    if (hrRolesResult.status === "fulfilled") {
+      const items = hrRolesResult.value.items || [];
+      console.log("[HR Dashboard] GET /hr/user-roles success", { count: items.length, empty: items.length === 0 });
+      setHrRoles(items as unknown as HrRecord[]);
+    } else {
+      console.error("[HR Dashboard] GET /hr/user-roles failed", hrRolesResult.reason);
+      setHrRoles([]);
+    }
+
+    if (announcementsResult.status === "fulfilled") setAnnouncements(announcementsResult.value);
+    if (tasksResult.status === "fulfilled") setTasks(tasksResult.value);
+    if (trainingResult.status === "fulfilled") setTrainingAssignments(trainingResult.value);
+    if (surveysResult.status === "fulfilled") setSurveyAssignments(surveysResult.value);
+    if (documentsResult.status === "fulfilled") setDocuments(documentsResult.value);
+    if (signaturesResult.status === "fulfilled") setDocumentSignatures(signaturesResult.value);
   }
 
   useEffect(() => {
@@ -144,10 +186,10 @@ export function HrDashboard() {
   const announcementFeed = useMemo(() => announcements.slice().sort((left, right) => String(right.publish_date || "").localeCompare(String(left.publish_date || ""))).slice(0, 5), [announcements]);
 
   const stats: StatCard[] = [
-    { title: "Documents", value: String(visibleSignatures.length), href: "/documents", color: "green", icon: FileSignature },
-    { title: "Training", value: String(visibleTraining.length), href: "/training", color: "purple", icon: BookOpen },
-    { title: "Tasks", value: String(visibleTasks.length), href: "/tasks", color: "amber", icon: SquareCheckBig },
-    { title: "Surveys", value: String(visibleSurveys.length), href: "/surveys", color: "blue", icon: ClipboardList }
+    { title: "Documents", value: String(summary.documents), href: "/documents", color: "green", icon: FileSignature },
+    { title: "Training", value: String(summary.training), href: "/training", color: "purple", icon: BookOpen },
+    { title: "Tasks", value: String(summary.tasks), href: "/tasks", color: "amber", icon: SquareCheckBig },
+    { title: "Surveys", value: String(summary.surveys), href: "/surveys", color: "blue", icon: ClipboardList }
   ];
 
   return (
@@ -159,7 +201,7 @@ export function HrDashboard() {
         showBreadcrumb={false}
       />
 
-      {error ? <div className="hr-card" style={{ marginBottom: "20px", color: "#b91c1c", borderColor: "#fecaca", background: "#fff1f2" }}>{error}</div> : null}
+      {error ? <div className="hr-card" style={{ marginBottom: "20px", color: "#7f1d1d", borderColor: "#fecaca", background: "#fff1f2" }}>{error}</div> : null}
 
       <section className="hr-dashboard__stats">
         {stats.map((stat) => {

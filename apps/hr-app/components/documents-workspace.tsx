@@ -7,13 +7,16 @@ import {
   createResource,
   getApiErrorMessage,
   getCurrentUser,
+  getHrAssignments,
   getResource,
   getSharedUsers,
+  type HrAssignment,
   type HrRecord,
   type HrUser
 } from "../lib/hr-client";
+import { useHrRole } from "../lib/use-hr-role";
 import { HrPortalHeader } from "./hr-portal-header";
-import { formatDate, isHrManager, splitAssignees } from "../lib/workflow-utils";
+import { canCreateForHrRole, formatDate, formatHrRoleLabel, getVisibleHrUserNames, splitAssignees } from "../lib/workflow-utils";
 
 type DetailTab = "metadata" | "signatures";
 
@@ -63,8 +66,10 @@ function validateDocumentForm(form: DocumentForm, uploadFile: File | null): Vali
 
 export function DocumentsWorkspace() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const { role: hrRole } = useHrRole();
   const [user, setUser] = useState<SessionUser | null>(null);
   const [users, setUsers] = useState<HrUser[]>([]);
+  const [hrAssignments, setHrAssignments] = useState<HrAssignment[]>([]);
   const [documents, setDocuments] = useState<HrRecord[]>([]);
   const [signatures, setSignatures] = useState<HrRecord[]>([]);
   const [query, setQuery] = useState("");
@@ -81,14 +86,16 @@ export function DocumentsWorkspace() {
   async function load() {
     try {
       setError("");
-      const [session, platformUsers, documentData, signatureData] = await Promise.all([
+      const [session, platformUsers, roleRows, documentData, signatureData] = await Promise.all([
         getCurrentUser(),
         getSharedUsers(),
+        getHrAssignments(),
         getResource("documents"),
         getResource("document_signatures")
       ]);
       setUser(session);
       setUsers(platformUsers);
+      setHrAssignments(roleRows.items || []);
       setDocuments(documentData);
       setSignatures(signatureData);
       setSelectedId((current) => current ?? Number(documentData[0]?.id ?? null));
@@ -110,15 +117,26 @@ export function DocumentsWorkspace() {
     window.sessionStorage.setItem(detailStorageKey, detailTab);
   }, [detailTab]);
 
-  const canManage = isHrManager(user);
+  const canManage = canCreateForHrRole(hrRole);
+  const visibleNames = useMemo(
+    () => getVisibleHrUserNames(hrRole, user?.id || "", user?.fullName || "", hrAssignments, users),
+    [hrAssignments, hrRole, user?.fullName, user?.id, users]
+  );
 
   const filteredDocuments = useMemo(() => {
-    return documents.filter((document) =>
+    const scoped = hrRole === "admin"
+      ? documents
+      : documents.filter((document) => {
+          const owners = splitAssignees(document.owner_name);
+          return owners.length === 0 || owners.some((name) => visibleNames.includes(name));
+        });
+
+    return scoped.filter((document) =>
       [document.title, document.category, document.owner_name, document.storage_path, document.department, document.description]
         .map((value) => String(value ?? "").toLowerCase())
         .some((value) => value.includes(query.toLowerCase()))
     );
-  }, [documents, query]);
+  }, [documents, hrRole, query, visibleNames]);
 
   const signatureMap = useMemo(() => {
     return signatures.reduce<Record<string, HrRecord[]>>((acc, item) => {
@@ -133,10 +151,21 @@ export function DocumentsWorkspace() {
     [filteredDocuments, selectedId]
   );
 
+  const visibleSignatures = useMemo(
+    () => signatures.filter((signature) => hrRole === "admin" || visibleNames.includes(String(signature.signer_name ?? ""))),
+    [hrRole, signatures, visibleNames]
+  );
+
+  const canSignSelected = useMemo(() => {
+    if (!selectedDocument) return false;
+    if (hrRole === "admin") return true;
+    return (signatureMap[String(selectedDocument.id)] || []).some((signature) => String(signature.signer_name ?? "") === (user?.fullName || ""));
+  }, [hrRole, selectedDocument, signatureMap, user?.fullName]);
+
   const stats = {
-    documents: documents.length,
-    signatures: signatures.length,
-    pending: signatures.filter((item) => String(item.status ?? "") !== "Signed").length
+    documents: filteredDocuments.length,
+    signatures: visibleSignatures.length,
+    pending: visibleSignatures.filter((item) => String(item.status ?? "") !== "Signed").length
   };
 
   function resetUploadState() {
@@ -187,7 +216,7 @@ export function DocumentsWorkspace() {
   }
 
   async function signSelectedDocument() {
-    if (!selectedDocument) return;
+    if (!selectedDocument || !canSignSelected) return;
     try {
       await createResource("document_signatures", {
         document_id: String(selectedDocument.id),
@@ -216,13 +245,13 @@ export function DocumentsWorkspace() {
         <div>
           <h1 className="legacy-header__title">Documents</h1>
           <p className="legacy-header__subtitle">Publish operational documents, request acknowledgement, and track signature completion.</p>
-          <div className="legacy-role"><Shield className="h-4 w-4" />Role: {user?.roles?.join(", ") || user?.role || "Employee"}</div>
+          <div className="legacy-role"><Shield className="h-4 w-4" />HR Role: {formatHrRoleLabel(hrRole)}</div>
         </div>
         {canManage ? <button type="button" className="legacy-primary-btn" onClick={() => setShowRegisterForm(true)}><Upload className="h-4 w-4" />Upload Document</button> : null}
       </div>
 
       <section className="legacy-stats-grid">
-        {[{ label: "Documents", value: stats.documents, icon: FolderUp, color: "blue" }, { label: "Signature Records", value: stats.signatures, icon: FileSignature, color: "amber" }, { label: "Pending", value: stats.pending, icon: PenSquare, color: "red" }].map((stat) => (
+        {[{ label: "Visible Documents", value: stats.documents, icon: FolderUp, color: "blue" }, { label: "Signature Records", value: stats.signatures, icon: FileSignature, color: "amber" }, { label: "Pending", value: stats.pending, icon: PenSquare, color: "red" }].map((stat) => (
           <div key={stat.label} className={`legacy-stat-card ${stat.color}`}>
             <div className="legacy-stat-icon"><stat.icon className="h-5 w-5" /></div>
             <div><p className="legacy-stat-value">{stat.value}</p><p className="legacy-stat-title">{stat.label}</p></div>
@@ -242,7 +271,7 @@ export function DocumentsWorkspace() {
           <div className="legacy-panel-body">
             <div className="legacy-doc-grid">
               {filteredDocuments.length ? filteredDocuments.map((document) => {
-                const queue = signatureMap[String(document.id)] || [];
+                const queue = (signatureMap[String(document.id)] || []).filter((signature) => hrRole === "admin" || visibleNames.includes(String(signature.signer_name ?? "")));
                 const isSelected = Number(document.id) === Number(selectedDocument?.id);
                 return (
                   <article key={String(document.id)} className={`legacy-doc-card ${isSelected ? "is-selected" : ""}`} onClick={() => setSelectedId(Number(document.id))}>
@@ -288,14 +317,14 @@ export function DocumentsWorkspace() {
                       <h4>Description</h4>
                       <p>{String(selectedDocument.description ?? "No description provided.")}</p>
                     </div>
-                    <div className="legacy-detail-card"><div className="legacy-role"><Shield className="h-4 w-4" />Role: {user?.roles?.join(", ") || user?.role || "Employee"}</div></div>
+                    <div className="legacy-detail-card"><div className="legacy-role"><Shield className="h-4 w-4" />HR Role: {formatHrRoleLabel(hrRole)}</div></div>
                   </div>
                 ) : (
                   <div className="legacy-detail-stack">
                     <div className="legacy-detail-card">
                       <h4>Signature Queue</h4>
                       <div className="legacy-chip-list">
-                        {(signatureMap[String(selectedDocument.id)] || []).map((signature) => (
+                        {(signatureMap[String(selectedDocument.id)] || []).filter((signature) => hrRole === "admin" || visibleNames.includes(String(signature.signer_name ?? ""))).map((signature) => (
                           <span key={String(signature.id)} className={`legacy-chip ${String(signature.status ?? "") === "Signed" ? "complete" : "pending"}`}>{String(signature.signer_name ?? "Signer")}</span>
                         ))}
                         {!(signatureMap[String(selectedDocument.id)] || []).length ? <div className="legacy-card-muted">No signature rows have been created yet.</div> : null}
@@ -303,9 +332,10 @@ export function DocumentsWorkspace() {
                     </div>
                     <div className="legacy-detail-card">
                       <h4>Acknowledge / Sign</h4>
+                      {!canSignSelected ? <p className="legacy-card-muted">You can only sign documents assigned to you.</p> : null}
                       <input value={signatureNote} onChange={(event) => setSignatureNote(event.target.value)} placeholder="Optional signature note" />
                       <div className="legacy-actions-row" style={{ marginTop: 16 }}>
-                        <button type="button" className="legacy-primary-btn" onClick={() => void signSelectedDocument()}><PenSquare className="h-4 w-4" />Sign Document</button>
+                        <button type="button" className="legacy-primary-btn" onClick={() => void signSelectedDocument()} disabled={!canSignSelected}><PenSquare className="h-4 w-4" />Sign Document</button>
                       </div>
                     </div>
                   </div>
