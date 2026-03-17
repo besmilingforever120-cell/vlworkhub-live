@@ -3,9 +3,18 @@
 import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Calendar, CheckCircle, Edit, Info, Megaphone, Plus, Save, Search, Shield, Trash2, X } from "lucide-react";
 import type { SessionUser } from "@vlworkhub/types";
-import { createResource, deleteResource, getApiErrorMessage, getCurrentUser, getResource, updateResource, type HrRecord } from "../lib/hr-client";
+import {
+  createResource,
+  deleteResource,
+  getApiErrorMessage,
+  getCurrentUser,
+  getDepartments,
+  getResource,
+  updateResource,
+  type DepartmentRecord,
+  type HrRecord
+} from "../lib/hr-client";
 import { useHrRole } from "../lib/use-hr-role";
-import { HrPortalHeader } from "./hr-portal-header";
 import { canCreateForHrRole, canEditForHrRole, formatDate, formatHrRoleLabel } from "../lib/workflow-utils";
 
 const priorities = ["All", "Highly Important", "Important", "Normal"] as const;
@@ -34,10 +43,22 @@ function emptyForm(): FormState {
   };
 }
 
+function isExpired(item: HrRecord) {
+  const raw = String(item.end_date ?? "").trim();
+  if (!raw) return false;
+  const endDate = new Date(raw);
+  if (Number.isNaN(endDate.getTime())) return false;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  endDate.setHours(0, 0, 0, 0);
+  return endDate < today;
+}
+
 export function AnnouncementsWorkspace() {
   const { role: hrRole } = useHrRole();
   const [user, setUser] = useState<SessionUser | null>(null);
   const [items, setItems] = useState<HrRecord[]>([]);
+  const [departments, setDepartments] = useState<DepartmentRecord[]>([]);
   const [query, setQuery] = useState("");
   const [priorityFilter, setPriorityFilter] = useState<(typeof priorities)[number]>("All");
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -48,9 +69,10 @@ export function AnnouncementsWorkspace() {
   async function load() {
     try {
       setError("");
-      const [session, announcementData] = await Promise.all([getCurrentUser(), getResource("announcements")]);
+      const [session, announcementData, departmentData] = await Promise.all([getCurrentUser(), getResource("announcements"), getDepartments()]);
       setUser(session);
       setItems(announcementData);
+      setDepartments(departmentData.items || []);
     } catch (loadError) {
       setError(getApiErrorMessage(loadError));
     }
@@ -72,7 +94,7 @@ export function AnnouncementsWorkspace() {
   const stats = {
     total: items.length,
     important: items.filter((item) => String(item.priority ?? "").includes("Important")).length,
-    published: items.filter((item) => String(item.status ?? "") === "Published").length
+    published: items.filter((item) => String(item.status ?? "").toLowerCase() === "published").length
   };
 
   function openCreate() {
@@ -98,10 +120,21 @@ export function AnnouncementsWorkspace() {
 
   async function save() {
     try {
+      const payload = {
+        title: form.title,
+        body: form.body,
+        audience: form.audience,
+        publish_date: form.publish_date || null,
+        start_date: form.start_date || null,
+        end_date: form.end_date || null,
+        priority: form.priority,
+        status: form.status
+      };
+
       if (editingId) {
-        await updateResource("announcements", editingId, form);
+        await updateResource("announcements", editingId, payload);
       } else {
-        await createResource("announcements", form);
+        await createResource("announcements", payload);
       }
       setShowForm(false);
       setEditingId(null);
@@ -123,7 +156,6 @@ export function AnnouncementsWorkspace() {
 
   return (
     <div className="legacy-portal" style={{ maxWidth: 1200 }}>
-      <HrPortalHeader title="Announcements" description="This screen now follows the SharePoint portal feed layout, priority filtering, and modal publishing flow." breadcrumb="Announcements" />
       {error ? <div className="hr-card" style={{ marginBottom: 20, color: "#b91c1c", borderColor: "#fecaca", background: "#fff1f2" }}>{error}</div> : null}
 
       <div className="legacy-header">
@@ -149,6 +181,8 @@ export function AnnouncementsWorkspace() {
       <div className="legacy-grid-cards" style={{ gridTemplateColumns: "1fr" }}>
         {filtered.length ? filtered.map((item) => {
           const priority = String(item.priority ?? "Normal");
+          const expired = isExpired(item);
+          const status = String(item.status ?? "Draft");
           return (
             <article key={String(item.id)} className="legacy-card legacy-card--compact">
               <div className="legacy-card-header">
@@ -156,20 +190,18 @@ export function AnnouncementsWorkspace() {
                   <h3 className="legacy-card-title">{String(item.title ?? "Announcement")}</h3>
                 </div>
                 <div className="legacy-actions-row">
+                  {expired ? <span className="legacy-status overdue">EXPIRED</span> : null}
                   <span className={`legacy-priority ${priority === "Highly Important" ? "high" : priority === "Important" ? "normal" : "low"}`}>{priority === "Highly Important" ? <AlertTriangle className="h-3 w-3" /> : priority === "Important" ? <Info className="h-3 w-3" /> : <CheckCircle className="h-3 w-3" />}{priority}</span>
+                  {canManage ? <span className={`legacy-status ${status.toLowerCase() === "published" ? "completed" : status.toLowerCase() === "draft" ? "default" : "overdue"}`}>{status.toUpperCase()}</span> : null}
                 </div>
               </div>
-              <div className="legacy-card-copy" style={{ marginBottom: 16 }}>{String(item.body ?? "No announcement content provided.")}</div>
-              <div className="legacy-actions-row" style={{ justifyContent: "space-between", borderTop: "1px solid #e5e7eb", paddingTop: 14 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <div style={{ width: 32, height: 32, borderRadius: "50%", background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)", color: "white", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 600 }}>{(user?.fullName || "HR").split(" ").map((part) => part[0]).join("").slice(0, 2)}</div>
-                  <div>
-                    <div style={{ fontSize: 13, fontWeight: 500, color: "#0f172a" }}>{user?.fullName || "HR User"}</div>
-                    <div className="legacy-card-muted"><Calendar className="mr-1 inline h-3 w-3" />Publish: {formatDate(item.publish_date)} · Start: {formatDate(item.start_date)} · End: {formatDate(item.end_date)}</div>
-                  </div>
-                </div>
-                {canManage ? <div className="legacy-actions-row">{canEdit ? <button type="button" className="legacy-icon-btn" onClick={() => openEdit(item)}><Edit className="h-4 w-4" /></button> : null}{canEdit ? <button type="button" className="legacy-icon-btn" onClick={() => void remove(Number(item.id))}><Trash2 className="h-4 w-4" /></button> : null}</div> : null}
+              <div className="legacy-card-copy" style={{ marginBottom: 16 }}>{String(item.body ?? "No announcement content provided.").slice(0, 240)}{String(item.body ?? "").length > 240 ? "..." : ""}</div>
+              <div className="legacy-meta-list">
+                <div className="legacy-meta-item"><strong>Audience:</strong> {String(item.audience ?? "All Staff")}</div>
+                <div className="legacy-meta-item"><Calendar className="h-4 w-4" />Publish: {formatDate(item.publish_date)} · Start: {formatDate(item.start_date)} · End: {formatDate(item.end_date)}</div>
+                <div className="legacy-meta-item"><strong>Author:</strong> {user?.fullName || "HR Team"}</div>
               </div>
+              {canManage ? <div className="legacy-actions-row" style={{ justifyContent: "flex-end", borderTop: "1px solid #e5e7eb", paddingTop: 14 }}><button type="button" className="legacy-icon-btn" onClick={() => openEdit(item)}><Edit className="h-4 w-4" /></button><button type="button" className="legacy-icon-btn" onClick={() => void remove(Number(item.id))}><Trash2 className="h-4 w-4" /></button></div> : null}
             </article>
           );
         }) : <div className="legacy-empty">No announcements match the current search or priority filter.</div>}
@@ -183,11 +215,11 @@ export function AnnouncementsWorkspace() {
               <div className="legacy-form-grid">
                 <div className="legacy-form-group legacy-form-group--full"><label>Title *</label><input value={form.title} onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))} /></div>
                 <div className="legacy-form-group"><label>Priority</label><select value={form.priority} onChange={(event) => setForm((current) => ({ ...current, priority: event.target.value }))}>{["Normal", "Important", "Highly Important"].map((value) => <option key={value} value={value}>{value}</option>)}</select></div>
-                <div className="legacy-form-group"><label>Status</label><select value={form.status} onChange={(event) => setForm((current) => ({ ...current, status: event.target.value }))}>{["Draft", "Published", "Archived"].map((value) => <option key={value} value={value}>{value}</option>)}</select></div>
+                <div className="legacy-form-group"><label>Status</label><select value={form.status} onChange={(event) => setForm((current) => ({ ...current, status: event.target.value }))}>{["Draft", "Published", "Blocked", "Unpublished", "Archived"].map((value) => <option key={value} value={value}>{value}</option>)}</select></div>
                 <div className="legacy-form-group"><label>Publish Date</label><input type="date" value={form.publish_date} onChange={(event) => setForm((current) => ({ ...current, publish_date: event.target.value }))} /></div>
                 <div className="legacy-form-group"><label>Start Date</label><input type="date" value={form.start_date} onChange={(event) => setForm((current) => ({ ...current, start_date: event.target.value }))} /></div>
                 <div className="legacy-form-group"><label>End Date</label><input type="date" value={form.end_date} onChange={(event) => setForm((current) => ({ ...current, end_date: event.target.value }))} /></div>
-                <div className="legacy-form-group legacy-form-group--full"><label>Audience</label><input value={form.audience} onChange={(event) => setForm((current) => ({ ...current, audience: event.target.value }))} /></div>
+                <div className="legacy-form-group legacy-form-group--full"><label>Audience</label><select value={form.audience} onChange={(event) => setForm((current) => ({ ...current, audience: event.target.value }))}><option value="All Staff">All Staff</option>{departments.map((department) => <option key={department.id} value={department.name}>{department.name}</option>)}</select></div>
                 <div className="legacy-form-group legacy-form-group--full"><label>Content</label><textarea value={form.body} onChange={(event) => setForm((current) => ({ ...current, body: event.target.value }))} /></div>
               </div>
             </div>
@@ -198,4 +230,3 @@ export function AnnouncementsWorkspace() {
     </div>
   );
 }
-

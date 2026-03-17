@@ -303,12 +303,13 @@ export function HrDashboard() {
           {announcementFeed.length ? announcementFeed.map((item) => {
             const priority = String(item.priority || "Normal");
             const important = priority.toLowerCase().includes("important");
+            const audience = String(item.audience || "All Staff");
             return (
               <div key={String(item.id)} className="hr-activity-item">
                 <div className="hr-activity-item__icon hr-activity-item__icon--announcement"><Megaphone className="h-4 w-4" /></div>
                 <div className="hr-activity-item__body">
                   <p><strong>{String(item.title || "Announcement")}</strong>{important ? <span className="hr-status-chip is-overdue" style={{ marginLeft: "8px" }}>{priority}</span> : null}</p>
-                  <div className="hr-activity-item__meta">Audience: {String(item.audience || "All staff")} · Publish date: {formatDueDate(String(item.publish_date || ""))}</div>
+                  <div className="hr-activity-item__meta">Audience: {audience} · Publish date: {formatDueDate(String(item.publish_date || ""))}</div>
                   <div className="hr-activity-item__pending">{String(item.body || "No description provided.")}</div>
                 </div>
               </div>

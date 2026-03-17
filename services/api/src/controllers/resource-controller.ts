@@ -9,6 +9,26 @@ import {
   shouldUseDevStore,
   updateDevResource
 } from "../services/dev-store";
+import {
+  canActOnOwn,
+  canManageDefinitions,
+  filterHrResourceRows,
+  getHrPermissionContext,
+  isHrProtectedResource,
+  logHrPermissionFailure
+} from "../lib/hr-permissions";
+
+const tableOrgColumnCache = new Map<string, boolean>();
+
+class ClientInputError extends Error {
+  statusCode: number;
+
+  constructor(message: string, statusCode = 400) {
+    super(message);
+    this.name = "ClientInputError";
+    this.statusCode = statusCode;
+  }
+}
 
 function asParam(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value || "";
@@ -18,11 +38,214 @@ function resolveResource(name: string) {
   return resourceMap[name as ResourceKey];
 }
 
+function normalizeNullable(value: unknown) {
+  const normalized = String(value ?? "").trim();
+  return normalized ? normalized : null;
+}
+
+function normalizeTaskAssignmentPayload(body: Record<string, unknown>) {
+  const assignmentType = String(body.assignment_type ?? "user").toLowerCase();
+  const taskId = Number(body.task_id ?? 0);
+  const userId = normalizeNullable(body.assigned_user_id ?? body.user_id);
+  const departmentName = normalizeNullable(body.assigned_department_name ?? body.department);
+
+  if (assignmentType === "all_staff") {
+    return {
+      taskId,
+      userId: null,
+      department: "All Staff"
+    };
+  }
+
+  if (assignmentType === "department") {
+    return {
+      taskId,
+      userId: null,
+      department: departmentName
+    };
+  }
+
+  return {
+    taskId,
+    userId,
+    department: null
+  };
+}
+
+function normalizeTaskCompletionPayload(body: Record<string, unknown>, sessionUserId: string) {
+  return {
+    taskId: Number(body.task_id ?? 0),
+    userId: normalizeNullable(body.user_id) || sessionUserId,
+    status: normalizeNullable(body.status) || "NOT_STARTED",
+    startedAt: normalizeNullable(body.started_at),
+    completedAt: normalizeNullable(body.completed_on ?? body.completed_at)
+  };
+}
+
+async function ensureTaskExists(taskId: number, organizationId: string) {
+  console.log("Task completion incoming task_id:", taskId);
+  const result = await pool.query(
+    `SELECT id FROM tasks WHERE id = $1 AND organization_id = $2 LIMIT 1`,
+    [taskId, organizationId]
+  );
+  console.log("Task completion task lookup result:", result.rows);
+
+  if (!result.rowCount) {
+    throw new ClientInputError("Selected task was not found", 400);
+  }
+}
+
+async function listTaskAssignmentRows(organizationId: string) {
+  const result = await pool.query(
+    `SELECT
+       ta.id,
+       ta.task_id,
+       CASE
+         WHEN ta.department = 'All Staff' THEN 'all_staff'
+         WHEN ta.department IS NOT NULL AND ta.department <> '' THEN 'department'
+         ELSE 'user'
+       END AS assignment_type,
+       NULLIF(ta.user_id, '') AS assigned_user_id,
+       COALESCE(NULLIF(TRIM(u.first_name || ' ' || u.last_name), ''), NULLIF(ta.user_id, '')) AS assigned_user_name,
+       CASE
+         WHEN ta.department = 'All Staff' THEN NULL
+         ELSE NULLIF(ta.department, '')
+       END AS assigned_department_name,
+       ta.assigned_at
+     FROM task_assignments ta
+     LEFT JOIN users u ON u.id::text = ta.user_id
+     INNER JOIN tasks t ON t.id = ta.task_id
+     WHERE t.organization_id = $1
+     ORDER BY ta.id DESC`,
+    [organizationId]
+  );
+
+  return result.rows as Array<Record<string, string | number | null>>;
+}
+
+async function listTaskCompletionRows(organizationId: string) {
+  const result = await pool.query(
+    `SELECT
+       tc.id,
+       tc.task_id,
+       tc.user_id,
+       COALESCE(NULLIF(TRIM(u.first_name || ' ' || u.last_name), ''), tc.user_id::text) AS user_name,
+       tc.status,
+       tc.started_at,
+       tc.completed_at AS completed_on
+     FROM task_completion tc
+     LEFT JOIN users u ON u.id = tc.user_id
+     INNER JOIN tasks t ON t.id = tc.task_id
+     WHERE t.organization_id = $1
+     ORDER BY tc.id DESC`,
+    [organizationId]
+  );
+
+  return result.rows as Array<Record<string, string | number | null>>;
+}
+
+async function insertTaskAssignment(req: AuthenticatedRequest) {
+  console.log("Task assignment payload:", req.body);
+  const payload = normalizeTaskAssignmentPayload(req.body as Record<string, unknown>);
+  const params = [payload.taskId, payload.userId, payload.department, new Date().toISOString()];
+  console.log("Task assignment SQL params:", params);
+
+  const result = await pool.query(
+    `INSERT INTO task_assignments (task_id, user_id, department, assigned_at)
+     VALUES ($1, $2, $3, $4)
+     RETURNING id`,
+    params
+  );
+
+  return Number(result.rows[0].id);
+}
+
+async function insertTaskCompletion(req: AuthenticatedRequest, organizationId: string) {
+  console.log("Task completion payload:", req.body);
+  const payload = normalizeTaskCompletionPayload(req.body as Record<string, unknown>, String(req.user?.user_id || ""));
+  await ensureTaskExists(payload.taskId, organizationId);
+  const params = [payload.taskId, payload.userId, payload.status, payload.startedAt, payload.completedAt];
+  console.log("Task completion SQL params:", params);
+
+  const result = await pool.query(
+    `INSERT INTO task_completion (task_id, user_id, status, started_at, completed_at)
+     VALUES ($1, $2, $3, $4, $5)
+     RETURNING id`,
+    params
+  );
+
+  return Number(result.rows[0].id);
+}
+
+async function updateTaskAssignment(req: AuthenticatedRequest, recordId: number, organizationId: string) {
+  console.log("Task assignment payload:", req.body);
+  const payload = normalizeTaskAssignmentPayload(req.body as Record<string, unknown>);
+  const params = [payload.taskId, payload.userId, payload.department, recordId, organizationId];
+  console.log("Task assignment SQL params:", params);
+
+  await pool.query(
+    `UPDATE task_assignments ta
+     SET task_id = $1,
+         user_id = $2,
+         department = $3
+     FROM tasks t
+     WHERE ta.id = $4
+       AND t.id = ta.task_id
+       AND t.organization_id = $5`,
+    params
+  );
+}
+
+async function updateTaskCompletion(req: AuthenticatedRequest, recordId: number, organizationId: string) {
+  console.log("Task completion payload:", req.body);
+  const payload = normalizeTaskCompletionPayload(req.body as Record<string, unknown>, String(req.user?.user_id || ""));
+  await ensureTaskExists(payload.taskId, organizationId);
+  const params = [payload.taskId, payload.userId, payload.status, payload.startedAt, payload.completedAt, recordId, organizationId];
+  console.log("Task completion SQL params:", params);
+
+  await pool.query(
+    `UPDATE task_completion tc
+     SET task_id = $1,
+         user_id = $2,
+         status = $3,
+         started_at = $4,
+         completed_at = $5
+     FROM tasks t
+     WHERE tc.id = $6
+       AND t.id = tc.task_id
+       AND t.organization_id = $7`,
+    params
+  );
+}
+
+const isTaskAssignmentResource = (resourceName: string) => resourceName === "task_assignments";
+const isTaskCompletionResource = (resourceName: string) => resourceName === "task_completion";
+
+async function tableHasOrganizationId(tableName: string) {
+  if (tableOrgColumnCache.has(tableName)) {
+    return tableOrgColumnCache.get(tableName) as boolean;
+  }
+
+  const result = await pool.query(
+    `SELECT 1
+     FROM information_schema.columns
+     WHERE table_schema = 'public'
+       AND table_name = $1
+       AND column_name = 'organization_id'
+     LIMIT 1`,
+    [tableName]
+  );
+
+  const hasColumn = Number(result.rowCount || 0) > 0;
+  tableOrgColumnCache.set(tableName, hasColumn);
+  return hasColumn;
+}
+
 async function withFallback<T>(resourceName: string, operation: () => Promise<T>, fallback: () => T) {
   try {
     return await operation();
   } catch (error) {
-    if (shouldUseDevStore()) {
+    if (shouldUseDevStore() && !isHrProtectedResource(resourceName)) {
       console.warn(`Database unavailable for ${resourceName}; using development store.`, error);
       return fallback();
     }
@@ -31,102 +254,443 @@ async function withFallback<T>(resourceName: string, operation: () => Promise<T>
   }
 }
 
-export async function listResources(req: AuthenticatedRequest, res: Response) {
-  const resourceName = asParam(req.params.resource);
-  const resource = resolveResource(resourceName);
-  const organizationId = String(req.user?.organization_id || "");
-
-  if (!resource) {
-    return res.status(404).json({ message: "Unknown resource" });
+async function getContextForResource(req: AuthenticatedRequest, resourceName: string) {
+  if (!isHrProtectedResource(resourceName)) {
+    return null;
   }
 
-  const items = await withFallback(
-    resourceName,
-    async () => {
-      const result = await pool.query(`SELECT * FROM ${resource.table} WHERE organization_id = $1 ORDER BY id DESC LIMIT 100`, [organizationId]);
-      return result.rows as Array<Record<string, string | number | null>>;
-    },
-    () => listDevResource(resourceName as never, organizationId) as Array<Record<string, string | number | null>>
+  return getHrPermissionContext(
+    String(req.user?.user_id || ""),
+    String(req.user?.organization_id || ""),
+    String(req.user?.platform_role || req.user?.role || "USER"),
+    String(req.user?.full_name || "")
   );
+}
 
-  return res.json({ items });
+function isDefinitionResource(resourceName: string) {
+  return ["tasks", "task_assignments", "training", "training_assignments", "surveys", "survey_assignments", "documents", "announcements"].includes(resourceName);
+}
+
+function isOwnActionResource(resourceName: string) {
+  return ["task_completion", "task_user_states", "training_completions", "survey_completions", "document_signatures"].includes(resourceName);
+}
+
+function getActorField(resourceName: string) {
+  switch (resourceName) {
+    case "task_completion":
+      return "user_id";
+    case "task_user_states":
+    case "training_completions":
+    case "survey_completions":
+      return "user_name";
+    case "document_signatures":
+      return "signer_name";
+    default:
+      return null;
+  }
+}
+
+async function selectExistingRecord(table: string, recordId: number, organizationId: string) {
+  if (table === "task_assignments") {
+    const result = await pool.query(
+      `SELECT ta.*
+       FROM task_assignments ta
+       INNER JOIN tasks t ON t.id = ta.task_id
+       WHERE ta.id = $1 AND t.organization_id = $2
+       LIMIT 1`,
+      [recordId, organizationId]
+    );
+    return result.rows[0] || null;
+  }
+
+  if (table === "task_completion") {
+    const result = await pool.query(
+      `SELECT tc.*
+       FROM task_completion tc
+       INNER JOIN tasks t ON t.id = tc.task_id
+       WHERE tc.id = $1 AND t.organization_id = $2
+       LIMIT 1`,
+      [recordId, organizationId]
+    );
+    return result.rows[0] || null;
+  }
+
+  const hasOrgColumn = await tableHasOrganizationId(table);
+  if (hasOrgColumn) {
+    const result = await pool.query(`SELECT * FROM ${table} WHERE id = $1 AND organization_id = $2 LIMIT 1`, [recordId, organizationId]);
+    return result.rows[0] || null;
+  }
+
+  const result = await pool.query(`SELECT * FROM ${table} WHERE id = $1 LIMIT 1`, [recordId]);
+  return result.rows[0] || null;
+}
+
+async function listTableRows(table: string, organizationId: string) {
+  if (table === "task_assignments") {
+    return listTaskAssignmentRows(organizationId);
+  }
+
+  if (table === "task_completion") {
+    return listTaskCompletionRows(organizationId);
+  }
+
+  const hasOrgColumn = await tableHasOrganizationId(table);
+  if (hasOrgColumn) {
+    const result = await pool.query(`SELECT * FROM ${table} WHERE organization_id = $1 ORDER BY id DESC LIMIT 100`, [organizationId]);
+    return result.rows as Array<Record<string, string | number | null>>;
+  }
+
+  const result = await pool.query(`SELECT * FROM ${table} ORDER BY id DESC LIMIT 100`);
+  return result.rows as Array<Record<string, string | number | null>>;
+}
+
+async function insertRow(table: string, fields: readonly string[], values: Array<string | number | null>, organizationId: string) {
+  const hasOrgColumn = await tableHasOrganizationId(table);
+  const insertFields = hasOrgColumn ? ["organization_id", ...fields] : [...fields];
+  const insertValues = hasOrgColumn ? [organizationId, ...values] : values;
+  const placeholders = insertFields.map((_, index) => `$${index + 1}`).join(", ");
+  const result = await pool.query(
+    `INSERT INTO ${table} (${insertFields.join(", ")}) VALUES (${placeholders}) RETURNING id`,
+    insertValues
+  );
+  return Number(result.rows[0].id);
+}
+
+async function updateRow(table: string, fields: readonly string[], values: Array<string | number | null>, recordId: number, organizationId: string) {
+  const assignments = fields.map((field, index) => `${field} = $${index + 1}`).join(", ");
+  const hasOrgColumn = await tableHasOrganizationId(table);
+
+  if (hasOrgColumn) {
+    await pool.query(
+      `UPDATE ${table} SET ${assignments} WHERE id = $${fields.length + 1} AND organization_id = $${fields.length + 2}`,
+      [...values, recordId, organizationId]
+    );
+    return;
+  }
+
+  await pool.query(
+    `UPDATE ${table} SET ${assignments} WHERE id = $${fields.length + 1}`,
+    [...values, recordId]
+  );
+}
+
+async function deleteRow(table: string, recordId: number, organizationId: string) {
+  if (table === "task_assignments") {
+    await pool.query(
+      `DELETE FROM task_assignments ta
+       USING tasks t
+       WHERE ta.id = $1
+         AND t.id = ta.task_id
+         AND t.organization_id = $2`,
+      [recordId, organizationId]
+    );
+    return;
+  }
+
+  if (table === "task_completion") {
+    await pool.query(
+      `DELETE FROM task_completion tc
+       USING tasks t
+       WHERE tc.id = $1
+         AND t.id = tc.task_id
+         AND t.organization_id = $2`,
+      [recordId, organizationId]
+    );
+    return;
+  }
+
+  const hasOrgColumn = await tableHasOrganizationId(table);
+  if (hasOrgColumn) {
+    await pool.query(`DELETE FROM ${table} WHERE id = $1 AND organization_id = $2`, [recordId, organizationId]);
+    return;
+  }
+
+  await pool.query(`DELETE FROM ${table} WHERE id = $1`, [recordId]);
+}
+
+async function enforceCreatePermissions(req: AuthenticatedRequest, res: Response, resourceName: string, organizationId: string) {
+  const context = await getContextForResource(req, resourceName);
+  if (!context) return { ok: true as const, context: null };
+
+  if (isDefinitionResource(resourceName) && !canManageDefinitions(context.role)) {
+    logHrPermissionFailure(context.userId, req.originalUrl, context.role, `create blocked for resource ${resourceName}`);
+    res.status(403).json({ message: "Forbidden" });
+    return { ok: false as const, context };
+  }
+
+  if (isOwnActionResource(resourceName) && !canManageDefinitions(context.role)) {
+    const actorField = getActorField(resourceName);
+    const actorValue = actorField ? String(req.body[actorField] ?? "") : "";
+    const expectedActor = actorField === "user_id" ? context.userId : context.fullName;
+
+    if (!canActOnOwn(context.role) || actorValue !== expectedActor) {
+      logHrPermissionFailure(context.userId, req.originalUrl, context.role, `create blocked for resource ${resourceName} with actor ${actorValue}`);
+      res.status(403).json({ message: "Forbidden" });
+      return { ok: false as const, context };
+    }
+
+    if (resourceName === "document_signatures") {
+      const documentId = Number(req.body.document_id ?? 0);
+      const assignment = await pool.query(
+        `SELECT id
+         FROM document_signatures
+         WHERE organization_id = $1 AND document_id = $2 AND signer_name = $3
+         LIMIT 1`,
+        [organizationId, documentId, context.fullName]
+      );
+
+      if (!assignment.rowCount) {
+        logHrPermissionFailure(context.userId, req.originalUrl, context.role, `document signature not assigned to current user for document ${documentId}`);
+        res.status(403).json({ message: "Forbidden" });
+        return { ok: false as const, context };
+      }
+    }
+  }
+
+  return { ok: true as const, context };
+}
+
+async function enforceUpdateOrDeletePermissions(req: AuthenticatedRequest, res: Response, resourceName: string, organizationId: string, recordId: number) {
+  const context = await getContextForResource(req, resourceName);
+  if (!context) return { ok: true as const, context: null, existing: null as Record<string, string | number | null> | null };
+
+  const resource = resolveResource(resourceName);
+  if (!resource) {
+    res.status(404).json({ message: "Unknown resource" });
+    return { ok: false as const, context, existing: null };
+  }
+
+  const existing = await selectExistingRecord(resource.table, recordId, organizationId) as Record<string, string | number | null> | null;
+
+  if (!existing) {
+    res.status(404).json({ message: "Record not found" });
+    return { ok: false as const, context, existing: null };
+  }
+
+  if (isDefinitionResource(resourceName) && !canManageDefinitions(context.role)) {
+    logHrPermissionFailure(context.userId, req.originalUrl, context.role, `update/delete blocked for resource ${resourceName}`);
+    res.status(403).json({ message: "Forbidden" });
+    return { ok: false as const, context, existing };
+  }
+
+  if (isOwnActionResource(resourceName) && !canManageDefinitions(context.role)) {
+    const actorField = getActorField(resourceName);
+    const existingActor = actorField ? String(existing[actorField] ?? "") : "";
+    const requestActor = actorField ? String(req.body[actorField] ?? existingActor) : "";
+    const expectedActor = actorField === "user_id" ? context.userId : context.fullName;
+
+    if (!canActOnOwn(context.role) || existingActor !== expectedActor || requestActor !== expectedActor) {
+      logHrPermissionFailure(context.userId, req.originalUrl, context.role, `update/delete blocked for resource ${resourceName} with actor ${existingActor}`);
+      res.status(403).json({ message: "Forbidden" });
+      return { ok: false as const, context, existing };
+    }
+  }
+
+  return { ok: true as const, context, existing };
+}
+
+export async function listResources(req: AuthenticatedRequest, res: Response) {
+  try {
+    const resourceName = asParam(req.params.resource);
+    const resource = resolveResource(resourceName);
+    const organizationId = String(req.user?.organization_id || "");
+
+    if (!resource) {
+      return res.status(404).json({ message: "Unknown resource" });
+    }
+
+    const context = await getContextForResource(req, resourceName);
+
+    const items = await withFallback(
+      resourceName,
+      async () => {
+        const rows = await listTableRows(resource.table, organizationId);
+        return context ? filterHrResourceRows(resourceName, rows, context) : rows;
+      },
+      () => {
+        const rows = listDevResource(resourceName as never, organizationId) as Array<Record<string, string | number | null>>;
+        return context ? filterHrResourceRows(resourceName, rows, context) : rows;
+      }
+    );
+
+    return res.json({ items });
+  } catch (error) {
+    if (error instanceof ClientInputError) {
+      return res.status(error.statusCode).json({ error: error.message });
+    }
+    console.error(`Task query failed in GET ${req.originalUrl}`, error);
+    return res.status(500).json({ error: "Task query failed" });
+  }
+}
+
+export async function getResourceById(req: AuthenticatedRequest, res: Response) {
+  try {
+    const resourceName = asParam(req.params.resource);
+    const resource = resolveResource(resourceName);
+    const organizationId = String(req.user?.organization_id || "");
+    const recordId = Number(asParam(req.params.id));
+    if (!resource) {
+      return res.status(404).json({ message: "Unknown resource" });
+    }
+    const context = await getContextForResource(req, resourceName);
+    const item = await withFallback(
+      resourceName,
+      async () => {
+        const row = await selectExistingRecord(resource.table, recordId, organizationId);
+        if (!row) {
+          return null;
+        }
+        if (!context) {
+          return row as Record<string, string | number | null>;
+        }
+        const visibleRows = filterHrResourceRows(resourceName, [row as Record<string, string | number | null>], context);
+        return visibleRows[0] || null;
+      },
+      () => {
+        const rows = listDevResource(resourceName as never, organizationId) as Array<Record<string, string | number | null>>;
+        const row = rows.find((candidate) => Number(candidate.id ?? 0) === recordId) || null;
+        if (!row) {
+          return null;
+        }
+        if (!context) {
+          return row;
+        }
+        const visibleRows = filterHrResourceRows(resourceName, [row], context);
+        return visibleRows[0] || null;
+      }
+    );
+    if (!item) {
+      return res.status(404).json({ message: "Record not found" });
+    }
+    return res.json(item);
+  } catch (error) {
+    if (error instanceof ClientInputError) {
+      return res.status(error.statusCode).json({ error: error.message });
+    }
+    console.error(`Task query failed in GET ${req.originalUrl}`, error);
+    return res.status(500).json({ error: "Task query failed" });
+  }
 }
 
 export async function createResource(req: AuthenticatedRequest, res: Response) {
-  const resourceName = asParam(req.params.resource);
-  const resource = resolveResource(resourceName);
-  const organizationId = String(req.user?.organization_id || "");
+  try {
+    const resourceName = asParam(req.params.resource);
+    const resource = resolveResource(resourceName);
+    const organizationId = String(req.user?.organization_id || "");
 
-  if (!resource) {
-    return res.status(404).json({ message: "Unknown resource" });
+    if (!resource) {
+      return res.status(404).json({ message: "Unknown resource" });
+    }
+
+    const permission = await enforceCreatePermissions(req, res, resourceName, organizationId);
+    if (!permission.ok) {
+      return;
+    }
+
+    const valueMap = Object.fromEntries(resource.fields.map((field) => [field, req.body[field] ?? null]));
+    const values = resource.fields.map((field) => req.body[field] ?? null);
+
+    const id = await withFallback(
+      resourceName,
+      async () => {
+        if (isTaskAssignmentResource(resourceName)) {
+          return insertTaskAssignment(req);
+        }
+        if (isTaskCompletionResource(resourceName)) {
+          return insertTaskCompletion(req, organizationId);
+        }
+        return insertRow(resource.table, resource.fields, values, organizationId);
+      },
+      () => createDevResource(resourceName as never, organizationId, valueMap).id
+    );
+
+    return res.status(201).json({ id });
+  } catch (error) {
+    if (error instanceof ClientInputError) {
+      return res.status(error.statusCode).json({ error: error.message });
+    }
+    console.error(`Task query failed in POST ${req.originalUrl}`, error);
+    return res.status(500).json({ error: "Task query failed" });
   }
-
-  const valueMap = Object.fromEntries(resource.fields.map((field) => [field, req.body[field] ?? null]));
-  const values = resource.fields.map((field) => req.body[field] ?? null);
-  const placeholders = resource.fields.map((_, index) => `$${index + 2}`).join(", ");
-
-  const id = await withFallback(
-    resourceName,
-    async () => {
-      const result = await pool.query(
-        `INSERT INTO ${resource.table} (organization_id, ${resource.fields.join(", ")}) VALUES ($1, ${placeholders}) RETURNING id`,
-        [organizationId, ...values]
-      );
-      return Number(result.rows[0].id);
-    },
-    () => createDevResource(resourceName as never, organizationId, valueMap).id
-  );
-
-  return res.status(201).json({ id });
 }
 
 export async function updateResource(req: AuthenticatedRequest, res: Response) {
-  const resourceName = asParam(req.params.resource);
-  const resource = resolveResource(resourceName);
-  const organizationId = String(req.user?.organization_id || "");
-  const recordId = Number(asParam(req.params.id));
+  try {
+    const resourceName = asParam(req.params.resource);
+    const resource = resolveResource(resourceName);
+    const organizationId = String(req.user?.organization_id || "");
+    const recordId = Number(asParam(req.params.id));
 
-  if (!resource) {
-    return res.status(404).json({ message: "Unknown resource" });
+    if (!resource) {
+      return res.status(404).json({ message: "Unknown resource" });
+    }
+
+    const permission = await enforceUpdateOrDeletePermissions(req, res, resourceName, organizationId, recordId);
+    if (!permission.ok) {
+      return;
+    }
+
+    const valueMap = Object.fromEntries(resource.fields.map((field) => [field, req.body[field] ?? null]));
+    const values = resource.fields.map((field) => req.body[field] ?? null);
+
+    await withFallback(
+      resourceName,
+      async () => {
+        if (isTaskAssignmentResource(resourceName)) {
+          await updateTaskAssignment(req, recordId, organizationId);
+        } else if (isTaskCompletionResource(resourceName)) {
+          await updateTaskCompletion(req, recordId, organizationId);
+        } else {
+          await updateRow(resource.table, resource.fields, values, recordId, organizationId);
+        }
+        return true;
+      },
+      () => Boolean(updateDevResource(resourceName as never, organizationId, recordId, valueMap))
+    );
+
+    return res.json({ success: true });
+  } catch (error) {
+    if (error instanceof ClientInputError) {
+      return res.status(error.statusCode).json({ error: error.message });
+    }
+    console.error(`Task query failed in PUT ${req.originalUrl}`, error);
+    return res.status(500).json({ error: "Task query failed" });
   }
-
-  const valueMap = Object.fromEntries(resource.fields.map((field) => [field, req.body[field] ?? null]));
-  const assignments = resource.fields.map((field, index) => `${field} = $${index + 1}`).join(", ");
-  const values = resource.fields.map((field) => req.body[field] ?? null);
-
-  await withFallback(
-    resourceName,
-    async () => {
-      await pool.query(
-        `UPDATE ${resource.table} SET ${assignments} WHERE id = $${resource.fields.length + 1} AND organization_id = $${resource.fields.length + 2}`,
-        [...values, recordId, organizationId]
-      );
-      return true;
-    },
-    () => Boolean(updateDevResource(resourceName as never, organizationId, recordId, valueMap))
-  );
-
-  return res.json({ success: true });
 }
 
 export async function deleteResource(req: AuthenticatedRequest, res: Response) {
-  const resourceName = asParam(req.params.resource);
-  const resource = resolveResource(resourceName);
-  const organizationId = String(req.user?.organization_id || "");
-  const recordId = Number(asParam(req.params.id));
+  try {
+    const resourceName = asParam(req.params.resource);
+    const resource = resolveResource(resourceName);
+    const organizationId = String(req.user?.organization_id || "");
+    const recordId = Number(asParam(req.params.id));
 
-  if (!resource) {
-    return res.status(404).json({ message: "Unknown resource" });
+    if (!resource) {
+      return res.status(404).json({ message: "Unknown resource" });
+    }
+
+    const permission = await enforceUpdateOrDeletePermissions(req, res, resourceName, organizationId, recordId);
+    if (!permission.ok) {
+      return;
+    }
+
+    await withFallback(
+      resourceName,
+      async () => {
+        await deleteRow(resource.table, recordId, organizationId);
+        return true;
+      },
+      () => deleteDevResource(resourceName as never, organizationId, recordId)
+    );
+
+    return res.json({ success: true });
+  } catch (error) {
+    if (error instanceof ClientInputError) {
+      return res.status(error.statusCode).json({ error: error.message });
+    }
+    console.error(`Task query failed in DELETE ${req.originalUrl}`, error);
+    return res.status(500).json({ error: "Task query failed" });
   }
-
-  await withFallback(
-    resourceName,
-    async () => {
-      await pool.query(`DELETE FROM ${resource.table} WHERE id = $1 AND organization_id = $2`, [recordId, organizationId]);
-      return true;
-    },
-    () => deleteDevResource(resourceName as never, organizationId, recordId)
-  );
-
-  return res.json({ success: true });
 }
+
+

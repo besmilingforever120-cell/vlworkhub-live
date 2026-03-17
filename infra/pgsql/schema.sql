@@ -580,3 +580,83 @@ UPDATE users SET role = 'SUPER_ADMIN' WHERE email = 'admin@vlworkhub.ca';
 UPDATE users SET role = 'USER' WHERE role NOT IN ('SUPER_ADMIN', 'ADMIN', 'USER');
 ALTER TABLE users ALTER COLUMN role SET DEFAULT 'USER';
 
+CREATE INDEX IF NOT EXISTS idx_tasks_assigned_to
+ON tasks (assigned_to);
+
+CREATE INDEX IF NOT EXISTS idx_training_assignments_assignee
+ON training_assignments (assignee_name);
+
+-- The current hr_user_roles schema persists the reporting link in department_id.
+CREATE INDEX IF NOT EXISTS idx_hr_user_roles_manager
+ON hr_user_roles (department_id);
+CREATE TABLE IF NOT EXISTS departments (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  address TEXT,
+  manager_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_departments_manager
+ON departments(manager_id);
+
+CREATE INDEX IF NOT EXISTS idx_departments_org
+ON departments(organization_id);
+
+ALTER TABLE users ADD COLUMN IF NOT EXISTS department_id UUID;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM information_schema.table_constraints
+    WHERE constraint_name = 'fk_users_department'
+      AND table_name = 'users'
+  ) THEN
+    ALTER TABLE users
+    ADD CONSTRAINT fk_users_department
+    FOREIGN KEY (department_id)
+    REFERENCES departments(id)
+    ON DELETE SET NULL;
+  END IF;
+END $$;
+
+
+CREATE TABLE IF NOT EXISTS task_assignments (
+  id BIGSERIAL PRIMARY KEY,
+  organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  task_id BIGINT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  assignment_type TEXT NOT NULL,
+  assigned_user_id UUID,
+  assigned_user_name TEXT,
+  assigned_department_name TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS task_completion (
+  id BIGSERIAL PRIMARY KEY,
+  organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  task_id BIGINT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  user_name TEXT,
+  status TEXT NOT NULL DEFAULT 'NOT_STARTED',
+  started_at TIMESTAMPTZ,
+  completed_on TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_task_assignments_task
+ON task_assignments (task_id);
+
+CREATE INDEX IF NOT EXISTS idx_task_assignments_user
+ON task_assignments (assigned_user_id);
+
+CREATE INDEX IF NOT EXISTS idx_task_assignments_department
+ON task_assignments (assigned_department_name);
+
+CREATE INDEX IF NOT EXISTS idx_task_completion_task
+ON task_completion (task_id);
+
+CREATE INDEX IF NOT EXISTS idx_task_completion_user
+ON task_completion (user_id);

@@ -9,6 +9,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@heroicons/react": "^2.2.0",
     "@vlworkhub/config": "1.0.0",
     "@vlworkhub/types": "1.0.0",
     "@vlworkhub/ui": "1.0.0",

@@ -16,6 +16,14 @@ export const resourceMap = {
     table: "tasks",
     fields: ["title", "assigned_to", "due_date", "status", "priority", "description"]
   },
+  task_assignments: {
+    table: "task_assignments",
+    fields: ["task_id", "assignment_type", "assigned_user_id", "assigned_user_name", "assigned_department_name"]
+  },
+  task_completion: {
+    table: "task_completion",
+    fields: ["task_id", "user_id", "user_name", "status", "started_at", "completed_on"]
+  },
   task_user_states: {
     table: "task_user_states",
     fields: ["task_id", "user_name", "status", "completed_on"]

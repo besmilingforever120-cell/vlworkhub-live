@@ -7,6 +7,8 @@ export type HrResourceName =
   | "users"
   | "announcements"
   | "tasks"
+  | "task_assignments"
+  | "task_completion"
   | "task_user_states"
   | "training"
   | "training_assignments"
@@ -60,6 +62,25 @@ export type HrRoleSummary = {
   userId: string;
   role: "admin" | "manager" | "employee";
   managerId: string | null;
+};
+
+export type PlatformUserRecord = {
+  id: string;
+  name: string;
+  email: string;
+  department_id?: string | null;
+  department_name?: string | null;
+};
+
+export type DepartmentRecord = {
+  id: string;
+  organization_id?: string;
+  name: string;
+  address?: string | null;
+  manager_id?: string | null;
+  manager_name?: string | null;
+  manager_email?: string | null;
+  created_at?: string | null;
 };
 
 let hrRoleCache: Promise<HrRoleSummary> | null = null;
@@ -158,18 +179,41 @@ export async function getMyHrRole(forceRefresh = false) {
 }
 
 export async function getPlatformUsers() {
-  return request<{ items: Array<{ id: string; name: string; email: string }> }>("/api/users");
+  return request<{ items: PlatformUserRecord[] }>("/api/users");
+}
+
+export async function getDepartments() {
+  return request<{ items: DepartmentRecord[] }>("/api/departments");
 }
 
 export async function getHrAssignments() {
-  return request<{ items: HrAssignment[] }>("/hr/user-roles");
+  return request<{ items: HrAssignment[] }>("/api/hr/roles");
 }
 
-export async function saveHrAssignment(payload: { userId: string; hrRole: "ADMIN" | "MANAGER" | "EMPLOYEE"; managerId: string | null }) {
-  console.log("[HR Admin] POST /hr/user-roles payload", payload);
-  const response = await request<{ success: true; item: HrAssignment }>("/hr/user-roles", {
+export async function createHrAssignment(payload: { userId: string; role: "ADMIN" | "MANAGER" | "EMPLOYEE"; managerId: string | null; departmentId?: string | null }) {
+  console.log("[HR Admin] POST /api/hr/roles payload", payload);
+  const response = await request<{ success: true; item: HrAssignment }>("/api/hr/roles", {
     method: "POST",
     body: JSON.stringify(payload)
+  });
+  invalidateHrRoleCache();
+  return response;
+}
+
+export async function updateHrAssignment(userId: string, payload: { role: "ADMIN" | "MANAGER" | "EMPLOYEE"; managerId: string | null; departmentId?: string | null }) {
+  console.log("[HR Admin] PUT /api/hr/roles/:userId payload", { userId, ...payload });
+  const response = await request<{ success: true; item: HrAssignment }>(`/api/hr/roles/${userId}`, {
+    method: "PUT",
+    body: JSON.stringify(payload)
+  });
+  invalidateHrRoleCache();
+  return response;
+}
+
+export async function deleteHrAssignment(userId: string) {
+  console.log("[HR Admin] DELETE /api/hr/roles/:userId", { userId });
+  const response = await request<{ success: true }>(`/api/hr/roles/${userId}`, {
+    method: "DELETE"
   });
   invalidateHrRoleCache();
   return response;
@@ -180,14 +224,14 @@ export async function getResource(resource: HrResourceName) {
   return data.items;
 }
 
-export async function createResource(resource: HrResourceName, payload: Record<string, string>) {
+export async function createResource(resource: HrResourceName, payload: Record<string, string | null>) {
   return request<{ id: number }>(`/resources/${resource}`, {
     method: "POST",
     body: JSON.stringify(payload)
   });
 }
 
-export async function updateResource(resource: HrResourceName, id: number, payload: Record<string, string>) {
+export async function updateResource(resource: HrResourceName, id: number, payload: Record<string, string | null>) {
   return request<{ success: true }>(`/resources/${resource}/${id}`, {
     method: "PUT",
     body: JSON.stringify(payload)

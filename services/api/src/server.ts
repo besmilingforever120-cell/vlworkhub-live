@@ -1,3 +1,4 @@
+import "express-async-errors";
 import "dotenv/config";
 import express from "express";
 import cors from "cors";
@@ -35,7 +36,28 @@ app.use("/notifications", notificationRouter);
 app.use("/api", userRouter);
 app.use("/api/admin", adminUserRouter);
 app.use("/hr", hrRouter);
+app.use("/api/hr", hrRouter);
 app.use("/ursafe", ursafeRouter);
+app.use((err: Error, _req: express.Request, res: express.Response, next: express.NextFunction) => {
+  console.error("API ERROR:", err);
+
+  if (res.headersSent) {
+    return next(err);
+  }
+
+  return res.status(500).json({
+    error: "Internal server error",
+    message: err?.message || "Unexpected error"
+  });
+});
+
+process.on("unhandledRejection", (reason) => {
+  console.error("UNHANDLED PROMISE REJECTION:", reason);
+});
+
+process.on("uncaughtException", (err) => {
+  console.error("UNCAUGHT EXCEPTION:", err);
+});
 
 async function start() {
   try {
