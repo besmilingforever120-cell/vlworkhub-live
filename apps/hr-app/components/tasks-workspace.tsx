@@ -21,6 +21,7 @@ import type { SessionUser } from "@vlworkhub/types";
 import {
   createResource,
   deleteResource,
+  archiveTask,
   getApiErrorMessage,
   getCurrentUser,
   getDepartments,
@@ -309,9 +310,7 @@ export function TasksWorkspace() {
       const assignedDepartments = Array.from(new Set(assignments.filter((assignment) => assignment.assignment_type === "department").map((assignment) => assignment.assigned_department_name).filter(Boolean))) as string[];
       const includesAllStaff = allStaffAssigned;
       const myCompletion = completions.find((completion) => completion.user_id === user?.id);
-      const canStart = hrRole === "admin"
-        ? true
-        : rawDirectAssignment || directlyAssigned || departmentAssigned || allStaffAssigned;
+      const canStart = rawDirectAssignment || directlyAssigned || departmentAssigned || allStaffAssigned;
 
       return {
         task,
@@ -510,6 +509,15 @@ export function TasksWorkspace() {
     }
   }
 
+  async function archive(id: number) {
+    try {
+      await archiveTask(id);
+      await load();
+    } catch (archiveError) {
+      setError(getApiErrorMessage(archiveError));
+    }
+  }
+
   async function remove(id: number) {
     try {
       await deleteResource("tasks", id);
@@ -563,7 +571,7 @@ export function TasksWorkspace() {
                   </div>
                   <div className="legacy-actions-row">
                     {canEdit ? <button type="button" className="legacy-icon-btn" onClick={() => openEdit(item.task)}><Edit className="h-4 w-4" /></button> : null}
-                    {canEdit ? <button type="button" className="legacy-icon-btn" onClick={() => void remove(item.taskId)}><Trash2 className="h-4 w-4" /></button> : null}
+                    {canEdit ? <button type="button" className="legacy-icon-btn" onClick={() => void remove(item.taskId)}><Trash2 className="h-4 w-4" /></button> : null}{canEdit && item.overallStatus === "Completed" ? <button type="button" className="legacy-secondary-btn" onClick={() => void archive(item.taskId)}>Archive</button> : null}
                   </div>
                 </div>
                 <div className="legacy-meta-list">
@@ -637,5 +645,11 @@ export function TasksWorkspace() {
     </div>
   );
 }
+
+
+
+
+
+
 
 

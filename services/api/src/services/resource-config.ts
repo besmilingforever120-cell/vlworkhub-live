@@ -68,3 +68,4 @@ export const resourceMap = {
 } as const;
 
 export type ResourceKey = keyof typeof resourceMap;
+

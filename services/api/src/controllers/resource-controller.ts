@@ -19,6 +19,7 @@ import {
 } from "../lib/hr-permissions";
 
 const tableOrgColumnCache = new Map<string, boolean>();
+let tasksArchivedColumnPromise: Promise<boolean> | null = null;
 
 class ClientInputError extends Error {
   statusCode: number;
@@ -83,12 +84,10 @@ function normalizeTaskCompletionPayload(body: Record<string, unknown>, sessionUs
 }
 
 async function ensureTaskExists(taskId: number, organizationId: string) {
-  console.log("Task completion incoming task_id:", taskId);
   const result = await pool.query(
     `SELECT id FROM tasks WHERE id = $1 AND organization_id = $2 LIMIT 1`,
     [taskId, organizationId]
   );
-  console.log("Task completion task lookup result:", result.rows);
 
   if (!result.rowCount) {
     throw new ClientInputError("Selected task was not found", 400);
@@ -145,10 +144,8 @@ async function listTaskCompletionRows(organizationId: string) {
 }
 
 async function insertTaskAssignment(req: AuthenticatedRequest) {
-  console.log("Task assignment payload:", req.body);
   const payload = normalizeTaskAssignmentPayload(req.body as Record<string, unknown>);
   const params = [payload.taskId, payload.userId, payload.department, new Date().toISOString()];
-  console.log("Task assignment SQL params:", params);
 
   const result = await pool.query(
     `INSERT INTO task_assignments (task_id, user_id, department, assigned_at)
@@ -161,11 +158,9 @@ async function insertTaskAssignment(req: AuthenticatedRequest) {
 }
 
 async function insertTaskCompletion(req: AuthenticatedRequest, organizationId: string) {
-  console.log("Task completion payload:", req.body);
   const payload = normalizeTaskCompletionPayload(req.body as Record<string, unknown>, String(req.user?.user_id || ""));
   await ensureTaskExists(payload.taskId, organizationId);
   const params = [payload.taskId, payload.userId, payload.status, payload.startedAt, payload.completedAt];
-  console.log("Task completion SQL params:", params);
 
   const result = await pool.query(
     `INSERT INTO task_completion (task_id, user_id, status, started_at, completed_at)
@@ -178,10 +173,8 @@ async function insertTaskCompletion(req: AuthenticatedRequest, organizationId: s
 }
 
 async function updateTaskAssignment(req: AuthenticatedRequest, recordId: number, organizationId: string) {
-  console.log("Task assignment payload:", req.body);
   const payload = normalizeTaskAssignmentPayload(req.body as Record<string, unknown>);
   const params = [payload.taskId, payload.userId, payload.department, recordId, organizationId];
-  console.log("Task assignment SQL params:", params);
 
   await pool.query(
     `UPDATE task_assignments ta
@@ -197,11 +190,9 @@ async function updateTaskAssignment(req: AuthenticatedRequest, recordId: number,
 }
 
 async function updateTaskCompletion(req: AuthenticatedRequest, recordId: number, organizationId: string) {
-  console.log("Task completion payload:", req.body);
   const payload = normalizeTaskCompletionPayload(req.body as Record<string, unknown>, String(req.user?.user_id || ""));
   await ensureTaskExists(payload.taskId, organizationId);
   const params = [payload.taskId, payload.userId, payload.status, payload.startedAt, payload.completedAt, recordId, organizationId];
-  console.log("Task completion SQL params:", params);
 
   await pool.query(
     `UPDATE task_completion tc
@@ -220,6 +211,26 @@ async function updateTaskCompletion(req: AuthenticatedRequest, recordId: number,
 
 const isTaskAssignmentResource = (resourceName: string) => resourceName === "task_assignments";
 const isTaskCompletionResource = (resourceName: string) => resourceName === "task_completion";
+
+async function ensureTasksArchivedColumn() {
+  if (tasksArchivedColumnPromise) {
+    return tasksArchivedColumnPromise;
+  }
+  tasksArchivedColumnPromise = (async () => {
+    const existing = await pool.query(`SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'tasks' AND column_name = 'archived' LIMIT 1`);
+    if (existing.rowCount) {
+      return true;
+    }
+    await pool.query(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS archived BOOLEAN DEFAULT false`);
+    return true;
+  })();
+  return tasksArchivedColumnPromise;
+}
+
+async function tasksTableHasArchivedColumn() {
+  const result = await pool.query(`SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'tasks' AND column_name = 'archived' LIMIT 1`);
+  return Number(result.rowCount || 0) > 0;
+}
 
 async function tableHasOrganizationId(tableName: string) {
   if (tableOrgColumnCache.has(tableName)) {
@@ -291,6 +302,14 @@ function getActorField(resourceName: string) {
 }
 
 async function selectExistingRecord(table: string, recordId: number, organizationId: string) {
+  if (table === "tasks") {
+    if (await tasksTableHasArchivedColumn()) {
+      const result = await pool.query(`SELECT * FROM tasks WHERE id = $1 AND organization_id = $2 AND COALESCE(archived, false) = false LIMIT 1`, [recordId, organizationId]);
+      return result.rows[0] || null;
+    }
+    const result = await pool.query(`SELECT * FROM tasks WHERE id = $1 AND organization_id = $2 LIMIT 1`, [recordId, organizationId]);
+    return result.rows[0] || null;
+  }
   if (table === "task_assignments") {
     const result = await pool.query(
       `SELECT ta.*
@@ -326,6 +345,14 @@ async function selectExistingRecord(table: string, recordId: number, organizatio
 }
 
 async function listTableRows(table: string, organizationId: string) {
+  if (table === "tasks") {
+    if (await tasksTableHasArchivedColumn()) {
+      const result = await pool.query(`SELECT * FROM tasks WHERE organization_id = $1 AND COALESCE(archived, false) = false ORDER BY id DESC LIMIT 100`, [organizationId]);
+      return result.rows as Array<Record<string, string | number | null>>;
+    }
+    const result = await pool.query(`SELECT * FROM tasks WHERE organization_id = $1 ORDER BY id DESC LIMIT 100`, [organizationId]);
+    return result.rows as Array<Record<string, string | number | null>>;
+  }
   if (table === "task_assignments") {
     return listTaskAssignmentRows(organizationId);
   }
@@ -572,6 +599,39 @@ export async function getResourceById(req: AuthenticatedRequest, res: Response) 
   }
 }
 
+export async function archiveTask(req: AuthenticatedRequest, res: Response) {
+  try {
+    const organizationId = String(req.user?.organization_id || "");
+    const recordId = Number(asParam(req.params.id));
+    const context = await getContextForResource(req, "tasks");
+
+    if (context && !canManageDefinitions(context.role)) {
+      logHrPermissionFailure(context.userId, req.originalUrl, context.role, "archive blocked for task");
+      return res.status(403).json({ message: "Forbidden" });
+    }
+
+    await ensureTasksArchivedColumn();
+
+    const existing = await pool.query(
+      "SELECT id, status FROM tasks WHERE id = $1 AND organization_id = $2 AND COALESCE(archived, false) = false LIMIT 1",
+      [recordId, organizationId]
+    );
+
+    if (!existing.rowCount) {
+      return res.status(404).json({ message: "Record not found" });
+    }
+
+    await pool.query(
+      "UPDATE tasks SET archived = true WHERE id = $1 AND organization_id = $2",
+      [recordId, organizationId]
+    );
+
+    return res.json({ success: true });
+  } catch (error) {
+    console.error(`Task archive failed in POST ${req.originalUrl}`, error);
+    return res.status(500).json({ error: "Task archive failed" });
+  }
+}
 export async function createResource(req: AuthenticatedRequest, res: Response) {
   try {
     const resourceName = asParam(req.params.resource);
@@ -692,5 +752,14 @@ export async function deleteResource(req: AuthenticatedRequest, res: Response) {
     return res.status(500).json({ error: "Task query failed" });
   }
 }
+
+
+
+
+
+
+
+
+
 
 

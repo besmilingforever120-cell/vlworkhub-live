@@ -660,3 +660,50 @@ ON task_completion (task_id);
 
 CREATE INDEX IF NOT EXISTS idx_task_completion_user
 ON task_completion (user_id);
+
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS archived BOOLEAN DEFAULT false;
+
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS file_url TEXT;
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS category_other TEXT;
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS department_id UUID REFERENCES departments(id) ON DELETE SET NULL;
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS sensitive BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS created_by UUID REFERENCES users(id) ON DELETE SET NULL;
+
+CREATE TABLE IF NOT EXISTS document_assignments (
+  id BIGSERIAL PRIMARY KEY,
+  organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  document_id BIGINT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+  user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+  department_id UUID REFERENCES departments(id) ON DELETE CASCADE,
+  all_staff BOOLEAN NOT NULL DEFAULT false,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE document_assignments ADD COLUMN IF NOT EXISTS department_id UUID REFERENCES departments(id) ON DELETE CASCADE;
+ALTER TABLE document_assignments ADD COLUMN IF NOT EXISTS all_staff BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE document_assignments ALTER COLUMN user_id DROP NOT NULL;
+ALTER TABLE document_signatures ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_document_assignments_user_unique
+ON document_assignments(document_id, user_id)
+WHERE user_id IS NOT NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_document_assignments_department_unique
+ON document_assignments(document_id, department_id)
+WHERE department_id IS NOT NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_document_assignments_all_staff_unique
+ON document_assignments(document_id)
+WHERE all_staff = true;
+
+CREATE INDEX IF NOT EXISTS idx_document_assignments_document
+ON document_assignments(document_id);
+
+CREATE INDEX IF NOT EXISTS idx_document_assignments_user
+ON document_assignments(user_id);
+
+CREATE INDEX IF NOT EXISTS idx_document_assignments_department
+ON document_assignments(department_id);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_document_signatures_unique
+ON document_signatures(document_id, user_id);

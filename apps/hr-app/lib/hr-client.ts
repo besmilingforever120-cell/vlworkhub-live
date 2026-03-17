@@ -265,3 +265,91 @@ export async function getSharedUsers() {
   const existing = mapped.find((item) => item.email.toLowerCase() === currentUser.email.toLowerCase() || item.id === currentUser.id);
   return existing ? mapped : [currentUser, ...mapped];
 }
+
+
+
+export async function archiveTask(id: number) {  return request<{ success: true }>(`/resources/tasks/${id}/archive`, {
+    method: "POST"
+  });
+}
+
+
+
+
+
+
+
+export type HrDocumentRecord = {
+  id: number;
+  file_name: string;
+  file_url: string | null;
+  category: string;
+  category_other: string | null;
+  department_id: string | null;
+  department_name: string | null;
+  description: string | null;
+  due_date: string | null;
+  requires_signature: boolean;
+  status: string | null;
+  sensitive: boolean;
+  assigned_user_ids: string[];
+  assigned_user_names: string[];
+  direct_user_ids: string[];
+  direct_user_names: string[];
+  assigned_department_ids: string[];
+  assigned_department_names: string[];
+  all_staff: boolean;
+  signed_user_ids: string[];
+  signed_user_names: string[];
+  is_completed: boolean;
+  can_sign: boolean;
+  can_complete: boolean;
+  can_view_actions: boolean;
+};
+
+export async function getHrDocuments() {
+  return request<{ items: HrDocumentRecord[] }>("/hr/documents");
+}
+
+export async function createHrDocument(payload: {
+  title?: string;
+  fileName: string;
+  fileUrl?: string | null;
+  category: string;
+  categoryOther?: string | null;
+  departmentId?: string | null;
+  description?: string | null;
+  dueDate?: string | null;
+  requiresSignature: boolean;
+  status: string;
+  sensitive: boolean;
+  userIds?: string[];
+  departmentIds?: string[];
+  allStaff?: boolean;
+}) {
+  return request<{ id: number }>("/hr/documents", {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function signHrDocument(id: number) {
+  return request<{ success: true }>(`/hr/documents/${id}/sign`, {
+    method: "POST"
+  });
+}
+
+export async function completeHrDocument(id: number) {
+  return request<{ success: true }>(`/hr/documents/${id}/complete`, {
+    method: "POST"
+  });
+}
+
+
+
+
+
+export async function getUsers() {
+  return getPlatformUsers();
+}
+
