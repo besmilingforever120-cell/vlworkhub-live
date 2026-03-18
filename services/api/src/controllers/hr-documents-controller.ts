@@ -1,4 +1,6 @@
 import type { Response } from "express";
+import fs from "node:fs/promises";
+import path from "node:path";
 import { pool } from "../config/db";
 import type { AuthenticatedRequest } from "../middleware/auth";
 import { getHrPermissionContext } from "../lib/hr-permissions";
@@ -11,6 +13,7 @@ type CreateDocumentBody = {
   title?: string;
   fileName?: string;
   fileUrl?: string | null;
+  fileData?: string | null;
   category?: string;
   categoryOther?: string | null;
   departmentId?: string | null;
@@ -79,6 +82,90 @@ function dedupeUsers(values: OrganizationUser[]) {
 
 function getSharePointFileUrl(fileName: string) {
   return `https://sharepoint.vlworkhub.local/sites/hr/Shared%20Documents/${encodeURIComponent(fileName)}`;
+}
+
+function getUploadsRoot() {
+  return path.resolve(__dirname, "../../uploads");
+}
+
+function getSignedUploadsRoot() {
+  return path.join(getUploadsRoot(), "signed");
+}
+
+function getOriginalUploadsRoot() {
+  return path.join(getUploadsRoot(), "original");
+}
+
+function getLocalUploadsBaseUrl() {
+  return "http://localhost:8080/uploads";
+}
+
+function parseDataUrl(dataUrl: string) {
+  const match = /^data:([^;]+);base64,(.+)$/i.exec(String(dataUrl || ""));
+  if (!match) {
+    return null;
+  }
+
+  return {
+    mimeType: match[1],
+    buffer: Buffer.from(match[2], "base64")
+  };
+}
+
+function getFileExtension(fileName: string, mimeType: string) {
+  const normalized = String(fileName || "").trim();
+  const fromName = normalized.includes(".") ? normalized.slice(normalized.lastIndexOf(".")).toLowerCase() : "";
+  if (fromName) return fromName;
+  if (mimeType === "application/pdf") return ".pdf";
+  return ".bin";
+}
+
+async function saveOriginalFileLocally(documentId: number, fileName: string, fileData: string | null) {
+  const parsed = fileData ? parseDataUrl(fileData) : null;
+  if (!parsed) {
+    return null;
+  }
+
+  const uploadsRoot = getOriginalUploadsRoot();
+  await fs.mkdir(uploadsRoot, { recursive: true });
+
+  const timestamp = Date.now();
+  const extension = getFileExtension(fileName, parsed.mimeType);
+  const storedFileName = `original-${documentId}-${timestamp}${extension}`;
+  const filePath = path.join(uploadsRoot, storedFileName);
+  await fs.writeFile(filePath, parsed.buffer);
+
+  return `${getLocalUploadsBaseUrl()}/original/${storedFileName}`;
+}
+
+async function saveSignedPdfLocally(documentId: number, signedFileUrl: string | null) {
+  const parsed = signedFileUrl ? parseDataUrl(signedFileUrl) : null;
+  if (!parsed) {
+    return null;
+  }
+
+  const uploadsRoot = getSignedUploadsRoot();
+  await fs.mkdir(uploadsRoot, { recursive: true });
+
+  const timestamp = Date.now();
+  const fileName = `signed-${documentId}-${timestamp}.pdf`;
+  const filePath = path.join(uploadsRoot, fileName);
+  await fs.writeFile(filePath, parsed.buffer);
+
+  return `${getLocalUploadsBaseUrl()}/signed/${fileName}`;
+}
+
+function resolveStoredFileUrl(fileName: string, incomingFileUrl: string | null) {
+  if (incomingFileUrl) {
+    return incomingFileUrl;
+  }
+
+  const sharePointConfigured = Boolean(process.env.SHAREPOINT_BASE_URL || process.env.SHAREPOINT_SITE_URL);
+  if (sharePointConfigured) {
+    return getSharePointFileUrl(fileName);
+  }
+
+  return null;
 }
 
 async function ensureDocumentsSchema() {
@@ -431,7 +518,7 @@ export async function createHrDocument(req: AuthenticatedRequest, res: Response)
     }
 
     const categoryOther = category === "Other" ? asNullableString(body.categoryOther) : null;
-    const fileUrl = asNullableString(body.fileUrl) || getSharePointFileUrl(fileName);
+    const requestedFileUrl = resolveStoredFileUrl(fileName, asNullableString(body.fileUrl));
     const dueDate = asNullableString(body.dueDate);
     const description = asNullableString(body.description);
     const departmentId = asNullableString(body.departmentId);
@@ -457,10 +544,18 @@ export async function createHrDocument(req: AuthenticatedRequest, res: Response)
        )
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
        RETURNING id`,
-      [organizationId, fileName, fileName, fileUrl, category, categoryOther, departmentId, description, dueDate, requiresSignature, status, sensitive, context.userId]
+      [organizationId, fileName, fileName, requestedFileUrl, category, categoryOther, departmentId, description, dueDate, requiresSignature, status, sensitive, context.userId]
     );
 
     const documentId = Number(created.rows[0].id);
+    const localOriginalFileUrl = await saveOriginalFileLocally(documentId, fileName, asNullableString(body.fileData));
+    const finalFileUrl = localOriginalFileUrl || requestedFileUrl;
+    if (!finalFileUrl) {
+      await pool.query(`DELETE FROM documents WHERE organization_id = $1 AND id = $2`, [organizationId, documentId]);
+      return res.status(400).json({ message: "fileData is required when SharePoint is not configured" });
+    }
+
+    await pool.query(`UPDATE documents SET file_url = $3 WHERE organization_id = $1 AND id = $2`, [organizationId, documentId, finalFileUrl]);
     await replaceDocumentAssignments(organizationId, documentId, userIds, departmentIds, allStaff);
 
     return res.status(201).json({ id: documentId });
@@ -495,7 +590,7 @@ async function updateDocumentRecord(documentId: number, organizationId: string, 
   }
 
   const categoryOther = category === "Other" ? asNullableString(body.categoryOther) : null;
-  const fileUrl = asNullableString(body.fileUrl) || getSharePointFileUrl(fileName);
+  const requestedFileUrl = resolveStoredFileUrl(fileName, asNullableString(body.fileUrl));
   const dueDate = asNullableString(body.dueDate);
   const description = asNullableString(body.description);
   const departmentId = asNullableString(body.departmentId);
@@ -503,11 +598,14 @@ async function updateDocumentRecord(documentId: number, organizationId: string, 
   const sensitive = asBoolean(body.sensitive, false);
   const status = asNullableString(body.status) || (requiresSignature ? "Pending Signature" : "In Progress");
 
+  const localOriginalFileUrl = await saveOriginalFileLocally(documentId, fileName, asNullableString(body.fileData));
+  const fileUrl = localOriginalFileUrl || requestedFileUrl;
+
   await pool.query(
     `UPDATE documents
      SET title = $3,
          file_name = $4,
-         file_url = $5,
+         file_url = COALESCE($5, file_url),
          category = $6,
          category_other = $7,
          department_id = $8,
@@ -655,9 +753,15 @@ export async function signHrDocument(req: AuthenticatedRequest, res: Response) {
       return res.status(403).json({ message: "Only assigned users can sign this document" });
     }
 
+    const localSignedFileUrl = await saveSignedPdfLocally(documentId, asNullableString(body.signedFileUrl));
+
     const signatureNote = JSON.stringify({
-      initials: asNullableString(body.initials),
-      signatureData: asNullableString(body.signatureData)
+      signatureData: asNullableString(body.signatureData),
+      signatureId: asNullableString(body.signatureId),
+      signedAt: asNullableString(body.signedAt),
+      signedBy: asNullableString(body.signedBy),
+      assignedBy: asNullableString(body.assignedBy),
+      fileUrl: localSignedFileUrl
     });
 
     await pool.query(
@@ -675,9 +779,10 @@ export async function signHrDocument(req: AuthenticatedRequest, res: Response) {
 
     await pool.query(
       `UPDATE documents
-       SET status = $3
+       SET status = $3,
+           file_url = COALESCE($4, file_url)
        WHERE id = $1 AND organization_id = $2`,
-      [documentId, organizationId, completed ? "Signed" : "In Progress", asNullableString(body.signedFileUrl)]
+      [documentId, organizationId, completed ? "Signed" : "In Progress", localSignedFileUrl]
     );
 
     return res.json({ success: true });

@@ -109,6 +109,15 @@ function assignmentSummary(document: DocumentViewerRecord) {
   return tokens.length ? tokens.join(", ") : "-";
 }
 
+function readFileAsDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("Failed to read file"));
+    reader.readAsDataURL(file);
+  });
+}
+
 export function DocumentsWorkspace() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const router = useRouter();
@@ -337,6 +346,7 @@ export function DocumentsWorkspace() {
 
     const payload = {
       fileName: selectedFile?.name || editingDocument?.file_name || "",
+      fileData: selectedFile ? await readFileAsDataUrl(selectedFile) : null,
       category: form.category,
       categoryOther: form.category === "Other" ? form.categoryOther.trim() : null,
       description: form.description.trim() || null,

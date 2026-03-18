@@ -1,6 +1,7 @@
 import "express-async-errors";
 import "dotenv/config";
 import express from "express";
+import path from "node:path";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import { env } from "./config/env";
@@ -28,6 +29,7 @@ app.use(
 );
 app.use(express.json());
 app.use(cookieParser());
+app.use("/uploads", express.static(path.resolve(__dirname, "../uploads")));
 
 app.get("/health", (_, res) => res.json({ status: "ok" }));
 app.use("/auth", authRouter);

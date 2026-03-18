@@ -318,6 +318,7 @@ export async function createHrDocument(payload: {
   title?: string;
   fileName: string;
   fileUrl?: string | null;
+  fileData?: string | null;
   category: string;
   categoryOther?: string | null;
   departmentId?: string | null;
@@ -355,6 +356,7 @@ export async function updateHrDocument(id: number, payload: {
   userIds?: string[];
   departmentIds?: string[];
   allStaff?: boolean;
+  fileData?: string | null;
 }) {
   return request<{ success: true }>(`/hr/documents/${id}`, {
     method: "PUT",
@@ -387,6 +389,7 @@ export async function completeHrDocument(id: number) {
 export async function getUsers() {
   return getPlatformUsers();
 }
+
 
 
 
