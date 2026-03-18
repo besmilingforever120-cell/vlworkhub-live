@@ -1898,3 +1898,8 @@ textarea {
     align-items: stretch;
   }
 }
+
+.legacy-status.archived {
+  background: #e2e8f0;
+  color: #475569;
+}

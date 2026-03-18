@@ -6,6 +6,8 @@ import { getHrPermissionContext } from "../lib/hr-permissions";
 type DocumentRecord = Record<string, string | number | boolean | string[] | null>;
 
 type CreateDocumentBody = {
+  initials?: string | null;
+  signatureData?: string | null;
   title?: string;
   fileName?: string;
   fileUrl?: string | null;
@@ -22,6 +24,11 @@ type CreateDocumentBody = {
   departmentIds?: string[];
   assignedDepartmentIds?: string[];
   allStaff?: boolean;
+  signatureId?: string | null;
+  signedAt?: string | null;
+  signedBy?: string | null;
+  assignedBy?: string | null;
+  signedFileUrl?: string | null;
 };
 
 type OrganizationUser = {
@@ -275,12 +282,6 @@ function isDocumentCompleted(row: DocumentRecord, effectiveAssigneeIds: string[]
 
 function canViewDocument(row: DocumentRecord, context: Awaited<ReturnType<typeof getHrPermissionContext>>, organizationUsers: OrganizationUser[]) {
   const assignment = resolveEffectiveAssignees(row, organizationUsers);
-  const sensitive = Boolean(row.sensitive);
-  const directlyAssigned = assignment.directUserIds.includes(context.userId);
-
-  if (sensitive) {
-    return directlyAssigned;
-  }
 
   if (context.role === "admin") {
     return assignment.effectiveUserIds.length > 0 || assignment.allStaff;
@@ -292,14 +293,18 @@ function canViewDocument(row: DocumentRecord, context: Awaited<ReturnType<typeof
 function canCurrentUserSign(row: DocumentRecord, context: Awaited<ReturnType<typeof getHrPermissionContext>>, organizationUsers: OrganizationUser[]) {
   const assignment = resolveEffectiveAssignees(row, organizationUsers);
   const signedUserIds = Array.isArray(row.signed_user_ids) ? row.signed_user_ids.map((value) => String(value)) : [];
+  
   if (Boolean(row.sensitive)) {
-    return assignment.directUserIds.includes(context.userId) && !signedUserIds.includes(context.userId);
+    return assignment.effectiveUserIds.includes(context.userId) && !signedUserIds.includes(context.userId);
   }
   return assignment.effectiveUserIds.includes(context.userId) && !signedUserIds.includes(context.userId);
 }
 
 function canCurrentUserOpenSignaturePanel(row: DocumentRecord, context: Awaited<ReturnType<typeof getHrPermissionContext>>, organizationUsers: OrganizationUser[]) {
   const assignment = resolveEffectiveAssignees(row, organizationUsers);
+  if (context.role === "admin") {
+    return true;
+  }
   if (Boolean(row.sensitive)) {
     return assignment.directUserIds.includes(context.userId);
   }
@@ -465,6 +470,147 @@ export async function createHrDocument(req: AuthenticatedRequest, res: Response)
   }
 }
 
+async function updateDocumentRecord(documentId: number, organizationId: string, body: CreateDocumentBody) {
+  const fileName = asString(body.fileName || body.title);
+  const category = asString(body.category);
+  const userIds = dedupeStrings(normalizeIds(body.userIds ?? body.assignedUserIds));
+  const departmentIds = dedupeStrings(normalizeIds(body.departmentIds ?? body.assignedDepartmentIds));
+  const allStaff = asBoolean(body.allStaff, false);
+
+  if (!fileName) {
+    return { ok: false as const, message: "fileName is required" };
+  }
+
+  if (!userIds.length && !departmentIds.length && !allStaff) {
+    return { ok: false as const, message: "At least one assignment target is required" };
+  }
+
+  if (asBoolean(body.sensitive, false) && !userIds.length) {
+    return { ok: false as const, message: "Sensitive documents must be assigned directly to at least one user" };
+  }
+
+  const validation = await validateAssignments(organizationId, userIds, departmentIds);
+  if (!validation.ok) {
+    return { ok: false as const, message: validation.message };
+  }
+
+  const categoryOther = category === "Other" ? asNullableString(body.categoryOther) : null;
+  const fileUrl = asNullableString(body.fileUrl) || getSharePointFileUrl(fileName);
+  const dueDate = asNullableString(body.dueDate);
+  const description = asNullableString(body.description);
+  const departmentId = asNullableString(body.departmentId);
+  const requiresSignature = asBoolean(body.requiresSignature, true);
+  const sensitive = asBoolean(body.sensitive, false);
+  const status = asNullableString(body.status) || (requiresSignature ? "Pending Signature" : "In Progress");
+
+  await pool.query(
+    `UPDATE documents
+     SET title = $3,
+         file_name = $4,
+         file_url = $5,
+         category = $6,
+         category_other = $7,
+         department_id = $8,
+         description = $9,
+         due_date = $10,
+         requires_signature = $11,
+         status = $12,
+         sensitive = $13
+     WHERE id = $1 AND organization_id = $2`,
+    [documentId, organizationId, fileName, fileName, fileUrl, category, categoryOther, departmentId, description, dueDate, requiresSignature, status, sensitive]
+  );
+
+  await replaceDocumentAssignments(organizationId, documentId, userIds, departmentIds, allStaff);
+  return { ok: true as const };
+}
+
+export async function updateHrDocument(req: AuthenticatedRequest, res: Response) {
+  try {
+    await ensureDocumentsSchema();
+    const organizationId = String(req.user?.organization_id || "");
+    const context = await getHrPermissionContext(
+      String(req.user?.user_id || ""),
+      organizationId,
+      String(req.user?.platform_role || req.user?.role || "USER"),
+      String(req.user?.full_name || "")
+    );
+
+    if (context.role !== "admin") {
+      return res.status(403).json({ message: "Forbidden" });
+    }
+
+    const documentId = Number(req.params.id || 0);
+    const existing = await getDocumentById(documentId, organizationId);
+    if (!existing) {
+      return res.status(404).json({ message: "Document not found" });
+    }
+
+    const result = await updateDocumentRecord(documentId, organizationId, (req.body || {}) as CreateDocumentBody);
+    if (!result.ok) {
+      return res.status(400).json({ message: result.message });
+    }
+
+    return res.json({ success: true });
+  } catch (error) {
+    console.error("API error in PUT /hr/documents/:id", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+}
+
+export async function archiveHrDocument(req: AuthenticatedRequest, res: Response) {
+  try {
+    await ensureDocumentsSchema();
+    const organizationId = String(req.user?.organization_id || "");
+    const context = await getHrPermissionContext(
+      String(req.user?.user_id || ""),
+      organizationId,
+      String(req.user?.platform_role || req.user?.role || "USER"),
+      String(req.user?.full_name || "")
+    );
+
+    if (context.role !== "admin") {
+      return res.status(403).json({ message: "Forbidden" });
+    }
+
+    const documentId = Number(req.params.id || 0);
+    const existing = await getDocumentById(documentId, organizationId);
+    if (!existing) {
+      return res.status(404).json({ message: "Document not found" });
+    }
+
+    await pool.query(`UPDATE documents SET status = 'Archived' WHERE id = $1 AND organization_id = $2`, [documentId, organizationId]);
+    return res.json({ success: true });
+  } catch (error) {
+    console.error("API error in POST /hr/documents/:id/archive", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+}
+
+export async function deleteHrDocument(req: AuthenticatedRequest, res: Response) {
+  try {
+    await ensureDocumentsSchema();
+    const organizationId = String(req.user?.organization_id || "");
+    const context = await getHrPermissionContext(
+      String(req.user?.user_id || ""),
+      organizationId,
+      String(req.user?.platform_role || req.user?.role || "USER"),
+      String(req.user?.full_name || "")
+    );
+
+    if (context.role !== "admin") {
+      return res.status(403).json({ message: "Forbidden" });
+    }
+
+    const documentId = Number(req.params.id || 0);
+    await pool.query(`DELETE FROM document_assignments WHERE organization_id = $1 AND document_id = $2`, [organizationId, documentId]);
+    await pool.query(`DELETE FROM document_signatures WHERE organization_id = $1 AND document_id = $2`, [organizationId, documentId]);
+    await pool.query(`DELETE FROM documents WHERE organization_id = $1 AND id = $2`, [organizationId, documentId]);
+    return res.json({ success: true });
+  } catch (error) {
+    console.error("API error in DELETE /hr/documents/:id", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+}
 async function isUserAllowedForDocument(documentId: number, organizationId: string, userId: string, platformRole: string, fullName: string) {
   const [row, organizationUsers, context] = await Promise.all([
     getDocumentById(documentId, organizationId),
@@ -491,6 +637,7 @@ export async function signHrDocument(req: AuthenticatedRequest, res: Response) {
     const organizationId = String(req.user?.organization_id || "");
     const userId = String(req.user?.user_id || "");
     const documentId = Number(req.params.id || 0);
+    const body = (req.body || {}) as CreateDocumentBody;
 
     const access = await isUserAllowedForDocument(
       documentId,
@@ -508,14 +655,19 @@ export async function signHrDocument(req: AuthenticatedRequest, res: Response) {
       return res.status(403).json({ message: "Only assigned users can sign this document" });
     }
 
+    const signatureNote = JSON.stringify({
+      initials: asNullableString(body.initials),
+      signatureData: asNullableString(body.signatureData)
+    });
+
     await pool.query(
       `INSERT INTO document_signatures (organization_id, document_id, user_id, signer_name, status, signed_at, note)
-       SELECT $1, $2, $3, TRIM(COALESCE(u.first_name, '') || ' ' || COALESCE(u.last_name, '')), 'Signed', NOW(), 'Signed in VLWorkHub'
+       SELECT $1, $2, $3, TRIM(COALESCE(u.first_name, '') || ' ' || COALESCE(u.last_name, '')), 'Signed', NOW(), $4
        FROM users u
        WHERE u.id = $3
        ON CONFLICT (document_id, user_id)
-       DO UPDATE SET status = 'Signed', signed_at = EXCLUDED.signed_at, signer_name = EXCLUDED.signer_name`,
-      [organizationId, documentId, userId]
+       DO UPDATE SET status = 'Signed', signed_at = EXCLUDED.signed_at, signer_name = EXCLUDED.signer_name, note = EXCLUDED.note`,
+      [organizationId, documentId, userId, signatureNote]
     );
 
     const refreshed = await getDocumentById(documentId, organizationId);
@@ -525,7 +677,7 @@ export async function signHrDocument(req: AuthenticatedRequest, res: Response) {
       `UPDATE documents
        SET status = $3
        WHERE id = $1 AND organization_id = $2`,
-      [documentId, organizationId, completed ? "Signed" : "In Progress"]
+      [documentId, organizationId, completed ? "Signed" : "In Progress", asNullableString(body.signedFileUrl)]
     );
 
     return res.json({ success: true });
@@ -578,4 +730,13 @@ export async function completeHrDocument(req: AuthenticatedRequest, res: Respons
     return res.status(500).json({ error: "Internal server error" });
   }
 }
+
+
+
+
+
+
+
+
+
 

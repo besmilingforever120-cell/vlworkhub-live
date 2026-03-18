@@ -8,10 +8,13 @@ import {
   updateHrAssignment
 } from "../controllers/hr-controller";
 import {
+  archiveHrDocument,
   completeHrDocument,
   createHrDocument,
+  deleteHrDocument,
   listHrDocuments,
-  signHrDocument
+  signHrDocument,
+  updateHrDocument
 } from "../controllers/hr-documents-controller";
 import { requireAuth } from "../middleware/auth";
 
@@ -23,6 +26,9 @@ hrRouter.get("/dashboard", getHrDashboard);
 hrRouter.get("/documents", listHrDocuments);
 hrRouter.post("/documents", createHrDocument);
 hrRouter.post("/documents/:id/sign", signHrDocument);
+hrRouter.post("/documents/:id/archive", archiveHrDocument);
+hrRouter.put("/documents/:id", updateHrDocument);
+hrRouter.delete("/documents/:id", deleteHrDocument);
 hrRouter.post("/documents/:id/complete", completeHrDocument);
 hrRouter.get("/user-roles", listHrAssignments);
 hrRouter.post("/user-roles", createHrAssignment);

@@ -280,6 +280,9 @@ export async function archiveTask(id: number) {  return request<{ success: true 
 
 
 export type HrDocumentRecord = {
+  created_by?: string | null;
+  created_at?: string | null;
+  signed_at?: string | null;
   id: number;
   file_name: string;
   file_url: string | null;
@@ -333,9 +336,41 @@ export async function createHrDocument(payload: {
   });
 }
 
-export async function signHrDocument(id: number) {
+export async function signHrDocument(id: number, payload?: { initials?: string; signatureData?: string | null; signatureId?: string; signedAt?: string; signedBy?: string; assignedBy?: string; signedFileUrl?: string | null }) {
   return request<{ success: true }>(`/hr/documents/${id}/sign`, {
+    method: "POST",
+    body: JSON.stringify(payload || {})
+  });
+}
+
+export async function updateHrDocument(id: number, payload: {
+  fileName?: string;
+  category?: string;
+  categoryOther?: string | null;
+  description?: string | null;
+  dueDate?: string | null;
+  requiresSignature?: boolean;
+  status?: string;
+  sensitive?: boolean;
+  userIds?: string[];
+  departmentIds?: string[];
+  allStaff?: boolean;
+}) {
+  return request<{ success: true }>(`/hr/documents/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function archiveHrDocument(id: number) {
+  return request<{ success: true }>(`/hr/documents/${id}/archive`, {
     method: "POST"
+  });
+}
+
+export async function deleteHrDocument(id: number) {
+  return request<{ success: true }>(`/hr/documents/${id}`, {
+    method: "DELETE"
   });
 }
 
@@ -352,4 +387,7 @@ export async function completeHrDocument(id: number) {
 export async function getUsers() {
   return getPlatformUsers();
 }
+
+
+
 

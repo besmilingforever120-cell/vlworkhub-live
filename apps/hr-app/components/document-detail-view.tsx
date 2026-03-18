@@ -1,0 +1,240 @@
+"use client";
+
+import { useEffect, useMemo, useRef, useState } from "react";
+import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+import SignatureCanvas from "react-signature-canvas";
+import { ArrowLeft, Lock, PenSquare, Shield, X } from "lucide-react";
+import { useRouter } from "next/navigation";
+import type { SessionUser } from "@vlworkhub/types";
+import {
+  getApiErrorMessage,
+  getCurrentUser,
+  getHrAssignments,
+  getHrDocuments,
+  getPlatformUsers,
+  signHrDocument,
+  type HrAssignment,
+  type HrDocumentRecord,
+  type PlatformUserRecord
+} from "../lib/hr-client";
+import { useHrRole } from "../lib/use-hr-role";
+import { assignmentSummary, buildDocumentViewer, canOpenDocument, canSignDocument, canViewDocument, getDocumentStatus, getStatusBadgeClass } from "../lib/document-helpers";
+import { formatDate, formatHrRoleLabel } from "../lib/workflow-utils";
+
+type Props = {
+  documentId: string;
+};
+
+async function buildSignedPdf(document: HrDocumentRecord, signatureData: string, userName: string, assignedBy: string, signedAt: string, signatureId: string) {
+  let pdfDoc: PDFDocument;
+
+  try {
+    if (!document.file_url) throw new Error("Missing original document URL");
+    const response = await fetch(document.file_url);
+    const bytes = await response.arrayBuffer();
+    pdfDoc = await PDFDocument.load(bytes);
+  } catch {
+    pdfDoc = await PDFDocument.create();
+    pdfDoc.addPage([612, 792]);
+  }
+
+  const page = pdfDoc.addPage([612, 792]);
+  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const bold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+  const pngImage = await pdfDoc.embedPng(signatureData);
+  const scaled = pngImage.scale(0.35);
+
+  page.drawText("Document Signature", { x: 48, y: 736, size: 24, font: bold, color: rgb(0.1, 0.17, 0.29) });
+  page.drawText(`Signed by: ${userName}`, { x: 48, y: 690, size: 12, font, color: rgb(0.2, 0.24, 0.31) });
+  page.drawText(`Assigned by: ${assignedBy || "-"}`, { x: 48, y: 668, size: 12, font, color: rgb(0.2, 0.24, 0.31) });
+  page.drawText(`Date: ${signedAt}`, { x: 48, y: 646, size: 12, font, color: rgb(0.2, 0.24, 0.31) });
+  page.drawText(`Signature ID: ${signatureId}`, { x: 48, y: 624, size: 12, font, color: rgb(0.2, 0.24, 0.31) });
+  page.drawText("Signature", { x: 48, y: 578, size: 13, font: bold, color: rgb(0.1, 0.17, 0.29) });
+  page.drawImage(pngImage, { x: 48, y: 430, width: scaled.width, height: scaled.height });
+
+  return pdfDoc.saveAsBase64({ dataUri: true });
+}
+
+export function DocumentDetailView({ documentId }: Props) {
+  const router = useRouter();
+  const signatureRef = useRef<SignatureCanvas | null>(null);
+  const { role: hrRole } = useHrRole();
+  const [user, setUser] = useState<SessionUser | null>(null);
+  const [users, setUsers] = useState<PlatformUserRecord[]>([]);
+  const [assignments, setAssignments] = useState<HrAssignment[]>([]);
+  const [documents, setDocuments] = useState<HrDocumentRecord[]>([]);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [showSignaturePad, setShowSignaturePad] = useState(false);
+  const [signatureError, setSignatureError] = useState("");
+
+  async function load() {
+    setLoading(true);
+    setError("");
+    const [sessionResult, usersResult, assignmentsResult, documentsResult] = await Promise.allSettled([
+      getCurrentUser(),
+      getPlatformUsers(),
+      getHrAssignments(),
+      getHrDocuments()
+    ]);
+
+    if (sessionResult.status === "fulfilled") setUser(sessionResult.value);
+    else setError(getApiErrorMessage(sessionResult.reason));
+
+    if (usersResult.status === "fulfilled") setUsers(usersResult.value.items || []);
+    else setUsers([]);
+
+    if (assignmentsResult.status === "fulfilled") setAssignments(assignmentsResult.value.items || []);
+    else setAssignments([]);
+
+    if (documentsResult.status === "fulfilled") setDocuments((documentsResult.value.items || []) as HrDocumentRecord[]);
+    else setError(getApiErrorMessage(documentsResult.reason));
+
+    setLoading(false);
+  }
+
+  useEffect(() => {
+    void load();
+  }, []);
+
+  const viewer = useMemo(() => (user ? buildDocumentViewer(user.id, hrRole, assignments) : null), [assignments, hrRole, user]);
+  const document = useMemo(() => documents.find((item) => String(item.id) === documentId) || null, [documentId, documents]);
+  const assignedByName = useMemo(() => {
+    if (!document?.created_by) return "-";
+    const match = users.find((candidate) => candidate.id === document.created_by);
+    return match?.name || match?.email || "-";
+  }, [document?.created_by, users]);
+  const userName = user?.fullName || user?.email || "User";
+  const canView = document ? canViewDocument(document, viewer, users) : false;
+  const canOpen = document ? canOpenDocument(document, viewer, users) : false;
+  const canSign = document ? canSignDocument(document, viewer, users) : false;
+  const status = document ? getDocumentStatus(document) : "pending";
+
+  async function handleConfirmSign() {
+    if (!document || !user) return;
+    const pad = signatureRef.current;
+    if (!pad || pad.isEmpty()) {
+      setSignatureError("A drawn signature is required before signing.");
+      return;
+    }
+
+    try {
+      setSignatureError("");
+      const signatureData = pad.toDataURL();
+      const signatureId = crypto.randomUUID();
+      const signedAtIso = new Date().toISOString();
+      const signedPdfDataUri = await buildSignedPdf(document, signatureData, userName, assignedByName, signedAtIso, signatureId);
+
+      await signHrDocument(Number(document.id), {
+        signatureData,
+        signatureId,
+        signedAt: signedAtIso,
+        signedBy: userName,
+        assignedBy: assignedByName,
+        signedFileUrl: signedPdfDataUri
+      });
+
+      setShowSignaturePad(false);
+      await load();
+    } catch (signError) {
+      setSignatureError(getApiErrorMessage(signError));
+    }
+  }
+
+  if (loading) {
+    return <div className="legacy-empty">Loading document...</div>;
+  }
+
+  if (error) {
+    return <div className="hr-card" style={{ color: "#b91c1c", borderColor: "#fecaca", background: "#fff1f2" }}>{error}</div>;
+  }
+
+  if (!document || !canView) {
+    return <div className="legacy-empty">Document not found or unavailable in your current HR scope.</div>;
+  }
+
+  return (
+    <div className="legacy-portal">
+      <div className="legacy-header">
+        <div>
+          <button type="button" className="legacy-secondary-btn" onClick={() => router.push("/documents")}><ArrowLeft className="h-4 w-4" />Back</button>
+          <h1 className="legacy-header__title" style={{ marginTop: 14 }}>{document.file_name}</h1>
+          <p className="legacy-header__subtitle">Review document content, assignment details, and signature status in a full-page workspace.</p>
+          <div className="legacy-role"><Shield className="h-4 w-4" />HR Role: {formatHrRoleLabel(hrRole)}</div>
+        </div>
+      </div>
+
+      <div className="legacy-doc-layout" style={{ gridTemplateColumns: "minmax(0, 1.7fr) minmax(320px, 0.8fr)" }}>
+        <section className="legacy-panel">
+          <div className="legacy-panel-header">
+            <div>
+              <h2 className="flex items-center gap-2">Preview {document.sensitive ? <span title="Private document"><Lock className="h-4 w-4 text-slate-500" /></span> : null}</h2>
+              <p>{document.file_url || "No document URL available."}</p>
+            </div>
+          </div>
+          <div className="legacy-panel-body" style={{ minHeight: 640 }}>
+            {canOpen ? (
+              document.file_url ? <iframe title={document.file_name} src={document.file_url} style={{ width: "100%", minHeight: 600, border: "1px solid #e2e8f0", borderRadius: 16 }} /> : <div className="legacy-empty">Preview unavailable for this document.</div>
+            ) : (
+              <div className="legacy-empty">You can view this document in the registry, but you do not have permission to open its contents.</div>
+            )}
+          </div>
+        </section>
+
+        <aside className="legacy-panel">
+          <div className="legacy-panel-header">
+            <div>
+              <h2>Document Details</h2>
+              <p>Assignment, signer, and due-date information for this document.</p>
+            </div>
+          </div>
+          <div className="legacy-panel-body">
+            <div className="legacy-detail-stack">
+              <div className="legacy-detail-card">
+                <h4>Assignment</h4>
+                <p>Assigned to: {assignmentSummary(document)}</p>
+                <p>Assigned by: {assignedByName}</p>
+                <p>Due date: {formatDate(document.due_date)}</p>
+                <p>Status: <span className={getStatusBadgeClass(status)}>{status === "pending" ? "Pending" : status === "signed" ? "Signed" : "Archived"}</span></p>
+                <p>Signed by: {document.signed_user_names.join(", ") || "-"}</p>
+                <p>Signed date: {formatDate(document.signed_at)}</p>
+              </div>
+              {canSign ? (
+                <button type="button" className="legacy-primary-btn" onClick={() => setShowSignaturePad(true)}>
+                  <PenSquare className="h-4 w-4" />Sign Document
+                </button>
+              ) : null}
+            </div>
+          </div>
+        </aside>
+      </div>
+
+      {showSignaturePad ? (
+        <div className="legacy-modal-overlay">
+          <div className="legacy-modal" style={{ maxWidth: 720 }}>
+            <div className="legacy-modal-header"><h2>Sign Document</h2><button type="button" className="legacy-icon-btn" onClick={() => setShowSignaturePad(false)}><X className="h-4 w-4" /></button></div>
+            <div className="legacy-modal-body">
+              <div className="legacy-form-grid">
+                <div className="legacy-form-group legacy-form-group--full">
+                  <label>Draw Signature</label>
+                  <div style={{ border: "1px solid #dbe1ea", borderRadius: 12, overflow: "hidden", background: "#fff" }}>
+                    <SignatureCanvas ref={signatureRef} canvasProps={{ width: 640, height: 220, className: "signature-canvas" }} />
+                  </div>
+                  <div className="legacy-actions-row" style={{ marginTop: 12 }}>
+                    <button type="button" className="legacy-secondary-btn" onClick={() => signatureRef.current?.clear()}>Clear Signature</button>
+                  </div>
+                </div>
+                {signatureError ? <p className="legacy-field-error">{signatureError}</p> : null}
+              </div>
+            </div>
+            <div className="legacy-modal-footer">
+              <button type="button" className="legacy-secondary-btn" onClick={() => setShowSignaturePad(false)}>Cancel</button>
+              <button type="button" className="legacy-primary-btn" onClick={() => void handleConfirmSign()}><PenSquare className="h-4 w-4" />Confirm Sign</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
