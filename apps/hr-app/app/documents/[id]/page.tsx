@@ -12,5 +12,9 @@ export const dynamicParams = true;
 export const dynamic = "force-dynamic";
 
 export default function DocumentDetailPage({ params }: { params: { id: string } }) {
-  return <DocumentDetailView documentId={params.id} />;
+  return (
+    <div className="w-full h-[calc(100vh-100px)] flex flex-col">
+      <DocumentDetailView documentId={params.id} />
+    </div>
+  );
 }

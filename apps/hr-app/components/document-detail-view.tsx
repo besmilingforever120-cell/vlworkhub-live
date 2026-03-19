@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import SignatureCanvas from "react-signature-canvas";
-import { Document, Page, pdfjs } from "react-pdf";
 import { ArrowLeft, Lock, PenSquare, Shield, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import type { SessionUser } from "@vlworkhub/types";
@@ -19,16 +18,34 @@ import {
   type PlatformUserRecord
 } from "../lib/hr-client";
 import { useHrRole } from "../lib/use-hr-role";
-import { assignmentSummary, buildDocumentViewer, canOpenDocument, canSignDocument, canViewDocument, getDocumentStatus, getStatusBadgeClass } from "../lib/document-helpers";
+import {
+  assignmentSummary,
+  buildDocumentViewer,
+  canOpenDocument,
+  canSignDocument,
+  canViewDocument,
+  getDocumentStatus,
+  getStatusBadgeClass
+} from "../lib/document-helpers";
 import { formatDate, formatHrRoleLabel } from "../lib/workflow-utils";
-
-pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
 
 type Props = {
   documentId: string;
 };
 
-async function buildSignedPdf(document: HrDocumentRecord, signatureData: string, userName: string, assignedBy: string, signedAt: string, signatureId: string) {
+type PreviewDocument = HrDocumentRecord & {
+  fileUrl?: string | null;
+  url?: string | null;
+};
+
+async function buildSignedPdf(
+  document: HrDocumentRecord,
+  signatureData: string,
+  userName: string,
+  assignedBy: string,
+  signedAt: string,
+  signatureId: string
+) {
   let pdfDoc: PDFDocument;
 
   try {
@@ -60,7 +77,6 @@ async function buildSignedPdf(document: HrDocumentRecord, signatureData: string,
 
 export function DocumentDetailView({ documentId }: Props) {
   const router = useRouter();
-  const previewHostRef = useRef<HTMLDivElement | null>(null);
   const signatureRef = useRef<SignatureCanvas | null>(null);
   const { role: hrRole } = useHrRole();
   const [user, setUser] = useState<SessionUser | null>(null);
@@ -71,9 +87,6 @@ export function DocumentDetailView({ documentId }: Props) {
   const [loading, setLoading] = useState(true);
   const [showSignaturePad, setShowSignaturePad] = useState(false);
   const [signatureError, setSignatureError] = useState("");
-  const [pdfError, setPdfError] = useState("");
-  const [pageCount, setPageCount] = useState(0);
-  const [previewWidth, setPreviewWidth] = useState(900);
 
   async function load() {
     setLoading(true);
@@ -104,17 +117,6 @@ export function DocumentDetailView({ documentId }: Props) {
     void load();
   }, []);
 
-  useEffect(() => {
-    const updatePreviewWidth = () => {
-      const width = previewHostRef.current?.clientWidth || 900;
-      setPreviewWidth(width);
-    };
-
-    updatePreviewWidth();
-    window.addEventListener("resize", updatePreviewWidth);
-    return () => window.removeEventListener("resize", updatePreviewWidth);
-  }, []);
-
   const viewer = useMemo(() => (user ? buildDocumentViewer(user.id, hrRole, assignments) : null), [assignments, hrRole, user]);
   const document = useMemo(() => documents.find((item) => String(item.id) === documentId) || null, [documentId, documents]);
   const assignedByName = useMemo(() => {
@@ -127,12 +129,8 @@ export function DocumentDetailView({ documentId }: Props) {
   const canOpen = document ? canOpenDocument(document, viewer, users) : false;
   const canSign = document ? canSignDocument(document, viewer, users) : false;
   const status = document ? getDocumentStatus(document) : "pending";
-  const pageWidth = Math.min(Math.max(previewWidth - 64, 320), 900);
-
-  useEffect(() => {
-    setPdfError("");
-    setPageCount(0);
-  }, [document?.file_url]);
+  const previewDocument = document as PreviewDocument | null;
+  const documentUrl = previewDocument?.file_url || previewDocument?.fileUrl || previewDocument?.url || null;
 
   async function handleConfirmSign() {
     if (!document || !user) return;
@@ -178,91 +176,77 @@ export function DocumentDetailView({ documentId }: Props) {
   }
 
   return (
-    <div className="legacy-portal w-full max-w-none px-4 lg:px-6 xl:px-8">
-      <div className="legacy-header items-start gap-3 pb-2">
-        <div className="w-full">
-          <button type="button" className="legacy-secondary-btn" onClick={() => router.push("/documents")}><ArrowLeft className="h-4 w-4" />Back</button>
-          <h1 className="legacy-header__title mt-3">{document.file_name}</h1>
-          <p className="legacy-header__subtitle mt-2">Review document content, assignment details, and signature status in a full-page workspace.</p>
-          <div className="legacy-role mt-3"><Shield className="h-4 w-4" />HR Role: {formatHrRoleLabel(hrRole)}</div>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 items-start gap-6 xl:grid-cols-12">
-        <section className="legacy-panel xl:col-span-9">
-          <div className="legacy-panel-header">
-            <div>
-              <h2 className="flex items-center gap-2">Preview {document.sensitive ? <span title="Private document"><Lock className="h-4 w-4 text-slate-500" /></span> : null}</h2>
-              <p>{document.file_url || "No document URL available."}</p>
+    <div className="w-full flex flex-col">
+      <div className="flex items-center justify-between border-b bg-white p-4">
+        <div className="flex min-w-0 items-center gap-4">
+          <button type="button" className="legacy-secondary-btn" onClick={() => router.push("/documents")}>
+            <ArrowLeft className="h-4 w-4" />Back
+          </button>
+          <div className="min-w-0">
+            <h1 className="legacy-header__title truncate">{document.file_name}</h1>
+            <div className="mt-2 flex items-center gap-3 text-sm text-slate-600">
+              <span className="legacy-role"><Shield className="h-4 w-4" />HR Role: {formatHrRoleLabel(hrRole)}</span>
+              {document.sensitive ? <span title="Private document"><Lock className="h-4 w-4 text-slate-500" /></span> : null}
             </div>
           </div>
-          <div className="legacy-panel-body p-4 md:p-5">
-            {canOpen ? (
-              document.file_url ? (
-                <div ref={previewHostRef} className="h-[calc(100vh-180px)] w-full overflow-y-auto rounded-2xl border border-slate-200 bg-slate-100">
-                  <div className="flex w-full justify-center bg-slate-100 py-6">
-                    <div className="flex flex-col items-center gap-6">
-                      <Document
-                        file={document.file_url}
-                        loading={<div className="legacy-empty">Loading PDF preview...</div>}
-                        onLoadSuccess={({ numPages }) => {
-                          setPageCount(numPages);
-                          setPdfError("");
-                        }}
-                        onLoadError={() => {
-                          setPdfError("Document preview unavailable.");
-                        }}
-                        error={<div className="legacy-empty">Document preview unavailable.</div>}
-                      >
-                        {Array.from({ length: pageCount || 1 }, (_, index) => (
-                          <div key={`page-${index + 1}`} className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-                            <Page
-                              pageNumber={index + 1}
-                              width={pageWidth}
-                              renderAnnotationLayer={false}
-                              renderTextLayer={false}
-                            />
-                          </div>
-                        ))}
-                      </Document>
-                      {pdfError ? <div className="legacy-empty">{pdfError}</div> : null}
-                    </div>
-                  </div>
-                </div>
-              ) : <div className="legacy-empty">Preview unavailable for this document.</div>
+        </div>
+        {canSign ? (
+          <button type="button" className="legacy-primary-btn shrink-0" onClick={() => setShowSignaturePad(true)}>
+            <PenSquare className="h-4 w-4" />Sign Document
+          </button>
+        ) : null}
+      </div>
+
+
+      <div className="px-4 pb-6 pt-4 lg:px-6 xl:px-8">
+        <p className="legacy-header__subtitle">Review document content, assignment details, and signature status in a full-page workspace.</p>
+      </div>
+
+      <section className="w-full">
+          {canOpen ? (
+            documentUrl ? (
+              <div className="w-full max-w-5xl mx-auto" style={{ aspectRatio: "1 / 1.414" }}>
+                <iframe
+                  src={`${documentUrl}#page=1&zoom=page-width`}
+                  className="w-full h-full border-0"
+                />
+              </div>
             ) : (
+              <div className="px-4 lg:px-6 xl:px-8">
+                <div className="text-center p-10 text-gray-500">No preview available</div>
+              </div>
+            )
+          ) : (
+            <div className="px-4 lg:px-6 xl:px-8">
               <div className="legacy-empty">You can view this document in the registry, but you do not have permission to open its contents.</div>
-            )}
+            </div>
+          )}
+        </section>
+
+      <section className="p-4 lg:px-6 xl:px-8">
+          <div className="legacy-panel w-full max-w-none">
+            <div className="legacy-panel-header">
+              <div>
+                <h2>Document Details</h2>
+                <p>Assignment, signer, and due-date information for this document.</p>
+              </div>
+            </div>
+            <div className="legacy-panel-body">
+              <div className="legacy-detail-stack">
+                <div className="legacy-detail-card">
+                  <h4>Assignment</h4>
+                  <p>Assigned to: {assignmentSummary(document)}</p>
+                  <p>Assigned by: {assignedByName}</p>
+                  <p>Due date: {formatDate(document.due_date)}</p>
+                  <p>Status: <span className={getStatusBadgeClass(status)}>{status === "pending" ? "Pending" : status === "signed" ? "Signed" : "Archived"}</span></p>
+                  <p>Signed by: {document.signed_user_names.join(", ") || "-"}</p>
+                  <p>Signed date: {formatDate(document.signed_at)}</p>
+                </div>
+              </div>
+            </div>
           </div>
         </section>
 
-        <aside className="legacy-panel self-start xl:col-span-3 xl:sticky xl:top-6">
-          <div className="legacy-panel-header">
-            <div>
-              <h2>Document Details</h2>
-              <p>Assignment, signer, and due-date information for this document.</p>
-            </div>
-          </div>
-          <div className="legacy-panel-body">
-            <div className="legacy-detail-stack">
-              <div className="legacy-detail-card">
-                <h4>Assignment</h4>
-                <p>Assigned to: {assignmentSummary(document)}</p>
-                <p>Assigned by: {assignedByName}</p>
-                <p>Due date: {formatDate(document.due_date)}</p>
-                <p>Status: <span className={getStatusBadgeClass(status)}>{status === "pending" ? "Pending" : status === "signed" ? "Signed" : "Archived"}</span></p>
-                <p>Signed by: {document.signed_user_names.join(", ") || "-"}</p>
-                <p>Signed date: {formatDate(document.signed_at)}</p>
-              </div>
-              {canSign ? (
-                <button type="button" className="legacy-primary-btn" onClick={() => setShowSignaturePad(true)}>
-                  <PenSquare className="h-4 w-4" />Sign Document
-                </button>
-              ) : null}
-            </div>
-          </div>
-        </aside>
-      </div>
 
       {showSignaturePad ? (
         <div className="legacy-modal-overlay">
@@ -292,5 +276,9 @@ export function DocumentDetailView({ documentId }: Props) {
     </div>
   );
 }
+
+
+
+
 
 
