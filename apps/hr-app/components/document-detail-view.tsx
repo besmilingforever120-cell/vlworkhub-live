@@ -205,9 +205,9 @@ export function DocumentDetailView({ documentId }: Props) {
       <section className="w-full">
           {canOpen ? (
             documentUrl ? (
-              <div className="w-full max-w-5xl mx-auto" style={{ aspectRatio: "1 / 1.414" }}>
+              <div className="w-full" style={{ aspectRatio: "1 / 1.414" }}>
                 <iframe
-                  src={`${documentUrl}#page=1&zoom=page-width`}
+                  src={`${documentUrl}#page=1&toolbar=0&navpanes=0&scrollbar=1&zoom=page-fit`}
                   className="w-full h-full border-0"
                 />
               </div>
@@ -276,6 +276,7 @@ export function DocumentDetailView({ documentId }: Props) {
     </div>
   );
 }
+
 
 
 

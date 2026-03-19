@@ -30,7 +30,7 @@ export const resourceMap = {
   },
   training: {
     table: "training",
-    fields: ["title", "audience", "delivery_mode", "content_url", "status"]
+    fields: ["training_name", "video_iframe_link", "quiz_iframe_link", "status"]
   },
   training_assignments: {
     table: "training_assignments",
@@ -68,4 +68,5 @@ export const resourceMap = {
 } as const;
 
 export type ResourceKey = keyof typeof resourceMap;
+
 

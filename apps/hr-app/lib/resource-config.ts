@@ -43,15 +43,15 @@ export const hrResources: Record<string, ResourceConfig> = {
   },
   training: {
     title: "Training Materials",
-    description: "Training catalog with delivery mode and lifecycle status.",
+    description: "Training catalog with embedded video and quiz links.",
     resource: "training",
     columns: [
-      { key: "title", label: "Title" },
-      { key: "audience", label: "Audience" },
-      { key: "delivery_mode", label: "Mode" },
+      { key: "training_name", label: "Training Name" },
+      { key: "video_iframe_link", label: "Video Iframe" },
+      { key: "quiz_iframe_link", label: "Quiz Iframe" },
       { key: "status", label: "Status" }
     ],
-    fields: ["title", "audience", "delivery_mode", "status"]
+    fields: ["training_name", "video_iframe_link", "quiz_iframe_link", "status"]
   },
   surveys: {
     title: "Surveys",
