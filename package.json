@@ -19,5 +19,9 @@
   },
   "devDependencies": {
     "concurrently": "^9.2.1"
+  },
+  "dependencies": {
+    "pdfjs-dist": "^4.2.67",
+    "react-pdf": "^9.2.1"
   }
 }

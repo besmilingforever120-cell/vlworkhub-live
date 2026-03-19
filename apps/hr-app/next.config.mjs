@@ -1,1 +1,4 @@
-export default { experimental: { typedRoutes: true } };
+export default {
+  experimental: { typedRoutes: true },
+  swcMinify: false
+};
