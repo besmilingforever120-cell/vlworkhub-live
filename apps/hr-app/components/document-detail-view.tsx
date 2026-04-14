@@ -38,6 +38,7 @@ type PreviewDocument = HrDocumentRecord & {
   url?: string | null;
 };
 
+
 async function buildSignedPdf(
   document: HrDocumentRecord,
   signatureData: string,
@@ -87,6 +88,9 @@ export function DocumentDetailView({ documentId }: Props) {
   const [loading, setLoading] = useState(true);
   const [showSignaturePad, setShowSignaturePad] = useState(false);
   const [signatureError, setSignatureError] = useState("");
+  const [previewPages, setPreviewPages] = useState<Array<{ pageNumber: number; src: string; width: number; height: number }>>([]);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState("");
 
   async function load() {
     setLoading(true);
@@ -131,6 +135,72 @@ export function DocumentDetailView({ documentId }: Props) {
   const status = document ? getDocumentStatus(document) : "pending";
   const previewDocument = document as PreviewDocument | null;
   const documentUrl = previewDocument?.file_url || previewDocument?.fileUrl || previewDocument?.url || null;
+
+  useEffect(() => {
+    if (!documentUrl) {
+      setPreviewPages([]);
+      setPreviewError("");
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadPreviewPages = async () => {
+      try {
+        setPreviewLoading(true);
+        setPreviewError("");
+
+        const pdfjs = (await import("pdfjs-dist/build/pdf.mjs" as string)) as any;
+        pdfjs.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).toString();
+
+        const loadingTask = pdfjs.getDocument(documentUrl);
+        const pdf = await loadingTask.promise;
+        const renderedPages: Array<{ pageNumber: number; src: string; width: number; height: number }> = [];
+
+        for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+          const page = await pdf.getPage(pageNumber);
+          const baseViewport = page.getViewport({ scale: 1 });
+          const targetHeight = pageNumber === 1 ? 1400 : 1200;
+          const scale = targetHeight / baseViewport.height;
+          const viewport = page.getViewport({ scale });
+          const canvas = window.document.createElement("canvas");
+          const context = canvas.getContext("2d");
+
+          if (!context) continue;
+
+          canvas.width = Math.ceil(viewport.width);
+          canvas.height = Math.ceil(viewport.height);
+
+          await page.render({ canvasContext: context, viewport }).promise;
+          renderedPages.push({
+            pageNumber,
+            src: canvas.toDataURL("image/png"),
+            width: canvas.width,
+            height: canvas.height
+          });
+        }
+
+        if (!cancelled) {
+          setPreviewPages(renderedPages);
+        }
+      } catch {
+        if (!cancelled) {
+          setPreviewPages([]);
+          setPreviewError("Document preview unavailable.");
+        }
+      } finally {
+        if (!cancelled) {
+          setPreviewLoading(false);
+        }
+      }
+    };
+
+    void loadPreviewPages();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [documentUrl]);
 
   async function handleConfirmSign() {
     if (!document || !user) return;
@@ -202,26 +272,39 @@ export function DocumentDetailView({ documentId }: Props) {
         <p className="legacy-header__subtitle">Review document content, assignment details, and signature status in a full-page workspace.</p>
       </div>
 
-      <section className="w-full">
-          {canOpen ? (
-            documentUrl ? (
-              <div className="w-full" style={{ aspectRatio: "1 / 1.414" }}>
-                <iframe
-                  src={`${documentUrl}#page=1&toolbar=0&navpanes=0&scrollbar=1&zoom=page-fit`}
-                  className="w-full h-full border-0"
-                />
-              </div>
-            ) : (
-              <div className="px-4 lg:px-6 xl:px-8">
-                <div className="text-center p-10 text-gray-500">No preview available</div>
-              </div>
-            )
-          ) : (
-            <div className="px-4 lg:px-6 xl:px-8">
-              <div className="legacy-empty">You can view this document in the registry, but you do not have permission to open its contents.</div>
+      <section className="w-full px-4 lg:px-6 xl:px-8">
+        {canOpen ? (
+          documentUrl ? (
+            <div className="w-full overflow-x-auto rounded-xl bg-slate-900 p-4">
+              {previewLoading ? (
+                <div className="legacy-empty">Loading document preview...</div>
+              ) : previewPages.length ? (
+                <div className="flex min-w-max flex-col items-center gap-6">
+                  {previewPages.map((page) => (
+                    <div key={page.pageNumber} className="overflow-hidden rounded-lg bg-white shadow-sm">
+                      <img
+                        src={page.src}
+                        alt={`${document.file_name} page ${page.pageNumber}`}
+                        width={page.width}
+                        height={page.height}
+                        style={{ display: "block", width: page.width, height: page.height, maxWidth: "none" }}
+                      />
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="legacy-empty">
+                  {previewError || "Document preview unavailable."} <a href={documentUrl} target="_blank" rel="noreferrer">Open document</a>
+                </div>
+              )}
             </div>
-          )}
-        </section>
+          ) : (
+            <div className="text-center p-10 text-gray-500">No preview available</div>
+          )
+        ) : (
+          <div className="legacy-empty">You can view this document in the registry, but you do not have permission to open its contents.</div>
+        )}
+      </section>
 
       <section className="p-4 lg:px-6 xl:px-8">
           <div className="legacy-panel w-full max-w-none">
