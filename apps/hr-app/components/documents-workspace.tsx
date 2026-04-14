@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { FileSignature, FolderUp, Lock, Pencil, Plus, Save, Search, Shield, Trash2, Upload, Users, X } from "lucide-react";
+import { Download, FileSignature, FolderUp, Lock, Pencil, Plus, Save, Search, Shield, Trash2, Upload, Users, X } from "lucide-react";
 import type { SessionUser } from "@vlworkhub/types";
 import {
   archiveHrDocument,
@@ -12,6 +12,7 @@ import {
   getCurrentUser,
   getDepartments,
   getHrAssignments,
+  getHrDocumentDownloadUrl,
   getHrDocuments,
   getPlatformUsers,
   updateHrDocument,
@@ -34,6 +35,7 @@ type DocumentForm = {
   requiresSignature: boolean;
   status: string;
   sensitive: boolean;
+  allowDownload: boolean;
 };
 
 type ValidationState = Partial<Record<"file" | "assignments" | "categoryOther" | "signature", string>>;
@@ -60,7 +62,8 @@ function emptyForm(): DocumentForm {
     allStaff: false,
     requiresSignature: true,
     status: "Pending Signature",
-    sensitive: false
+    sensitive: false,
+    allowDownload: false
   };
 }
 
@@ -137,18 +140,9 @@ export function DocumentsWorkspace() {
   const [draftUserIds, setDraftUserIds] = useState<string[]>([]);
   const [draftDepartmentIds, setDraftDepartmentIds] = useState<string[]>([]);
   const [form, setForm] = useState<DocumentForm>(emptyForm());
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [validationErrors, setValidationErrors] = useState<ValidationState>({});
   const [error, setError] = useState("");
-
-  useEffect(() => {
-    return () => {
-      if (previewUrl) {
-        URL.revokeObjectURL(previewUrl);
-      }
-    };
-  }, [previewUrl]);
 
   async function load() {
     setError("");
@@ -288,21 +282,14 @@ export function DocumentsWorkspace() {
     setDraftUserIds([]);
     setDraftDepartmentIds([]);
     setForm(emptyForm());
-    setSelectedFile(null);
+    setSelectedFiles([]);
     setEditingDocument(null);
     setValidationErrors({});
   }
 
-  function handleFileChange(file: File | null) {
-    setSelectedFile(file);
+  function handleFileChange(fileList: FileList | null) {
+    setSelectedFiles(fileList ? Array.from(fileList) : []);
     setValidationErrors((current) => ({ ...current, file: undefined }));
-    if (previewUrl) {
-      URL.revokeObjectURL(previewUrl);
-      setPreviewUrl(null);
-    }
-    if (file && file.type.includes("pdf")) {
-      setPreviewUrl(URL.createObjectURL(file));
-    }
   }
 
   function openUserPicker() {
@@ -329,24 +316,23 @@ export function DocumentsWorkspace() {
       allStaff: Boolean(document.all_staff),
       requiresSignature: Boolean(document.requires_signature),
       status: document.status || "Pending Signature",
-      sensitive: Boolean(document.sensitive)
+      sensitive: Boolean(document.sensitive),
+      allowDownload: Boolean(document.allow_download)
     });
-    setSelectedFile(null);
+    setSelectedFiles([]);
     setValidationErrors({});
     setShowUploadModal(true);
   }
 
   async function submitDocument() {
     const nextErrors: ValidationState = {};
-    if (!editingDocument && !selectedFile) nextErrors.file = "Select a file to upload.";
+    if (!editingDocument && selectedFiles.length === 0) nextErrors.file = "Select at least one file to upload.";
     if (form.category === "Other" && !form.categoryOther.trim()) nextErrors.categoryOther = "Specify the document category.";
     if (!form.allStaff && form.assignedUserIds.length === 0 && form.assignedDepartmentIds.length === 0) nextErrors.assignments = "Select at least one user, department, or All Staff.";
     setValidationErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) return;
 
-    const payload = {
-      fileName: selectedFile?.name || editingDocument?.file_name || "",
-      fileData: selectedFile ? await readFileAsDataUrl(selectedFile) : null,
+    const sharedPayload = {
       category: form.category,
       categoryOther: form.category === "Other" ? form.categoryOther.trim() : null,
       description: form.description.trim() || null,
@@ -354,6 +340,7 @@ export function DocumentsWorkspace() {
       requiresSignature: form.requiresSignature,
       status: form.status,
       sensitive: form.sensitive,
+      allowDownload: form.allowDownload,
       userIds: form.allStaff ? [] : form.assignedUserIds,
       departmentIds: form.allStaff ? [] : form.assignedDepartmentIds,
       allStaff: form.allStaff
@@ -362,9 +349,20 @@ export function DocumentsWorkspace() {
     try {
       setError("");
       if (editingDocument) {
-        await updateHrDocument(Number(editingDocument.id), payload);
+        const selectedFile = selectedFiles[0] || null;
+        await updateHrDocument(Number(editingDocument.id), {
+          ...sharedPayload,
+          fileName: selectedFile?.name || editingDocument.file_name,
+          fileData: selectedFile ? await readFileAsDataUrl(selectedFile) : null
+        });
       } else {
-        await createHrDocument(payload);
+        for (const file of selectedFiles) {
+          await createHrDocument({
+            ...sharedPayload,
+            fileName: file.name,
+            fileData: await readFileAsDataUrl(file)
+          });
+        }
       }
       resetUploadModal();
       await load();
@@ -440,7 +438,7 @@ export function DocumentsWorkspace() {
                   <th>Assigned To</th>
                   <th>Due Date</th>
                   <th>Status</th>
-                  {viewer?.role === "ADMIN" ? <th>Actions</th> : null}
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -468,15 +466,15 @@ export function DocumentsWorkspace() {
                       <td>{assignmentSummary(document)}</td>
                       <td>{formatDate(document.due_date)}</td>
                       <td><span className={getStatusBadgeClass(status)}>{status === "pending" ? "Pending" : status === "signed" ? "Signed" : "Archived"}</span></td>
-                      {viewer?.role === "ADMIN" ? (
-                        <td>
-                          <div className="flex items-center gap-2">
-                            <button type="button" className="legacy-icon-btn" onClick={(event) => { event.stopPropagation(); startEditDocument(document); }}><Pencil className="h-4 w-4" /></button>
-                            {status === "signed" ? <button type="button" className="legacy-icon-btn" onClick={(event) => { event.stopPropagation(); void archiveSelectedDocument(document); }}><FolderUp className="h-4 w-4" /></button> : null}
-                            <button type="button" className="legacy-icon-btn" onClick={(event) => { event.stopPropagation(); void deleteSelectedDocument(document); }}><Trash2 className="h-4 w-4" /></button>
-                          </div>
-                        </td>
-                      ) : null}
+                      <td>
+                        <div className="flex items-center gap-2">
+                          {document.allow_download ? <button type="button" className="legacy-icon-btn" title="Download" onClick={(event) => { event.stopPropagation(); window.open(getHrDocumentDownloadUrl(Number(document.id)), "_blank", "noopener,noreferrer"); }}><Download className="h-4 w-4" /></button> : null}
+                          {viewer?.role === "ADMIN" ? <button type="button" className="legacy-icon-btn" title="Edit" onClick={(event) => { event.stopPropagation(); startEditDocument(document); }}><Pencil className="h-4 w-4" /></button> : null}
+                          {viewer?.role === "ADMIN" && status === "signed" ? <button type="button" className="legacy-icon-btn" title="Archive" onClick={(event) => { event.stopPropagation(); void archiveSelectedDocument(document); }}><FolderUp className="h-4 w-4" /></button> : null}
+                          {viewer?.role === "ADMIN" ? <button type="button" className="legacy-icon-btn" title="Delete" onClick={(event) => { event.stopPropagation(); void deleteSelectedDocument(document); }}><Trash2 className="h-4 w-4" /></button> : null}
+                          {!document.allow_download && viewer?.role !== "ADMIN" ? <span className="text-slate-400">-</span> : null}
+                        </div>
+                      </td>
                     </tr>
                   );
                 })}
@@ -494,10 +492,10 @@ export function DocumentsWorkspace() {
               <div className="legacy-form-grid">
                 <div className="legacy-form-group legacy-form-group--full">
                   <label>File Upload</label>
-                  <input ref={fileInputRef} type="file" hidden onChange={(event) => handleFileChange(event.target.files?.[0] || null)} />
+                  <input ref={fileInputRef} type="file" hidden multiple={!editingDocument} onChange={(event) => handleFileChange(event.target.files)} />
                   <button type="button" className="legacy-dropzone" onClick={() => fileInputRef.current?.click()}>
                     <Upload className="h-5 w-5" />
-                    <span>{selectedFile ? selectedFile.name : editingDocument ? editingDocument.file_name : "Select a file to upload."}</span>
+                    <span>{selectedFiles.length ? (selectedFiles.length === 1 ? selectedFiles[0].name : `${selectedFiles.length} files selected`) : editingDocument ? editingDocument.file_name : "Select one or more files to upload."}</span>
                   </button>
                   {validationErrors.file ? <p className="legacy-field-error">{validationErrors.file}</p> : null}
                 </div>
@@ -516,7 +514,7 @@ export function DocumentsWorkspace() {
                     </div>
                   </div>
                 </div>
-                <div className="legacy-form-group legacy-form-group--full"><div className="legacy-form-section"><div className="legacy-form-section__header"><h3>Options</h3><p>Control how this document should be handled after assignment.</p></div><div className="legacy-form-section__options">{checkboxRow("Requires Signature", form.requiresSignature, (checked) => setForm((current) => ({ ...current, requiresSignature: checked })))}{checkboxRow("Sensitive", form.sensitive, (checked) => setForm((current) => ({ ...current, sensitive: checked })))}</div></div></div>
+                <div className="legacy-form-group legacy-form-group--full"><div className="legacy-form-section"><div className="legacy-form-section__header"><h3>Options</h3><p>Control how this document should be handled after assignment.</p></div><div className="legacy-form-section__options">{checkboxRow("Requires Signature", form.requiresSignature, (checked) => setForm((current) => ({ ...current, requiresSignature: checked })))}{checkboxRow("Sensitive", form.sensitive, (checked) => setForm((current) => ({ ...current, sensitive: checked })))}{checkboxRow("Allow Download", form.allowDownload, (checked) => setForm((current) => ({ ...current, allowDownload: checked })))}</div></div></div>
                 <div className="legacy-form-group"><label>Status</label><select value={form.status} onChange={(event) => setForm((current) => ({ ...current, status: event.target.value }))}>{statusOptions.map((option) => <option key={option} value={option}>{option}</option>)}</select></div>
               </div>
             </div>

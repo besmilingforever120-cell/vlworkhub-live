@@ -22,6 +22,7 @@ type CreateDocumentBody = {
   requiresSignature?: boolean;
   status?: string | null;
   sensitive?: boolean;
+  allowDownload?: boolean;
   userIds?: string[];
   assignedUserIds?: string[];
   departmentIds?: string[];
@@ -180,6 +181,7 @@ async function ensureDocumentsSchema() {
     await pool.query(`ALTER TABLE documents ADD COLUMN IF NOT EXISTS department_id UUID REFERENCES departments(id) ON DELETE SET NULL`);
     await pool.query(`ALTER TABLE documents ADD COLUMN IF NOT EXISTS description TEXT`);
     await pool.query(`ALTER TABLE documents ADD COLUMN IF NOT EXISTS sensitive BOOLEAN NOT NULL DEFAULT false`);
+    await pool.query(`ALTER TABLE documents ADD COLUMN IF NOT EXISTS allow_download BOOLEAN NOT NULL DEFAULT false`);
     await pool.query(`ALTER TABLE documents ADD COLUMN IF NOT EXISTS created_by UUID REFERENCES users(id) ON DELETE SET NULL`);
 
     const requiresSignatureType = await pool.query(
@@ -306,6 +308,7 @@ async function getDocumentRows(organizationId: string) {
        COALESCE(d.requires_signature, true) AS requires_signature,
        d.status,
        COALESCE(d.sensitive, false) AS sensitive,
+       COALESCE(d.allow_download, false) AS allow_download,
        d.created_by::text AS created_by,
        d.created_at,
        COALESCE(array_remove(array_agg(DISTINCT da.user_id::text), NULL), ARRAY[]::text[]) AS direct_user_ids,
@@ -524,6 +527,7 @@ export async function createHrDocument(req: AuthenticatedRequest, res: Response)
     const departmentId = asNullableString(body.departmentId);
     const requiresSignature = asBoolean(body.requiresSignature, true);
     const sensitive = asBoolean(body.sensitive, false);
+    const allowDownload = asBoolean(body.allowDownload, false);
     const status = asNullableString(body.status) || (requiresSignature ? "Pending Signature" : "In Progress");
 
     const created = await pool.query(
@@ -540,11 +544,12 @@ export async function createHrDocument(req: AuthenticatedRequest, res: Response)
          requires_signature,
          status,
          sensitive,
+         allow_download,
          created_by
        )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
        RETURNING id`,
-      [organizationId, fileName, fileName, requestedFileUrl, category, categoryOther, departmentId, description, dueDate, requiresSignature, status, sensitive, context.userId]
+      [organizationId, fileName, fileName, requestedFileUrl, category, categoryOther, departmentId, description, dueDate, requiresSignature, status, sensitive, allowDownload, context.userId]
     );
 
     const documentId = Number(created.rows[0].id);
@@ -596,6 +601,7 @@ async function updateDocumentRecord(documentId: number, organizationId: string, 
   const departmentId = asNullableString(body.departmentId);
   const requiresSignature = asBoolean(body.requiresSignature, true);
   const sensitive = asBoolean(body.sensitive, false);
+  const allowDownload = asBoolean(body.allowDownload, false);
   const status = asNullableString(body.status) || (requiresSignature ? "Pending Signature" : "In Progress");
 
   const localOriginalFileUrl = await saveOriginalFileLocally(documentId, fileName, asNullableString(body.fileData));
@@ -613,9 +619,10 @@ async function updateDocumentRecord(documentId: number, organizationId: string, 
          due_date = $10,
          requires_signature = $11,
          status = $12,
-         sensitive = $13
+         sensitive = $13,
+         allow_download = $14
      WHERE id = $1 AND organization_id = $2`,
-    [documentId, organizationId, fileName, fileName, fileUrl, category, categoryOther, departmentId, description, dueDate, requiresSignature, status, sensitive]
+    [documentId, organizationId, fileName, fileName, fileUrl, category, categoryOther, departmentId, description, dueDate, requiresSignature, status, sensitive, allowDownload]
   );
 
   await replaceDocumentAssignments(organizationId, documentId, userIds, departmentIds, allStaff);
@@ -845,3 +852,48 @@ export async function completeHrDocument(req: AuthenticatedRequest, res: Respons
 
 
 
+
+export async function downloadHrDocument(req: AuthenticatedRequest, res: Response) {
+  try {
+    await ensureDocumentsSchema();
+    const organizationId = String(req.user?.organization_id || "");
+    const userId = String(req.user?.user_id || "");
+    const documentId = Number(req.params.id || 0);
+
+    const access = await isUserAllowedForDocument(
+      documentId,
+      organizationId,
+      userId,
+      String(req.user?.platform_role || req.user?.role || "USER"),
+      String(req.user?.full_name || "")
+    );
+
+    if (!access.row) {
+      return res.status(404).json({ message: "Document not found" });
+    }
+
+    if (!access.allowed) {
+      return res.status(403).json({ message: "Forbidden" });
+    }
+
+    if (!Boolean(access.row.allow_download)) {
+      return res.status(403).json({ message: "Download is not allowed for this document" });
+    }
+
+    const fileUrl = asNullableString(access.row.file_url);
+    if (!fileUrl) {
+      return res.status(404).json({ message: "Document file not found" });
+    }
+
+    if (fileUrl.startsWith(`${getLocalUploadsBaseUrl()}/`)) {
+      const relativePath = fileUrl.replace(`${getLocalUploadsBaseUrl()}/`, "");
+      const filePath = path.join(getUploadsRoot(), relativePath);
+      return res.download(filePath, String(access.row.file_name || `document-${documentId}.pdf`));
+    }
+
+    return res.redirect(fileUrl);
+  } catch (error) {
+    console.error("API error in GET /hr/documents/:id/download", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+}

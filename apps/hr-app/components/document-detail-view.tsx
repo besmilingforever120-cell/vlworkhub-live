@@ -3,13 +3,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import SignatureCanvas from "react-signature-canvas";
-import { ArrowLeft, Lock, PenSquare, Shield, X } from "lucide-react";
+import { ArrowLeft, Download, Lock, PenSquare, Shield, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import type { SessionUser } from "@vlworkhub/types";
 import {
   getApiErrorMessage,
   getCurrentUser,
   getHrAssignments,
+  getHrDocumentDownloadUrl,
   getHrDocuments,
   getPlatformUsers,
   signHrDocument,
@@ -155,33 +156,44 @@ export function DocumentDetailView({ documentId }: Props) {
 
         const loadingTask = pdfjs.getDocument(documentUrl);
         const pdf = await loadingTask.promise;
-        const renderedPages: Array<{ pageNumber: number; src: string; width: number; height: number }> = [];
-
-        for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+        const renderPage = async (pageNumber: number) => {
           const page = await pdf.getPage(pageNumber);
           const baseViewport = page.getViewport({ scale: 1 });
-          const targetHeight = pageNumber === 1 ? 1400 : 1200;
+          const targetHeight = 1400;
           const scale = targetHeight / baseViewport.height;
           const viewport = page.getViewport({ scale });
           const canvas = window.document.createElement("canvas");
           const context = canvas.getContext("2d");
 
-          if (!context) continue;
+          if (!context) return null;
 
           canvas.width = Math.ceil(viewport.width);
           canvas.height = Math.ceil(viewport.height);
 
           await page.render({ canvasContext: context, viewport }).promise;
-          renderedPages.push({
+          return {
             pageNumber,
             src: canvas.toDataURL("image/png"),
             width: canvas.width,
             height: canvas.height
-          });
+          };
+        };
+
+        const firstPage = await renderPage(1);
+        if (!cancelled && firstPage) {
+          setPreviewPages([firstPage]);
         }
 
-        if (!cancelled) {
-          setPreviewPages(renderedPages);
+        const renderedPages: Array<{ pageNumber: number; src: string; width: number; height: number }> = firstPage ? [firstPage] : [];
+
+        for (let pageNumber = 2; pageNumber <= pdf.numPages; pageNumber += 1) {
+          const renderedPage = await renderPage(pageNumber);
+          if (!renderedPage) continue;
+
+          renderedPages.push(renderedPage);
+          if (!cancelled) {
+            setPreviewPages([...renderedPages]);
+          }
         }
       } catch {
         if (!cancelled) {
@@ -260,11 +272,18 @@ export function DocumentDetailView({ documentId }: Props) {
             </div>
           </div>
         </div>
-        {canSign ? (
-          <button type="button" className="legacy-primary-btn shrink-0" onClick={() => setShowSignaturePad(true)}>
-            <PenSquare className="h-4 w-4" />Sign Document
-          </button>
-        ) : null}
+        <div className="flex items-center gap-2">
+          {document.allow_download ? (
+            <button type="button" className="legacy-secondary-btn shrink-0" onClick={() => window.open(getHrDocumentDownloadUrl(Number(document.id)), "_blank", "noopener,noreferrer")}>
+              <Download className="h-4 w-4" />Download
+            </button>
+          ) : null}
+          {canSign ? (
+            <button type="button" className="legacy-primary-btn shrink-0" onClick={() => setShowSignaturePad(true)}>
+              <PenSquare className="h-4 w-4" />Sign Document
+            </button>
+          ) : null}
+        </div>
       </div>
 
 
@@ -279,9 +298,9 @@ export function DocumentDetailView({ documentId }: Props) {
               {previewLoading ? (
                 <div className="legacy-empty">Loading document preview...</div>
               ) : previewPages.length ? (
-                <div className="flex min-w-max flex-col items-center gap-6">
+                <div className="flex min-w-max flex-col items-center gap-8 py-2">
                   {previewPages.map((page) => (
-                    <div key={page.pageNumber} className="overflow-hidden rounded-lg bg-white shadow-sm">
+                    <div key={page.pageNumber} className="overflow-hidden rounded-xl border border-slate-200 bg-white p-2 shadow-[0_12px_32px_rgba(15,23,42,0.22)]">
                       <img
                         src={page.src}
                         alt={`${document.file_name} page ${page.pageNumber}`}

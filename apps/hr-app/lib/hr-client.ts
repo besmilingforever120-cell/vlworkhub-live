@@ -295,6 +295,7 @@ export type HrDocumentRecord = {
   requires_signature: boolean;
   status: string | null;
   sensitive: boolean;
+  allow_download: boolean;
   assigned_user_ids: string[];
   assigned_user_names: string[];
   direct_user_ids: string[];
@@ -327,6 +328,7 @@ export async function createHrDocument(payload: {
   requiresSignature: boolean;
   status: string;
   sensitive: boolean;
+  allowDownload?: boolean;
   userIds?: string[];
   departmentIds?: string[];
   allStaff?: boolean;
@@ -353,6 +355,7 @@ export async function updateHrDocument(id: number, payload: {
   requiresSignature?: boolean;
   status?: string;
   sensitive?: boolean;
+  allowDownload?: boolean;
   userIds?: string[];
   departmentIds?: string[];
   allStaff?: boolean;
@@ -384,6 +387,11 @@ export async function completeHrDocument(id: number) {
 
 
 
+
+
+export function getHrDocumentDownloadUrl(id: number) {
+  return `${platformLinks.api}/hr/documents/${id}/download`;
+}
 
 
 export async function getUsers() {

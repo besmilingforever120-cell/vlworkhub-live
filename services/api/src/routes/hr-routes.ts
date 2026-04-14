@@ -12,6 +12,7 @@ import {
   completeHrDocument,
   createHrDocument,
   deleteHrDocument,
+  downloadHrDocument,
   listHrDocuments,
   signHrDocument,
   updateHrDocument
@@ -27,6 +28,7 @@ hrRouter.get("/documents", listHrDocuments);
 hrRouter.post("/documents", createHrDocument);
 hrRouter.post("/documents/:id/sign", signHrDocument);
 hrRouter.post("/documents/:id/archive", archiveHrDocument);
+hrRouter.get("/documents/:id/download", downloadHrDocument);
 hrRouter.put("/documents/:id", updateHrDocument);
 hrRouter.delete("/documents/:id", deleteHrDocument);
 hrRouter.post("/documents/:id/complete", completeHrDocument);
