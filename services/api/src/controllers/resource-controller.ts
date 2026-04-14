@@ -83,6 +83,44 @@ function normalizeTaskCompletionPayload(body: Record<string, unknown>, sessionUs
   };
 }
 
+function normalizeSurveyPayload(body: Record<string, unknown>, sessionUserId: string) {
+  return {
+    title: normalizeNullable(body.title),
+    url: normalizeNullable(body.url),
+    dueDate: normalizeNullable(body.due_date),
+    status: normalizeNullable(body.status) || "Active",
+    createdBy: normalizeNullable(body.created_by) || sessionUserId
+  };
+}
+
+function normalizeSurveyAssignmentPayload(body: Record<string, unknown>) {
+  const allStaff = body.all_staff === true || String(body.all_staff ?? "").toLowerCase() === "true";
+  const userId = normalizeNullable(body.user_id);
+  const departmentId = normalizeNullable(body.department_id);
+  const assignmentType = String(body.assignment_type ?? "").toLowerCase();
+
+  const normalizedUserId = assignmentType === "user" ? (normalizeNullable(body.assigned_user_id) || userId) : userId;
+  const normalizedDepartmentId = assignmentType === "department" ? (normalizeNullable(body.assigned_department_id) || departmentId) : departmentId;
+
+  return {
+    title: normalizeNullable(body.title),
+    surveyId: Number(body.survey_id ?? 0),
+    dueDate: normalizeNullable(body.due_date),
+    status: normalizeNullable(body.status) || "Assigned",
+    userId: allStaff ? null : normalizedUserId,
+    departmentId: allStaff ? null : normalizedDepartmentId,
+    allStaff
+  };
+}
+
+function normalizeSurveyCompletionPayload(body: Record<string, unknown>, sessionUserId: string) {
+  return {
+    assignmentId: Number(body.assignment_id ?? 0),
+    completedOn: normalizeNullable(body.completed_on) || new Date().toISOString(),
+    userId: normalizeNullable(body.user_id) || sessionUserId
+  };
+}
+
 async function ensureTaskExists(taskId: number, organizationId: string) {
   const result = await pool.query(
     `SELECT id FROM tasks WHERE id = $1 AND organization_id = $2 LIMIT 1`,
@@ -137,6 +175,108 @@ async function listTaskCompletionRows(organizationId: string) {
      INNER JOIN tasks t ON t.id = tc.task_id
      WHERE t.organization_id = $1
      ORDER BY tc.id DESC`,
+    [organizationId]
+  );
+
+  return result.rows as Array<Record<string, string | number | null>>;
+}
+
+async function ensureSurveyExists(surveyId: number, organizationId: string) {
+  const result = await pool.query(
+    `SELECT id FROM surveys WHERE id = $1 AND organization_id = $2 LIMIT 1`,
+    [surveyId, organizationId]
+  );
+
+  if (!result.rowCount) {
+    throw new ClientInputError("Selected survey was not found", 400);
+  }
+}
+
+async function ensureSurveyAssignmentExists(assignmentId: number, organizationId: string) {
+  const result = await pool.query(
+    `SELECT id FROM survey_assignments WHERE id = $1 AND organization_id = $2 LIMIT 1`,
+    [assignmentId, organizationId]
+  );
+
+  if (!result.rowCount) {
+    throw new ClientInputError("Selected survey assignment was not found", 400);
+  }
+}
+
+async function listSurveyRows(organizationId: string) {
+  const result = await pool.query(
+    `SELECT
+       s.id,
+       s.organization_id,
+       s.title,
+       s.url,
+       s.due_date,
+       s.status,
+       s.created_at,
+       s.created_by
+     FROM surveys s
+     WHERE s.organization_id = $1
+     ORDER BY s.id DESC`,
+    [organizationId]
+  );
+
+  return result.rows as Array<Record<string, string | number | null>>;
+}
+
+async function listSurveyAssignmentRows(organizationId: string) {
+  const result = await pool.query(
+    `SELECT
+       sa.id,
+       sa.organization_id,
+       sa.title,
+       sa.survey_id,
+       sa.due_date,
+       sa.status,
+       sa.created_at,
+       sa.user_id,
+       sa.department_id,
+       COALESCE(sa.all_staff, false) AS all_staff,
+       CASE
+         WHEN COALESCE(sa.all_staff, false) THEN 'all_staff'
+         WHEN sa.department_id IS NOT NULL THEN 'department'
+         ELSE 'user'
+       END AS assignment_type,
+       COALESCE(NULLIF(TRIM(u.first_name || ' ' || u.last_name), ''), NULLIF(sa.user_id::text, '')) AS user_name,
+       d.name AS department_name,
+       CASE
+         WHEN COALESCE(sa.all_staff, false) THEN 'All Staff'
+         WHEN sa.department_id IS NOT NULL THEN 'Department: ' || COALESCE(d.name, '')
+         ELSE COALESCE(NULLIF(TRIM(u.first_name || ' ' || u.last_name), ''), NULLIF(sa.user_id::text, ''))
+       END AS assignee_name
+     FROM survey_assignments sa
+     LEFT JOIN users u ON u.id = sa.user_id
+     LEFT JOIN departments d ON d.id = sa.department_id
+     INNER JOIN surveys s ON s.id = sa.survey_id
+     WHERE sa.organization_id = $1
+       AND s.organization_id = $1
+     ORDER BY sa.id DESC`,
+    [organizationId]
+  );
+
+  return result.rows as Array<Record<string, string | number | null>>;
+}
+
+async function listSurveyCompletionRows(organizationId: string) {
+  const result = await pool.query(
+    `SELECT
+       sc.id,
+       sc.organization_id,
+       sc.assignment_id,
+       sc.completed_on,
+       sc.created_at,
+       sc.user_id,
+       COALESCE(NULLIF(TRIM(u.first_name || ' ' || u.last_name), ''), NULLIF(sc.user_id::text, '')) AS user_name
+     FROM survey_completions sc
+     INNER JOIN survey_assignments sa ON sa.id = sc.assignment_id AND sa.organization_id = sc.organization_id
+     INNER JOIN surveys s ON s.id = sa.survey_id AND s.organization_id = sa.organization_id
+     LEFT JOIN users u ON u.id = sc.user_id
+     WHERE sc.organization_id = $1
+     ORDER BY sc.id DESC`,
     [organizationId]
   );
 
@@ -209,8 +349,125 @@ async function updateTaskCompletion(req: AuthenticatedRequest, recordId: number,
   );
 }
 
+async function insertSurvey(req: AuthenticatedRequest, organizationId: string) {
+  const payload = normalizeSurveyPayload(req.body as Record<string, unknown>, String(req.user?.user_id || ""));
+  if (!payload.title) {
+    throw new ClientInputError("Survey title is required", 400);
+  }
+
+  const result = await pool.query(
+    `INSERT INTO surveys (organization_id, title, url, due_date, status, created_by)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     RETURNING id`,
+    [organizationId, payload.title, payload.url, payload.dueDate, payload.status, payload.createdBy]
+  );
+
+  return Number(result.rows[0].id);
+}
+
+async function updateSurvey(req: AuthenticatedRequest, recordId: number, organizationId: string) {
+  const payload = normalizeSurveyPayload(req.body as Record<string, unknown>, String(req.user?.user_id || ""));
+  if (!payload.title) {
+    throw new ClientInputError("Survey title is required", 400);
+  }
+
+  await pool.query(
+    `UPDATE surveys
+     SET title = $1,
+         url = $2,
+         due_date = $3,
+         status = $4,
+         created_by = COALESCE($5, created_by)
+     WHERE id = $6 AND organization_id = $7`,
+    [payload.title, payload.url, payload.dueDate, payload.status, payload.createdBy, recordId, organizationId]
+  );
+}
+
+async function insertSurveyAssignment(req: AuthenticatedRequest, organizationId: string) {
+  const payload = normalizeSurveyAssignmentPayload(req.body as Record<string, unknown>);
+  if (!payload.surveyId) {
+    throw new ClientInputError("survey_id is required", 400);
+  }
+  await ensureSurveyExists(payload.surveyId, organizationId);
+
+  if (!payload.allStaff && !payload.userId && !payload.departmentId) {
+    throw new ClientInputError("user_id, department_id, or all_staff is required", 400);
+  }
+
+  const result = await pool.query(
+    `INSERT INTO survey_assignments (organization_id, title, survey_id, due_date, status, user_id, department_id, all_staff)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+     RETURNING id`,
+    [organizationId, payload.title, payload.surveyId, payload.dueDate, payload.status, payload.userId, payload.departmentId, payload.allStaff]
+  );
+
+  return Number(result.rows[0].id);
+}
+
+async function updateSurveyAssignment(req: AuthenticatedRequest, recordId: number, organizationId: string) {
+  const payload = normalizeSurveyAssignmentPayload(req.body as Record<string, unknown>);
+  if (!payload.surveyId) {
+    throw new ClientInputError("survey_id is required", 400);
+  }
+  await ensureSurveyExists(payload.surveyId, organizationId);
+
+  if (!payload.allStaff && !payload.userId && !payload.departmentId) {
+    throw new ClientInputError("user_id, department_id, or all_staff is required", 400);
+  }
+
+  await pool.query(
+    `UPDATE survey_assignments
+     SET title = $1,
+         survey_id = $2,
+         due_date = $3,
+         status = $4,
+         user_id = $5,
+         department_id = $6,
+         all_staff = $7
+     WHERE id = $8 AND organization_id = $9`,
+    [payload.title, payload.surveyId, payload.dueDate, payload.status, payload.userId, payload.departmentId, payload.allStaff, recordId, organizationId]
+  );
+}
+
+async function insertSurveyCompletion(req: AuthenticatedRequest, organizationId: string) {
+  const payload = normalizeSurveyCompletionPayload(req.body as Record<string, unknown>, String(req.user?.user_id || ""));
+  if (!payload.assignmentId) {
+    throw new ClientInputError("assignment_id is required", 400);
+  }
+  await ensureSurveyAssignmentExists(payload.assignmentId, organizationId);
+
+  const result = await pool.query(
+    `INSERT INTO survey_completions (organization_id, assignment_id, completed_on, user_id)
+     VALUES ($1, $2, $3, $4)
+     RETURNING id`,
+    [organizationId, payload.assignmentId, payload.completedOn, payload.userId]
+  );
+
+  return Number(result.rows[0].id);
+}
+
+async function updateSurveyCompletion(req: AuthenticatedRequest, recordId: number, organizationId: string) {
+  const payload = normalizeSurveyCompletionPayload(req.body as Record<string, unknown>, String(req.user?.user_id || ""));
+  if (!payload.assignmentId) {
+    throw new ClientInputError("assignment_id is required", 400);
+  }
+  await ensureSurveyAssignmentExists(payload.assignmentId, organizationId);
+
+  await pool.query(
+    `UPDATE survey_completions
+     SET assignment_id = $1,
+         completed_on = $2,
+         user_id = $3
+     WHERE id = $4 AND organization_id = $5`,
+    [payload.assignmentId, payload.completedOn, payload.userId, recordId, organizationId]
+  );
+}
+
 const isTaskAssignmentResource = (resourceName: string) => resourceName === "task_assignments";
 const isTaskCompletionResource = (resourceName: string) => resourceName === "task_completion";
+const isSurveyResource = (resourceName: string) => resourceName === "surveys";
+const isSurveyAssignmentResource = (resourceName: string) => resourceName === "survey_assignments";
+const isSurveyCompletionResource = (resourceName: string) => resourceName === "survey_completions";
 
 async function ensureTasksArchivedColumn() {
   if (tasksArchivedColumnPromise) {
@@ -292,8 +549,9 @@ function getActorField(resourceName: string) {
       return "user_id";
     case "task_user_states":
     case "training_completions":
-    case "survey_completions":
       return "user_name";
+    case "survey_completions":
+      return "user_id";
     case "document_signatures":
       return "signer_name";
     default:
@@ -334,6 +592,44 @@ async function selectExistingRecord(table: string, recordId: number, organizatio
     return result.rows[0] || null;
   }
 
+  if (table === "survey_assignments") {
+    const result = await pool.query(
+      `SELECT
+         sa.*,
+         COALESCE(NULLIF(TRIM(u.first_name || ' ' || u.last_name), ''), NULLIF(sa.user_id::text, '')) AS user_name,
+         d.name AS department_name,
+         CASE
+           WHEN COALESCE(sa.all_staff, false) THEN 'All Staff'
+           WHEN sa.department_id IS NOT NULL THEN 'Department: ' || COALESCE(d.name, '')
+           ELSE COALESCE(NULLIF(TRIM(u.first_name || ' ' || u.last_name), ''), NULLIF(sa.user_id::text, ''))
+         END AS assignee_name
+       FROM survey_assignments sa
+       LEFT JOIN users u ON u.id = sa.user_id
+       LEFT JOIN departments d ON d.id = sa.department_id
+       INNER JOIN surveys s ON s.id = sa.survey_id
+       WHERE sa.id = $1 AND sa.organization_id = $2 AND s.organization_id = $2
+       LIMIT 1`,
+      [recordId, organizationId]
+    );
+    return result.rows[0] || null;
+  }
+
+  if (table === "survey_completions") {
+    const result = await pool.query(
+      `SELECT
+         sc.*,
+         COALESCE(NULLIF(TRIM(u.first_name || ' ' || u.last_name), ''), NULLIF(sc.user_id::text, '')) AS user_name
+       FROM survey_completions sc
+       INNER JOIN survey_assignments sa ON sa.id = sc.assignment_id AND sa.organization_id = sc.organization_id
+       INNER JOIN surveys s ON s.id = sa.survey_id AND s.organization_id = sa.organization_id
+       LEFT JOIN users u ON u.id = sc.user_id
+       WHERE sc.id = $1 AND sc.organization_id = $2
+       LIMIT 1`,
+      [recordId, organizationId]
+    );
+    return result.rows[0] || null;
+  }
+
   const hasOrgColumn = await tableHasOrganizationId(table);
   if (hasOrgColumn) {
     const result = await pool.query(`SELECT * FROM ${table} WHERE id = $1 AND organization_id = $2 LIMIT 1`, [recordId, organizationId]);
@@ -359,6 +655,18 @@ async function listTableRows(table: string, organizationId: string) {
 
   if (table === "task_completion") {
     return listTaskCompletionRows(organizationId);
+  }
+
+  if (table === "surveys") {
+    return listSurveyRows(organizationId);
+  }
+
+  if (table === "survey_assignments") {
+    return listSurveyAssignmentRows(organizationId);
+  }
+
+  if (table === "survey_completions") {
+    return listSurveyCompletionRows(organizationId);
   }
 
   const hasOrgColumn = await tableHasOrganizationId(table);
@@ -632,6 +940,41 @@ export async function archiveTask(req: AuthenticatedRequest, res: Response) {
     return res.status(500).json({ error: "Task archive failed" });
   }
 }
+
+export async function listArchivedTasks(req: AuthenticatedRequest, res: Response) {
+  try {
+    const organizationId = String(req.user?.organization_id || "");
+    const context = await getContextForResource(req, "tasks");
+
+    if (context && !canManageDefinitions(context.role)) {
+      logHrPermissionFailure(context.userId, req.originalUrl, context.role, "list archived tasks blocked");
+      return res.status(403).json({ message: "Forbidden" });
+    }
+
+    const items = await withFallback(
+      "tasks",
+      async () => {
+        await ensureTasksArchivedColumn();
+        const result = await pool.query(
+          `SELECT *
+           FROM tasks
+           WHERE organization_id = $1
+             AND COALESCE(archived, false) = true
+           ORDER BY due_date DESC NULLS LAST, id DESC`,
+          [organizationId]
+        );
+        return result.rows as Array<Record<string, string | number | null>>;
+      },
+      () => (listDevResource("tasks", organizationId) as Array<Record<string, string | number | null>>).filter((row) => String(row.archived ?? "").toLowerCase() === "true")
+    );
+
+    return res.json({ items });
+  } catch (error) {
+    console.error(`Task query failed in GET ${req.originalUrl}`, error);
+    return res.status(500).json({ error: "Task query failed" });
+  }
+}
+
 export async function createResource(req: AuthenticatedRequest, res: Response) {
   try {
     const resourceName = asParam(req.params.resource);
@@ -653,6 +996,15 @@ export async function createResource(req: AuthenticatedRequest, res: Response) {
     const id = await withFallback(
       resourceName,
       async () => {
+        if (isSurveyResource(resourceName)) {
+          return insertSurvey(req, organizationId);
+        }
+        if (isSurveyAssignmentResource(resourceName)) {
+          return insertSurveyAssignment(req, organizationId);
+        }
+        if (isSurveyCompletionResource(resourceName)) {
+          return insertSurveyCompletion(req, organizationId);
+        }
         if (isTaskAssignmentResource(resourceName)) {
           return insertTaskAssignment(req);
         }
@@ -696,7 +1048,13 @@ export async function updateResource(req: AuthenticatedRequest, res: Response) {
     await withFallback(
       resourceName,
       async () => {
-        if (isTaskAssignmentResource(resourceName)) {
+        if (isSurveyResource(resourceName)) {
+          await updateSurvey(req, recordId, organizationId);
+        } else if (isSurveyAssignmentResource(resourceName)) {
+          await updateSurveyAssignment(req, recordId, organizationId);
+        } else if (isSurveyCompletionResource(resourceName)) {
+          await updateSurveyCompletion(req, recordId, organizationId);
+        } else if (isTaskAssignmentResource(resourceName)) {
           await updateTaskAssignment(req, recordId, organizationId);
         } else if (isTaskCompletionResource(resourceName)) {
           await updateTaskCompletion(req, recordId, organizationId);

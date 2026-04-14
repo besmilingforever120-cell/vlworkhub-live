@@ -239,7 +239,7 @@ export function DocumentDetailView({ documentId }: Props) {
       });
 
       setShowSignaturePad(false);
-      await load();
+      router.push("/documents");
     } catch (signError) {
       setSignatureError(getApiErrorMessage(signError));
     }

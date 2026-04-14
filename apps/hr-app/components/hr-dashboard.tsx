@@ -175,6 +175,49 @@ function getOverallDashboardTaskStatus(task: HrRecord, assignedUsers: Array<{ id
   return "Not Started";
 }
 
+function isTrainingCompletionDone(item: HrRecord) {
+  return Number(item.progress_percent ?? 0) >= 100 || Boolean(String(item.completed_on ?? "").trim());
+}
+
+function getTrainingTargetNames(assignment: HrRecord, users: Array<{ id: string; fullName: string; department: string | null }>) {
+  const tokens = splitNames(String(assignment.assignee_name ?? ""));
+  const names = new Set<string>();
+
+  if (tokens.includes("All Staff")) {
+    users.forEach((user) => {
+      if (user.fullName) names.add(user.fullName);
+    });
+  }
+
+  for (const token of tokens) {
+    if (!token || token === "All Staff") continue;
+    if (token.startsWith("Department:")) {
+      const departmentName = token.replace("Department:", "").trim();
+      users.forEach((user) => {
+        if (user.department && user.department === departmentName) {
+          names.add(user.fullName);
+        }
+      });
+      continue;
+    }
+
+    names.add(token);
+  }
+
+  return names;
+}
+
+function getCompletedTrainingNames(assignmentId: string, completions: HrRecord[]) {
+  const names = new Set<string>();
+  for (const completion of completions) {
+    if (String(completion.assignment_id ?? "") !== assignmentId) continue;
+    if (!isTrainingCompletionDone(completion)) continue;
+    const userName = String(completion.user_name ?? "").trim();
+    if (userName) names.add(userName);
+  }
+  return names;
+}
+
 export function HrDashboard() {
   const [user, setUser] = useState<SessionUser | null>(null);
   const [sharedUsers, setSharedUsers] = useState<Array<{ id: string; fullName: string; department: string | null }>>([]);
@@ -184,6 +227,7 @@ export function HrDashboard() {
   const [taskAssignments, setTaskAssignments] = useState<HrRecord[]>([]);
   const [taskCompletion, setTaskCompletion] = useState<DashboardTaskCompletion[]>([]);
   const [trainingAssignments, setTrainingAssignments] = useState<HrRecord[]>([]);
+  const [trainingCompletions, setTrainingCompletions] = useState<HrRecord[]>([]);
   const [surveyAssignments, setSurveyAssignments] = useState<HrRecord[]>([]);
   const [documents, setDocuments] = useState<HrDocumentRecord[]>([]);
   const [summary, setSummary] = useState<HrDashboardSummary>({ documents: 0, training: 0, tasks: 0, surveys: 0 });
@@ -211,7 +255,7 @@ export function HrDashboard() {
       surveys: Number(summaryResult.surveys || 0)
     });
 
-    const [sessionResult, usersResult, hrRolesResult, announcementsResult, tasksResult, taskAssignmentsResult, taskCompletionResult, trainingResult, surveysResult, documentsResult] = await Promise.allSettled([
+    const [sessionResult, usersResult, hrRolesResult, announcementsResult, tasksResult, taskAssignmentsResult, taskCompletionResult, trainingResult, trainingCompletionResult, surveysResult, documentsResult] = await Promise.allSettled([
       getCurrentUser(),
       getPlatformUsers(),
       getHrAssignments(),
@@ -220,6 +264,7 @@ export function HrDashboard() {
       getResource("task_assignments"),
       getResource("task_completion"),
       getResource("training_assignments"),
+      getResource("training_completions"),
       getResource("survey_assignments"),
       getHrDocuments()
     ]);
@@ -241,6 +286,7 @@ export function HrDashboard() {
     if (taskAssignmentsResult.status === "fulfilled") setTaskAssignments(taskAssignmentsResult.value);
     if (taskCompletionResult.status === "fulfilled") setTaskCompletion(taskCompletionResult.value.map((item) => ({ task_id: item.task_id ? String(item.task_id) : null, user_id: item.user_id ? String(item.user_id) : null, status: item.status ? String(item.status) : null })));
     if (trainingResult.status === "fulfilled") setTrainingAssignments(trainingResult.value);
+    if (trainingCompletionResult.status === "fulfilled") setTrainingCompletions(trainingCompletionResult.value);
     if (surveysResult.status === "fulfilled") setSurveyAssignments(surveysResult.value);
     if (documentsResult.status === "fulfilled") setDocuments(documentsResult.value.items || []);
     setLoading(false);
@@ -312,14 +358,42 @@ export function HrDashboard() {
     });
   }, [currentTaskUser, scopeUsers, taskCompletion, tasksWithAssignments]);
   const activeTasks = useMemo(() => visibleTasks.filter((item) => item.overallStatus !== "Completed"), [visibleTasks]) as DashboardVisibleTask[];
-  const visibleTraining = useMemo(() => filterByAssignees(trainingAssignments, "assignee_name", access.visibleNames).filter((item) => String(item.status ?? "").toLowerCase() !== "completed"), [trainingAssignments, access.visibleNames]);
+  const visibleTraining = useMemo(() => {
+    const visibleNameSet = new Set(access.visibleNames);
+    const currentName = String(user?.fullName || "").trim();
+
+    return filterByAssignees(trainingAssignments, "assignee_name", access.visibleNames).filter((assignment) => {
+      if (String(assignment.status ?? "").trim().toLowerCase() === "archived") return false;
+
+      const assignmentId = String(assignment.id ?? "");
+      const targetNames = getTrainingTargetNames(assignment, sharedUsers);
+      const completedNames = getCompletedTrainingNames(assignmentId, trainingCompletions);
+
+      if (!targetNames.size) {
+        return String(assignment.status ?? "").trim().toLowerCase() !== "completed";
+      }
+
+      if (access.role === "employee") {
+        if (!currentName || !targetNames.has(currentName)) return false;
+        return !completedNames.has(currentName);
+      }
+
+      if (access.role === "manager") {
+        const managedTargets = Array.from(targetNames).filter((name) => visibleNameSet.has(name));
+        if (!managedTargets.length) return false;
+        return managedTargets.some((name) => !completedNames.has(name));
+      }
+
+      return Array.from(targetNames).some((name) => !completedNames.has(name));
+    });
+  }, [access.role, access.visibleNames, sharedUsers, trainingAssignments, trainingCompletions, user?.fullName]);
   const visibleSurveys = useMemo(() => filterByAssignees(surveyAssignments, "assignee_name", access.visibleNames).filter((item) => String(item.status ?? "").toLowerCase() !== "completed"), [surveyAssignments, access.visibleNames]);
   const activeDocumentsRequiringSignature = useMemo(() => documents.filter((document) => !document.is_completed && document.requires_signature), [documents]);
   const announcementFeed = useMemo(() => announcements.slice().sort((left, right) => String(right.publish_date || "").localeCompare(String(left.publish_date || ""))).slice(0, 5), [announcements]);
 
   const stats: StatCard[] = [
     { title: "Documents", value: String(activeDocumentsRequiringSignature.length), href: "/documents", color: "green", icon: FileSignature },
-    { title: "Training", value: String(summary.training), href: "/training", color: "purple", icon: BookOpen },
+    { title: "Training", value: String(visibleTraining.length), href: "/training", color: "purple", icon: BookOpen },
     { title: "Tasks", value: String(activeTasks.length), href: "/tasks", color: "amber", icon: SquareCheckBig },
     { title: "Surveys", value: String(summary.surveys), href: "/surveys", color: "blue", icon: ClipboardList }
   ];

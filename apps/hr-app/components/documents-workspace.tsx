@@ -254,7 +254,9 @@ export function DocumentsWorkspace() {
   const visibleDocuments = useMemo(() => {
     const items = documents.filter((document) => canViewDocument(document, viewer));
     if (!viewer) return [] as DocumentViewerRecord[];
-    if (viewer.role === "ADMIN") return items;
+    if (viewer.role === "ADMIN") {
+      return items.filter((document) => getDocumentStatus(document) !== "archived");
+    }
     return items.filter((document) => getDocumentStatus(document) === "pending");
   }, [documents, viewer]);
 

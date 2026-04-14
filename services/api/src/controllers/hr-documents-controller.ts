@@ -101,6 +101,15 @@ function getLocalUploadsBaseUrl() {
   return "http://localhost:8080/uploads";
 }
 
+function sanitizePathSegment(value: string) {
+  const normalized = String(value || "")
+    .normalize("NFKD")
+    .replace(/[^a-zA-Z0-9._-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+  return normalized || "user";
+}
+
 function parseDataUrl(dataUrl: string) {
   const match = /^data:([^;]+);base64,(.+)$/i.exec(String(dataUrl || ""));
   if (!match) {
@@ -139,21 +148,22 @@ async function saveOriginalFileLocally(documentId: number, fileName: string, fil
   return `${getLocalUploadsBaseUrl()}/original/${storedFileName}`;
 }
 
-async function saveSignedPdfLocally(documentId: number, signedFileUrl: string | null) {
+async function saveSignedPdfLocally(documentId: number, userId: string, userName: string, signedFileUrl: string | null) {
   const parsed = signedFileUrl ? parseDataUrl(signedFileUrl) : null;
   if (!parsed) {
     return null;
   }
 
-  const uploadsRoot = getSignedUploadsRoot();
+  const folderName = sanitizePathSegment(userName || userId);
+  const uploadsRoot = path.join(getSignedUploadsRoot(), folderName);
   await fs.mkdir(uploadsRoot, { recursive: true });
 
   const timestamp = Date.now();
-  const fileName = `signed-${documentId}-${timestamp}.pdf`;
+  const fileName = `signed-${documentId}-${sanitizePathSegment(userId)}-${timestamp}.pdf`;
   const filePath = path.join(uploadsRoot, fileName);
   await fs.writeFile(filePath, parsed.buffer);
 
-  return `${getLocalUploadsBaseUrl()}/signed/${fileName}`;
+  return `${getLocalUploadsBaseUrl()}/signed/${encodeURIComponent(folderName)}/${fileName}`;
 }
 
 function resolveStoredFileUrl(fileName: string, incomingFileUrl: string | null) {
@@ -370,6 +380,11 @@ function isDocumentCompleted(row: DocumentRecord, effectiveAssigneeIds: string[]
   return asString(row.status).toLowerCase() === "signed";
 }
 
+function getUnsignedEffectiveAssigneeIds(row: DocumentRecord, effectiveAssigneeIds: string[]) {
+  const signedUserIds = new Set(Array.isArray(row.signed_user_ids) ? row.signed_user_ids.map((value) => String(value)) : []);
+  return effectiveAssigneeIds.filter((userId) => !signedUserIds.has(userId));
+}
+
 function canViewDocument(row: DocumentRecord, context: Awaited<ReturnType<typeof getHrPermissionContext>>, organizationUsers: OrganizationUser[]) {
   const assignment = resolveEffectiveAssignees(row, organizationUsers);
 
@@ -377,7 +392,8 @@ function canViewDocument(row: DocumentRecord, context: Awaited<ReturnType<typeof
     return assignment.effectiveUserIds.length > 0 || assignment.allStaff;
   }
 
-  return assignment.effectiveUserIds.some((userId) => context.visibleUserIds.includes(userId));
+  const unsignedEffectiveUserIds = getUnsignedEffectiveAssigneeIds(row, assignment.effectiveUserIds);
+  return unsignedEffectiveUserIds.some((userId) => context.visibleUserIds.includes(userId));
 }
 
 function canCurrentUserSign(row: DocumentRecord, context: Awaited<ReturnType<typeof getHrPermissionContext>>, organizationUsers: OrganizationUser[]) {
@@ -760,7 +776,7 @@ export async function signHrDocument(req: AuthenticatedRequest, res: Response) {
       return res.status(403).json({ message: "Only assigned users can sign this document" });
     }
 
-    const localSignedFileUrl = await saveSignedPdfLocally(documentId, asNullableString(body.signedFileUrl));
+    const localSignedFileUrl = await saveSignedPdfLocally(documentId, userId, String(req.user?.full_name || userId), asNullableString(body.signedFileUrl));
 
     const signatureNote = JSON.stringify({
       signatureData: asNullableString(body.signatureData),
@@ -786,10 +802,9 @@ export async function signHrDocument(req: AuthenticatedRequest, res: Response) {
 
     await pool.query(
       `UPDATE documents
-       SET status = $3,
-           file_url = COALESCE($4, file_url)
+       SET status = $3
        WHERE id = $1 AND organization_id = $2`,
-      [documentId, organizationId, completed ? "Signed" : "In Progress", localSignedFileUrl]
+      [documentId, organizationId, completed ? "Signed" : "In Progress"]
     );
 
     return res.json({ success: true });
@@ -851,6 +866,74 @@ export async function completeHrDocument(req: AuthenticatedRequest, res: Respons
 
 
 
+
+
+export async function listHrSignedDocumentFiles(req: AuthenticatedRequest, res: Response) {
+  try {
+    await ensureDocumentsSchema();
+    const organizationId = String(req.user?.organization_id || "");
+    const context = await getHrPermissionContext(
+      String(req.user?.user_id || ""),
+      organizationId,
+      String(req.user?.platform_role || req.user?.role || "USER"),
+      String(req.user?.full_name || "")
+    );
+
+    if (context.role !== "admin") {
+      return res.status(403).json({ message: "Forbidden" });
+    }
+
+    const result = await pool.query(
+      `SELECT
+         ds.id,
+         ds.document_id,
+         ds.user_id::text AS user_id,
+         COALESCE(NULLIF(TRIM(COALESCE(u.first_name, '') || ' ' || COALESCE(u.last_name, '')), ''), ds.signer_name, 'Unknown User') AS signer_name,
+         COALESCE(u.email, '') AS signer_email,
+         COALESCE(d.file_name, d.title, 'Signed Document') AS document_name,
+         COALESCE(d.status, 'Unknown') AS document_status,
+         ds.signed_at,
+         ds.note
+       FROM document_signatures ds
+       LEFT JOIN users u ON u.id = ds.user_id
+       LEFT JOIN documents d ON d.id = ds.document_id AND d.organization_id = ds.organization_id
+       WHERE ds.organization_id = $1
+       ORDER BY signer_name ASC, ds.signed_at DESC, ds.id DESC`,
+      [organizationId]
+    );
+
+    const items = result.rows.map((row) => {
+      let noteData: Record<string, unknown> = {};
+      try {
+        noteData = row.note ? JSON.parse(String(row.note)) : {};
+      } catch {
+        noteData = {};
+      }
+
+      const signedFileUrl = typeof noteData.fileUrl === "string" ? noteData.fileUrl : null;
+      const signatureId = typeof noteData.signatureId === "string" ? noteData.signatureId : null;
+
+      return {
+        id: Number(row.id),
+        document_id: Number(row.document_id),
+        user_id: row.user_id ? String(row.user_id) : null,
+        signer_name: String(row.signer_name || "Unknown User"),
+        signer_email: String(row.signer_email || ""),
+        document_name: String(row.document_name || "Signed Document"),
+        document_status: String(row.document_status || "Unknown"),
+        signed_at: row.signed_at,
+        signature_id: signatureId,
+        signed_file_url: signedFileUrl,
+        archived: String(row.document_status || "").trim().toLowerCase() === "archived"
+      };
+    });
+
+    return res.json({ items });
+  } catch (error) {
+    console.error("API error in GET /hr/documents/signed-files", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+}
 
 
 export async function downloadHrDocument(req: AuthenticatedRequest, res: Response) {

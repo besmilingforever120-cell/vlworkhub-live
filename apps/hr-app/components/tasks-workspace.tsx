@@ -291,6 +291,10 @@ export function TasksWorkspace() {
     () => getVisibleHrUserNames(hrRole, user?.id || "", user?.fullName || "", hrAssignments, users),
     [hrAssignments, hrRole, user?.fullName, user?.id, users]
   );
+  const reportUserIds = useMemo(
+    () => new Set(hrAssignments.filter((assignment) => String(assignment.manager_id || "") === String(user?.id || "")).map((assignment) => String(assignment.user_id))),
+    [hrAssignments, user?.id]
+  );
   const scopeUsers = useMemo(() => getScopedUsers(hrRole, users, visibleNames), [hrRole, users, visibleNames]);
 
   const enrichedTasks = useMemo(() => {
@@ -300,6 +304,7 @@ export function TasksWorkspace() {
       const resolvedUsers = getResolvedAssignedUsers(taskId, taskAssignments, scopeUsers);
       const completions = getTaskCompletionsFor(taskId, taskCompletion);
       const completedUsers = resolvedUsers.filter((assignedUser) => completions.some((row) => row.user_id === assignedUser.id && getCompletionStatusLabel(row.status) === "Completed"));
+      const completedUserIds = new Set(completedUsers.map((assignedUser) => assignedUser.id));
       const incompleteUsers = resolvedUsers.filter((assignedUser) => !completedUsers.some((completedUser) => completedUser.id === assignedUser.id));
       const progress = resolvedUsers.length ? Math.round((completedUsers.length / resolvedUsers.length) * 100) : 0;
       const overallStatus = getOverallTaskStatus(task, resolvedUsers, completions);
@@ -311,6 +316,9 @@ export function TasksWorkspace() {
       const includesAllStaff = allStaffAssigned;
       const myCompletion = completions.find((completion) => completion.user_id === user?.id);
       const canStart = rawDirectAssignment || directlyAssigned || departmentAssigned || allStaffAssigned;
+      const managedReportUsers = resolvedUsers.filter((assignedUser) => reportUserIds.has(assignedUser.id));
+      const areAllManagedReportsCompleted = managedReportUsers.length > 0 && managedReportUsers.every((assignedUser) => completedUserIds.has(assignedUser.id));
+      const isMyTaskCompleted = Boolean(user?.id && completedUserIds.has(user.id));
 
       return {
         task,
@@ -325,13 +333,30 @@ export function TasksWorkspace() {
         assignedDepartments,
         includesAllStaff,
         myCompletion,
-        canStart
+        canStart,
+        managedReportUsers,
+        areAllManagedReportsCompleted,
+        isMyTaskCompleted
       };
     });
-  }, [hrRole, scopeUsers, taskAssignments, taskCompletion, tasks, user?.id, users]);
+  }, [hrRole, reportUserIds, scopeUsers, taskAssignments, taskCompletion, tasks, user?.id, users]);
 
   const filtered = useMemo(() => {
     return enrichedTasks.filter((item) => {
+      if (hrRole === "employee" && item.isMyTaskCompleted) {
+        return false;
+      }
+
+      if (hrRole === "manager") {
+        if (item.managedReportUsers.length > 0 && item.areAllManagedReportsCompleted) {
+          return false;
+        }
+
+        if (item.managedReportUsers.length === 0 && item.isMyTaskCompleted) {
+          return false;
+        }
+      }
+
       const matchesStatus = statusFilter === "All" || item.overallStatus === statusFilter;
       const matchesPriority = priorityFilter === "All" || asString(item.task.priority || "Normal") === priorityFilter;
       const haystack = [
@@ -344,7 +369,7 @@ export function TasksWorkspace() {
 
       return matchesStatus && matchesPriority && haystack.includes(query.toLowerCase());
     });
-  }, [enrichedTasks, priorityFilter, query, statusFilter]);
+  }, [enrichedTasks, hrRole, priorityFilter, query, statusFilter]);
 
   const stats = {
     total: filtered.length,
@@ -494,14 +519,16 @@ export function TasksWorkspace() {
           ? "In Progress"
           : "Not Started";
 
-      await updateResource("tasks", item.taskId, {
-        title: asString(item.task.title),
-        assigned_to: asString(item.task.assigned_to),
-        due_date: asString(item.task.due_date),
-        status: nextTaskStatus,
-        priority: asString(item.task.priority) || "Normal",
-        description: asString(item.task.description)
-      });
+      if (canEdit) {
+        await updateResource("tasks", item.taskId, {
+          title: asString(item.task.title),
+          assigned_to: asString(item.task.assigned_to),
+          due_date: asString(item.task.due_date),
+          status: nextTaskStatus,
+          priority: asString(item.task.priority) || "Normal",
+          description: asString(item.task.description)
+        });
+      }
 
       await load();
     } catch (stateError) {

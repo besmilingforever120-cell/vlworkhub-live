@@ -22,12 +22,12 @@ import {
 import {
   buildAssignmentTargetSummary,
   buildAssignmentTokens,
-  getAssignmentStatus,
-  getCompletedAssignmentIds,
+  getCompletionUsersByAssignment,
+  getTrainingAssignmentStatusForViewer,
   getCurrentPlatformUser,
   getQuizUrl,
   getVisibleDepartmentNames,
-  isAssignmentVisible,
+  isTrainingAssignmentVisibleForList,
   parseAssigneeTargets,
   type TrainingAssignmentRow,
   type TrainingLibraryRow
@@ -123,20 +123,30 @@ export function TrainingWorkspace() {
     [currentPlatformUser, users, visibleNames]
   );
 
-  const completedAssignmentIds = useMemo(() => getCompletedAssignmentIds(completions), [completions]);
+  const completionUsersByAssignment = useMemo(() => getCompletionUsersByAssignment(completions), [completions]);
 
   const filteredAssignments = useMemo(() => {
     const normalizedQuery = query.toLowerCase();
     return assignments.filter((assignment) => {
-      const visible = isAssignmentVisible(assignment, hrRole, user, currentPlatformUser, visibleNames, visibleDepartmentNames);
+      const visible = isTrainingAssignmentVisibleForList(
+        assignment,
+        hrRole,
+        user,
+        currentPlatformUser,
+        visibleNames,
+        visibleDepartmentNames,
+        users,
+        completionUsersByAssignment
+      );
       if (!visible) return false;
+      if (hrRole === "admin" && String(assignment.status ?? "").trim().toLowerCase() === "archived") return false;
       const training = library.find((item) => Number(item.id) === Number(assignment.training_id));
       const haystack = [assignment.title, assignment.assignee_name, assignment.due_date, assignment.status, training?.training_name]
         .map((value) => String(value ?? "").toLowerCase())
         .join(" ");
       return haystack.includes(normalizedQuery);
     });
-  }, [assignments, currentPlatformUser, hrRole, library, query, user, visibleDepartmentNames, visibleNames]);
+  }, [assignments, completionUsersByAssignment, currentPlatformUser, hrRole, library, query, user, users, visibleDepartmentNames, visibleNames]);
 
   const filteredLibrary = useMemo(() => {
     const normalizedQuery = query.toLowerCase();
@@ -151,9 +161,9 @@ export function TrainingWorkspace() {
   const stats = useMemo(() => ({
     library: library.length,
     assignments: filteredAssignments.length,
-    completed: filteredAssignments.filter((assignment) => getAssignmentStatus(assignment, completedAssignmentIds) === "Completed").length,
-    active: filteredAssignments.filter((assignment) => getAssignmentStatus(assignment, completedAssignmentIds) === "Assigned").length
-  }), [completedAssignmentIds, filteredAssignments, library.length]);
+    completed: filteredAssignments.filter((assignment) => getTrainingAssignmentStatusForViewer(assignment, hrRole, user, currentPlatformUser, visibleNames, users, completionUsersByAssignment) === "Completed").length,
+    active: filteredAssignments.filter((assignment) => getTrainingAssignmentStatusForViewer(assignment, hrRole, user, currentPlatformUser, visibleNames, users, completionUsersByAssignment) === "Assigned").length
+  }), [completionUsersByAssignment, currentPlatformUser, filteredAssignments, hrRole, library.length, user, users, visibleNames]);
 
   const selectedUsers = useMemo(() => users.filter((candidate) => assignmentForm.userIds.includes(candidate.id)), [assignmentForm.userIds, users]);
   const selectedDepartments = useMemo(() => departments.filter((candidate) => assignmentForm.departmentIds.includes(candidate.id)), [assignmentForm.departmentIds, departments]);
@@ -381,8 +391,8 @@ export function TrainingWorkspace() {
                 </thead>
                 <tbody>
                   {filteredAssignments.map((assignment) => {
-                    const status = getAssignmentStatus(assignment, completedAssignmentIds);
-                    const canArchive = status === "Completed";
+                    const status = getTrainingAssignmentStatusForViewer(assignment, hrRole, user, currentPlatformUser, visibleNames, users, completionUsersByAssignment);
+                    const canArchive = hrRole === "admin" && status === "Completed";
                     const showAdminActions = canManage && status === "Assigned";
                     return (
                       <tr key={String(assignment.id)} className="cursor-pointer" onClick={() => router.push(`/training/${assignment.training_id}`)}>

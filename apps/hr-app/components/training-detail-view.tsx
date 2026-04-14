@@ -19,8 +19,8 @@ import {
   type PlatformUserRecord
 } from "../lib/hr-client";
 import {
-  getAssignmentStatus,
-  getCompletedAssignmentIds,
+  getCompletionUsersByAssignment,
+  getTrainingAssignmentStatusForViewer,
   getCurrentPlatformUser,
   getQuizUrl,
   getVisibleDepartmentNames,
@@ -84,12 +84,19 @@ export function TrainingDetailView({ trainingId }: Props) {
   const visibleDepartmentNames = useMemo(() => getVisibleDepartmentNames(visibleNames, users, currentPlatformUser), [currentPlatformUser, users, visibleNames]);
   const training = useMemo(() => library.find((item) => String(item.id) === trainingId) || null, [library, trainingId]);
   console.log("[Training Detail] training", training);
-  const visibleAssignments = useMemo(() => assignments.filter((assignment) => Number(assignment.training_id) === Number(trainingId) && isAssignmentVisible(assignment, hrRole, user, currentPlatformUser, visibleNames, visibleDepartmentNames)), [assignments, currentPlatformUser, hrRole, trainingId, user, visibleDepartmentNames, visibleNames]);
+  const visibleAssignments = useMemo(() => assignments.filter((assignment) => {
+    if (Number(assignment.training_id) !== Number(trainingId)) return false;
+    if (!isAssignmentVisible(assignment, hrRole, user, currentPlatformUser, visibleNames, visibleDepartmentNames)) return false;
+    if (hrRole !== "admin" && String(assignment.status ?? "").trim().toLowerCase() === "archived") return false;
+    return true;
+  }), [assignments, currentPlatformUser, hrRole, trainingId, user, visibleDepartmentNames, visibleNames]);
   const primaryAssignment = useMemo(() => visibleAssignments.find((assignment) => isAssignmentTargetedToUser(assignment, user, currentPlatformUser)) || visibleAssignments[0] || null, [currentPlatformUser, user, visibleAssignments]);
-  const completedAssignmentIds = useMemo(() => getCompletedAssignmentIds(completions), [completions]);
-  const assignmentStatus = primaryAssignment ? getAssignmentStatus(primaryAssignment, completedAssignmentIds) : "Assigned";
+  const completionUsersByAssignment = useMemo(() => getCompletionUsersByAssignment(completions), [completions]);
+  const assignmentStatus = primaryAssignment
+    ? getTrainingAssignmentStatusForViewer(primaryAssignment, hrRole, user, currentPlatformUser, visibleNames, users, completionUsersByAssignment)
+    : "Assigned";
   const canComplete = Boolean(primaryAssignment && isAssignmentTargetedToUser(primaryAssignment, user, currentPlatformUser) && assignmentStatus === "Assigned");
-  const canArchive = Boolean(primaryAssignment && (isAssignmentTargetedToUser(primaryAssignment, user, currentPlatformUser) || hrRole === "admin") && assignmentStatus === "Completed");
+  const canArchive = Boolean(primaryAssignment && hrRole === "admin" && assignmentStatus === "Completed");
 
   async function handleCompleteTraining() {
     if (!primaryAssignment || !user) return;
@@ -101,8 +108,8 @@ export function TrainingDetailView({ trainingId }: Props) {
       } else {
         await createResource("training_completions", completionPayload);
       }
-      await updateResource("training_assignments", Number(primaryAssignment.id), { title: String(primaryAssignment.title ?? "Training assignment"), training_id: String(primaryAssignment.training_id ?? ""), assignee_name: String(primaryAssignment.assignee_name ?? ""), due_date: String(primaryAssignment.due_date ?? ""), survey_url: String(primaryAssignment.survey_url ?? ""), status: "Completed" });
       await load();
+      router.push("/training");
     } catch (completeError) {
       setError(getApiErrorMessage(completeError));
     }

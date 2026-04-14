@@ -273,6 +273,10 @@ export async function archiveTask(id: number) {  return request<{ success: true 
   });
 }
 
+export async function getArchivedTasks() {
+  return request<{ items: HrRecord[] }>("/resources/tasks/archived");
+}
+
 
 
 
@@ -311,8 +315,27 @@ export type HrDocumentRecord = {
   can_view_actions: boolean;
 };
 
+export type HrSignedDocumentFileRecord = {
+  id: number;
+  document_id: number;
+  user_id: string | null;
+  signer_name: string;
+  signer_email: string;
+  document_name: string;
+  document_status: string;
+  signed_at: string | null;
+  signature_id: string | null;
+  signed_file_url: string | null;
+  archived: boolean;
+};
+
 export async function getHrDocuments() {
+
   return request<{ items: HrDocumentRecord[] }>("/hr/documents");
+}
+
+export async function getHrSignedDocumentFiles() {
+  return request<{ items: HrSignedDocumentFileRecord[] }>("/hr/documents/signed-files");
 }
 
 export async function createHrDocument(payload: {

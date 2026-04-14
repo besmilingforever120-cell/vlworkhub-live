@@ -42,15 +42,15 @@ export const resourceMap = {
   },
   surveys: {
     table: "surveys",
-    fields: ["title", "url", "due_date", "status"]
+    fields: ["title", "url", "due_date", "status", "created_by"]
   },
   survey_assignments: {
     table: "survey_assignments",
-    fields: ["title", "survey_id", "assignee_name", "due_date", "status"]
+    fields: ["title", "survey_id", "due_date", "status", "user_id", "department_id", "all_staff"]
   },
   survey_completions: {
     table: "survey_completions",
-    fields: ["assignment_id", "user_name", "completed_on"]
+    fields: ["assignment_id", "completed_on", "user_id"]
   },
   document_signatures: {
     table: "document_signatures",

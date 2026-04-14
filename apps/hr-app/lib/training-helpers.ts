@@ -20,6 +20,16 @@ export type TrainingLibraryRow = HrRecord & {
   status?: string | number | null;
 };
 
+type CompletionUsersByAssignment = Map<string, Set<string>>;
+
+function normalizeName(value: string | number | null | undefined) {
+  return String(value ?? "").trim().toLowerCase();
+}
+
+function isCompletionDone(item: HrRecord) {
+  return Number(item.progress_percent ?? 0) >= 100 || Boolean(String(item.completed_on ?? "").trim());
+}
+
 export function getQuizUrl(training: TrainingLibraryRow | undefined) {
   return String(training?.quiz_iframe_link ?? "").trim();
 }
@@ -90,6 +100,160 @@ export function isAssignmentTargetedToUser(assignment: TrainingAssignmentRow, cu
 
 export function getCompletedAssignmentIds(completions: HrRecord[]) {
   return new Set(completions.filter((item) => Number(item.progress_percent ?? 0) >= 100 || String(item.completed_on ?? "")).map((item) => String(item.assignment_id ?? "")));
+}
+
+export function getCompletionUsersByAssignment(completions: HrRecord[]) {
+  const byAssignment: CompletionUsersByAssignment = new Map();
+  for (const item of completions) {
+    if (!isCompletionDone(item)) continue;
+    const assignmentId = String(item.assignment_id ?? "").trim();
+    const userName = normalizeName(item.user_name);
+    if (!assignmentId || !userName) continue;
+    const current = byAssignment.get(assignmentId) || new Set<string>();
+    current.add(userName);
+    byAssignment.set(assignmentId, current);
+  }
+  return byAssignment;
+}
+
+function resolveAssignmentTargetNames(assignment: TrainingAssignmentRow, users: PlatformUserRecord[]) {
+  const tokens = splitAssignees(assignment.assignee_name);
+  const targetNames = new Set<string>();
+
+  if (tokens.includes("All Staff")) {
+    users.forEach((candidate) => {
+      const normalized = normalizeName(candidate.name || candidate.email);
+      if (normalized) targetNames.add(normalized);
+    });
+  }
+
+  for (const token of tokens) {
+    if (!token || token === "All Staff") continue;
+    if (token.startsWith("Department: ")) {
+      const departmentName = token.replace("Department: ", "").trim();
+      users.forEach((candidate) => {
+        if (String(candidate.department_name || "").trim() === departmentName) {
+          const normalized = normalizeName(candidate.name || candidate.email);
+          if (normalized) targetNames.add(normalized);
+        }
+      });
+      continue;
+    }
+
+    const normalized = normalizeName(token);
+    if (normalized) targetNames.add(normalized);
+  }
+
+  return targetNames;
+}
+
+function hasPendingCompletion(assignmentId: string, targetNames: Set<string>, completionUsersByAssignment: CompletionUsersByAssignment) {
+  if (!targetNames.size) return false;
+  const completedUsers = completionUsersByAssignment.get(assignmentId) || new Set<string>();
+  for (const name of targetNames) {
+    if (!completedUsers.has(name)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+export function isTrainingAssignmentVisibleForList(
+  assignment: TrainingAssignmentRow,
+  hrRole: "admin" | "manager" | "employee",
+  currentUser: SessionUser | null,
+  currentPlatformUser: PlatformUserRecord | null,
+  visibleNames: string[],
+  visibleDepartmentNames: string[],
+  users: PlatformUserRecord[],
+  completionUsersByAssignment: CompletionUsersByAssignment
+) {
+  if (!isAssignmentVisible(assignment, hrRole, currentUser, currentPlatformUser, visibleNames, visibleDepartmentNames)) {
+    return false;
+  }
+
+  const assignmentId = String(assignment.id);
+  const status = String(assignment.status ?? "").trim().toLowerCase();
+  if (status === "archived") {
+    return hrRole === "admin";
+  }
+
+  if (hrRole === "admin") {
+    return true;
+  }
+
+  const targetNames = resolveAssignmentTargetNames(assignment, users);
+  if (!targetNames.size) {
+    return true;
+  }
+
+  if (hrRole === "employee") {
+    const currentName = normalizeName(currentUser?.fullName || currentPlatformUser?.name || currentPlatformUser?.email || "");
+    if (!currentName || !targetNames.has(currentName)) {
+      return true;
+    }
+    const completedUsers = completionUsersByAssignment.get(assignmentId) || new Set<string>();
+    return !completedUsers.has(currentName);
+  }
+
+  const visibleNormalizedNames = new Set(visibleNames.map((name) => normalizeName(name)).filter(Boolean));
+  const managedTargetNames = new Set<string>();
+  for (const name of targetNames) {
+    if (visibleNormalizedNames.has(name)) {
+      managedTargetNames.add(name);
+    }
+  }
+
+  if (!managedTargetNames.size) {
+    return true;
+  }
+
+  return hasPendingCompletion(assignmentId, managedTargetNames, completionUsersByAssignment);
+}
+
+export function getTrainingAssignmentStatusForViewer(
+  assignment: TrainingAssignmentRow,
+  hrRole: "admin" | "manager" | "employee",
+  currentUser: SessionUser | null,
+  currentPlatformUser: PlatformUserRecord | null,
+  visibleNames: string[],
+  users: PlatformUserRecord[],
+  completionUsersByAssignment: CompletionUsersByAssignment
+) {
+  if (String(assignment.status ?? "").trim().toLowerCase() === "archived") {
+    return "Archived";
+  }
+
+  const assignmentId = String(assignment.id);
+  const targetNames = resolveAssignmentTargetNames(assignment, users);
+  if (!targetNames.size) {
+    return String(assignment.status ?? "Assigned") || "Assigned";
+  }
+
+  if (hrRole === "employee") {
+    const currentName = normalizeName(currentUser?.fullName || currentPlatformUser?.name || currentPlatformUser?.email || "");
+    const completedUsers = completionUsersByAssignment.get(assignmentId) || new Set<string>();
+    if (currentName && completedUsers.has(currentName)) {
+      return "Completed";
+    }
+    return "Assigned";
+  }
+
+  if (hrRole === "manager") {
+    const visibleNormalizedNames = new Set(visibleNames.map((name) => normalizeName(name)).filter(Boolean));
+    const managedTargetNames = new Set<string>();
+    for (const name of targetNames) {
+      if (visibleNormalizedNames.has(name)) {
+        managedTargetNames.add(name);
+      }
+    }
+    if (!managedTargetNames.size) {
+      return "Assigned";
+    }
+    return hasPendingCompletion(assignmentId, managedTargetNames, completionUsersByAssignment) ? "Assigned" : "Completed";
+  }
+
+  return hasPendingCompletion(assignmentId, targetNames, completionUsersByAssignment) ? "Assigned" : "Completed";
 }
 
 export function getAssignmentStatus(assignment: TrainingAssignmentRow, completedAssignmentIds: Set<string>) {

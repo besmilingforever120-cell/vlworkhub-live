@@ -14,6 +14,7 @@ import {
   deleteHrDocument,
   downloadHrDocument,
   listHrDocuments,
+  listHrSignedDocumentFiles,
   signHrDocument,
   updateHrDocument
 } from "../controllers/hr-documents-controller";
@@ -25,6 +26,7 @@ hrRouter.use(requireAuth);
 hrRouter.get("/my-role", getMyHrRole);
 hrRouter.get("/dashboard", getHrDashboard);
 hrRouter.get("/documents", listHrDocuments);
+hrRouter.get("/documents/signed-files", listHrSignedDocumentFiles);
 hrRouter.post("/documents", createHrDocument);
 hrRouter.post("/documents/:id/sign", signHrDocument);
 hrRouter.post("/documents/:id/archive", archiveHrDocument);

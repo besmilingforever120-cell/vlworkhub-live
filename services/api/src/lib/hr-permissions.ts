@@ -239,9 +239,27 @@ export function filterHrResourceRows(resourceName: string, rows: Array<Record<st
     case "training_completions":
       return rows.filter((row) => context.visibleUserNames.includes(String(row.user_name ?? "")));
     case "survey_assignments":
-      return rows.filter((row) => splitNames(row.assignee_name).some((name) => context.visibleUserNames.includes(name)));
+      return rows.filter((row) => {
+        const allStaff = String(row.all_staff ?? "").toLowerCase() === "true";
+        if (allStaff) {
+          return true;
+        }
+
+        const departmentName = String(row.department_name ?? "").trim();
+        if (departmentName && context.visibleDepartmentNames.includes(departmentName)) {
+          return true;
+        }
+
+        const userId = String(row.user_id ?? "").trim();
+        const userName = String(row.user_name ?? "").trim();
+        return (userId && context.visibleUserIds.includes(userId)) || (userName && context.visibleUserNames.includes(userName));
+      });
     case "survey_completions":
-      return rows.filter((row) => context.visibleUserNames.includes(String(row.user_name ?? "")));
+      return rows.filter((row) => {
+        const userId = String(row.user_id ?? "").trim();
+        const userName = String(row.user_name ?? "").trim();
+        return (userId && context.visibleUserIds.includes(userId)) || (userName && context.visibleUserNames.includes(userName));
+      });
     case "documents":
       return rows.filter((row) => {
         const owners = splitNames(row.owner_name);
