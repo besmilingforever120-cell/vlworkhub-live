@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { Archive, Briefcase, CheckSquare, Edit, FolderOpen, Plus, Shield, Trash2, UserCog, Users, X } from "lucide-react";
+import { Archive, Briefcase, CheckSquare, ClipboardList, Edit, FolderOpen, Plus, Shield, Trash2, UserCog, Users, X } from "lucide-react";
 import {
   createHrAssignment,
   deleteHrAssignment,
@@ -309,6 +309,13 @@ export function HrAdminPanel() {
           <div>
             <p className="legacy-stat-value">Open</p>
             <p className="legacy-stat-title">Archived Tasks</p>
+          </div>
+        </Link>
+        <Link href="/admin/archived-surveys" className="legacy-stat-card amber" style={{ textDecoration: "none", cursor: "pointer" }}>
+          <div className="legacy-stat-icon"><ClipboardList className="h-5 w-5" /></div>
+          <div>
+            <p className="legacy-stat-value">Open</p>
+            <p className="legacy-stat-title">Archived Surveys</p>
           </div>
         </Link>
       </section>

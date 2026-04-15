@@ -661,6 +661,22 @@ ON task_completion (task_id);
 CREATE INDEX IF NOT EXISTS idx_task_completion_user
 ON task_completion (user_id);
 
+CREATE TABLE IF NOT EXISTS hr_onboarding_expiry_tasks (
+  id BIGSERIAL PRIMARY KEY,
+  organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  document_type_key TEXT NOT NULL,
+  expiry_date DATE NOT NULL,
+  task_id BIGINT REFERENCES tasks(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_hr_onboarding_expiry_tasks_dedupe
+ON hr_onboarding_expiry_tasks(organization_id, user_id, document_type_key, expiry_date);
+
+CREATE INDEX IF NOT EXISTS idx_hr_onboarding_expiry_tasks_task
+ON hr_onboarding_expiry_tasks(task_id);
+
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS archived BOOLEAN DEFAULT false;
 
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS file_url TEXT;

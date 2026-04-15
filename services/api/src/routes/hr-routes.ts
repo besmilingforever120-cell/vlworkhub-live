@@ -17,7 +17,11 @@ import {
   listHrDocuments,
   listHrOnboardingFiles,
   listHrSignedDocumentFiles,
+  deleteHrOnboardingFile,
+  deleteAdminHrOnboardingFile,
   signHrDocument,
+  updateAdminHrOnboardingFile,
+  updateHrOnboardingFile,
   uploadHrOnboardingFiles,
   updateHrDocument
 } from "../controllers/hr-documents-controller";
@@ -33,6 +37,10 @@ hrRouter.get("/documents/signed-files", listHrSignedDocumentFiles);
 hrRouter.get("/onboarding/files", listHrOnboardingFiles);
 hrRouter.get("/onboarding/files/admin", listAdminHrOnboardingFiles);
 hrRouter.post("/onboarding/files", uploadHrOnboardingFiles);
+hrRouter.put("/onboarding/files/item", updateHrOnboardingFile);
+hrRouter.delete("/onboarding/files/item", deleteHrOnboardingFile);
+hrRouter.put("/onboarding/files/admin/item", updateAdminHrOnboardingFile);
+hrRouter.delete("/onboarding/files/admin/item", deleteAdminHrOnboardingFile);
 hrRouter.post("/documents", createHrDocument);
 hrRouter.post("/documents/:id/sign", signHrDocument);
 hrRouter.post("/documents/:id/archive", archiveHrDocument);

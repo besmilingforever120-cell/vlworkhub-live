@@ -39,6 +39,10 @@ type CreateDocumentBody = {
     documentType?: string | null;
     expiryDate?: string | null;
   }>;
+  fileId?: string;
+  userId?: string;
+  documentType?: string | null;
+  expiryDate?: string | null;
 };
 
 type OrganizationUser = {
@@ -50,6 +54,11 @@ type OrganizationUser = {
 
 let ensureDocumentsSchemaPromise: Promise<void> | null = null;
 let ensureOnboardingUploadsSchemaPromise: Promise<void> | null = null;
+const EXPIRY_TASK_WINDOW_DAYS = 30;
+const EXPIRY_SWEEP_INTERVAL_MS = Number(process.env.HR_ONBOARDING_EXPIRY_SWEEP_INTERVAL_MS || 6 * 60 * 60 * 1000);
+const EXPIRY_SWEEP_ENABLED = String(process.env.HR_ONBOARDING_EXPIRY_SWEEP_ENABLED || "true").toLowerCase() !== "false";
+let onboardingExpirySweepTimer: NodeJS.Timeout | null = null;
+let onboardingExpirySweepInProgress = false;
 
 function asString(value: unknown) {
   return String(value ?? "").trim();
@@ -145,6 +154,403 @@ function getFileExtension(fileName: string, mimeType: string) {
   if (fromName) return fromName;
   if (mimeType === "application/pdf") return ".pdf";
   return ".bin";
+}
+
+function parseDateOnly(value: string | null | undefined) {
+  const normalized = asString(value);
+  if (!normalized) return null;
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(normalized);
+  if (!match) {
+    return null;
+  }
+
+  const year = Number(match[1]);
+  const monthIndex = Number(match[2]) - 1;
+  const day = Number(match[3]);
+  if (!Number.isInteger(year) || !Number.isInteger(monthIndex) || !Number.isInteger(day)) {
+    return null;
+  }
+
+  const parsed = new Date(Date.UTC(year, monthIndex, day));
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+
+  return parsed;
+}
+
+function getTodayUtcDateOnly() {
+  const now = new Date();
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+}
+
+function getDayDiff(fromDate: Date, toDate: Date) {
+  const dayMs = 24 * 60 * 60 * 1000;
+  return Math.floor((toDate.getTime() - fromDate.getTime()) / dayMs);
+}
+
+function formatUsDate(date: Date) {
+  const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(date.getUTCDate()).padStart(2, "0");
+  const year = String(date.getUTCFullYear());
+  return `${month}/${day}/${year}`;
+}
+
+function shouldCreateExpiryTask(expiryDateValue: string | null | undefined) {
+  const expiryDate = parseDateOnly(expiryDateValue);
+  if (!expiryDate) {
+    return false;
+  }
+
+  const dayDiff = getDayDiff(getTodayUtcDateOnly(), expiryDate);
+  return dayDiff >= 0 && dayDiff <= EXPIRY_TASK_WINDOW_DAYS;
+}
+
+function toDateOnlyIso(date: Date) {
+  const year = String(date.getUTCFullYear());
+  const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(date.getUTCDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function getDocumentTypeKey(value: string) {
+  return asString(value).toLowerCase() || "other";
+}
+
+async function listTableColumns(db: { query: (text: string, values?: unknown[]) => Promise<{ rows: Array<Record<string, unknown>> }> }, tableName: string) {
+  const result = await db.query(
+    `SELECT column_name
+     FROM information_schema.columns
+     WHERE table_schema = 'public' AND table_name = $1`,
+    [tableName]
+  );
+
+  return new Set(result.rows.map((row) => String(row.column_name || "").toLowerCase()).filter(Boolean));
+}
+
+async function insertTaskAssignmentForUser(params: {
+  db: { query: (text: string, values?: unknown[]) => Promise<unknown> };
+  organizationId: string;
+  taskId: number;
+  userId: string;
+  userName: string;
+}) {
+  const columns = await listTableColumns(params.db as { query: (text: string, values?: unknown[]) => Promise<{ rows: Array<Record<string, unknown>> }> }, "task_assignments");
+  const fieldNames: string[] = [];
+  const values: Array<string | number | null> = [];
+
+  if (columns.has("organization_id")) {
+    fieldNames.push("organization_id");
+    values.push(params.organizationId);
+  }
+
+  if (columns.has("task_id")) {
+    fieldNames.push("task_id");
+    values.push(params.taskId);
+  }
+
+  if (columns.has("assignment_type")) {
+    fieldNames.push("assignment_type");
+    values.push("user");
+  }
+
+  if (columns.has("assigned_user_id")) {
+    fieldNames.push("assigned_user_id");
+    values.push(params.userId);
+  }
+
+  if (columns.has("assigned_user_name")) {
+    fieldNames.push("assigned_user_name");
+    values.push(params.userName);
+  }
+
+  if (columns.has("assigned_department_name")) {
+    fieldNames.push("assigned_department_name");
+    values.push(null);
+  }
+
+  if (columns.has("user_id")) {
+    fieldNames.push("user_id");
+    values.push(params.userId);
+  }
+
+  if (columns.has("department")) {
+    fieldNames.push("department");
+    values.push("");
+  }
+
+  if (columns.has("assigned_at")) {
+    fieldNames.push("assigned_at");
+    values.push(new Date().toISOString());
+  }
+
+  if (!fieldNames.includes("task_id")) {
+    throw new Error("task_assignments schema is missing task_id");
+  }
+
+  const placeholders = fieldNames.map((_, index) => `$${index + 1}`).join(", ");
+  await params.db.query(`INSERT INTO task_assignments (${fieldNames.join(", ")}) VALUES (${placeholders})`, values);
+}
+
+async function createOnboardingExpiryTask(params: {
+  organizationId: string;
+  userId: string;
+  userName: string;
+  documentType: string;
+  originalFileName: string;
+  storedFileName: string;
+  fileUrl: string;
+  expiryDate: string;
+  uploadedAt: string;
+}) {
+  const parsedExpiryDate = parseDateOnly(params.expiryDate);
+  if (!parsedExpiryDate) {
+    return;
+  }
+
+  const formattedExpiry = formatUsDate(parsedExpiryDate);
+  const expiryDateIso = toDateOnlyIso(parsedExpiryDate);
+  const titleBase = asString(params.documentType) || asString(params.originalFileName) || "Document";
+  const taskTitle = `${titleBase} is expiring on ${formattedExpiry}`;
+  const documentTypeKey = getDocumentTypeKey(params.documentType);
+
+  const description = [
+    "This onboarding document is expiring soon and must be renewed.",
+    `Document type: ${params.documentType}`,
+    `Original file name: ${params.originalFileName}`,
+    `Stored file name: ${params.storedFileName}`,
+    `File link: ${params.fileUrl}`,
+    `Uploaded at: ${params.uploadedAt}`,
+    `Expiry date: ${formattedExpiry}`,
+    "Action: Retake this document/certification and upload the updated file before expiry."
+  ].join("\n");
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    const existingDedup = await client.query(
+      `SELECT id::text AS id, task_id::text AS task_id
+       FROM hr_onboarding_expiry_tasks
+       WHERE organization_id = $1
+         AND user_id = $2
+         AND document_type_key = $3
+         AND expiry_date = $4
+       FOR UPDATE`,
+      [params.organizationId, params.userId, documentTypeKey, expiryDateIso]
+    );
+
+    if (existingDedup.rowCount && existingDedup.rows[0]?.task_id) {
+      await client.query("COMMIT");
+      return;
+    }
+
+    let dedupRowId = String(existingDedup.rows[0]?.id || "");
+    if (!dedupRowId) {
+      const insertedDedup = await client.query(
+        `INSERT INTO hr_onboarding_expiry_tasks (
+           organization_id,
+           user_id,
+           document_type_key,
+           expiry_date
+         )
+         VALUES ($1, $2, $3, $4)
+         RETURNING id::text AS id`,
+        [params.organizationId, params.userId, documentTypeKey, expiryDateIso]
+      );
+      dedupRowId = String(insertedDedup.rows[0]?.id || "");
+    }
+
+    if (!dedupRowId) {
+      await client.query("ROLLBACK");
+      return;
+    }
+
+    const taskInsert = await client.query(
+      `INSERT INTO tasks (organization_id, title, assigned_to, due_date, status, priority, description)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       RETURNING id`,
+      [
+        params.organizationId,
+        taskTitle,
+        params.userName,
+        expiryDateIso,
+        "Not Started",
+        "High",
+        description
+      ]
+    );
+
+    const taskId = Number(taskInsert.rows[0]?.id || 0);
+    if (!taskId) {
+      await client.query("ROLLBACK");
+      return;
+    }
+
+    await insertTaskAssignmentForUser({
+      db: client,
+      organizationId: params.organizationId,
+      taskId,
+      userId: params.userId,
+      userName: params.userName
+    });
+
+    await client.query(
+      `UPDATE hr_onboarding_expiry_tasks
+       SET task_id = $1
+       WHERE id = $2`,
+      [taskId, dedupRowId]
+    );
+
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+async function createUpcomingOnboardingExpiryTasks(params: {
+  organizationId: string;
+  userId: string;
+  userName: string;
+  items: Array<{
+    document_type?: string;
+    original_file_name?: string;
+    file_name?: string;
+    file_url?: string;
+    expiry_date?: string | null;
+    uploaded_at?: string;
+  }>;
+}) {
+  for (const item of params.items) {
+    const expiryDate = asNullableString(item.expiry_date);
+    if (!shouldCreateExpiryTask(expiryDate)) {
+      continue;
+    }
+
+    try {
+      await createOnboardingExpiryTask({
+        organizationId: params.organizationId,
+        userId: params.userId,
+        userName: params.userName,
+        documentType: asString(item.document_type) || "Other",
+        originalFileName: asString(item.original_file_name) || asString(item.file_name) || "Uploaded file",
+        storedFileName: asString(item.file_name) || asString(item.original_file_name) || "file",
+        fileUrl: asString(item.file_url),
+        expiryDate: String(expiryDate),
+        uploadedAt: asString(item.uploaded_at) || new Date().toISOString()
+      });
+    } catch (taskError) {
+      console.warn("Failed to create onboarding expiry task", {
+        organizationId: params.organizationId,
+        userId: params.userId,
+        documentType: item.document_type,
+        originalFileName: item.original_file_name,
+        error: taskError
+      });
+    }
+  }
+}
+
+type UpcomingOnboardingExpiryRow = {
+  organization_id: string;
+  user_id: string;
+  user_name: string;
+  document_type: string;
+  original_file_name: string;
+  file_name: string;
+  file_url: string;
+  expiry_date: string;
+  uploaded_at: string;
+};
+
+async function listUpcomingOnboardingExpiryRows() {
+  await ensureOnboardingUploadsSchema();
+  const result = await pool.query(
+    `SELECT
+       h.organization_id::text AS organization_id,
+       h.user_id::text AS user_id,
+       TRIM(COALESCE(u.first_name, '') || ' ' || COALESCE(u.last_name, '')) AS user_name,
+       h.document_type,
+       h.original_file_name,
+       h.stored_file_name AS file_name,
+       h.file_url,
+       h.expiry_date::text AS expiry_date,
+       h.uploaded_at::text AS uploaded_at
+     FROM hr_onboarding_uploads h
+     LEFT JOIN users u ON u.id = h.user_id
+     WHERE h.expiry_date IS NOT NULL
+       AND h.expiry_date >= CURRENT_DATE
+       AND h.expiry_date <= (CURRENT_DATE + ($1::int * INTERVAL '1 day'))
+     ORDER BY h.expiry_date ASC, h.uploaded_at DESC`,
+    [EXPIRY_TASK_WINDOW_DAYS]
+  );
+
+  return result.rows as UpcomingOnboardingExpiryRow[];
+}
+
+export async function runOnboardingExpiryTaskSweep() {
+  if (onboardingExpirySweepInProgress) {
+    return;
+  }
+
+  onboardingExpirySweepInProgress = true;
+  try {
+    const rows = await listUpcomingOnboardingExpiryRows();
+    for (const row of rows) {
+      try {
+        await createOnboardingExpiryTask({
+          organizationId: String(row.organization_id),
+          userId: String(row.user_id),
+          userName: asString(row.user_name) || String(row.user_id),
+          documentType: String(row.document_type || "Other"),
+          originalFileName: String(row.original_file_name || row.file_name || "Uploaded file"),
+          storedFileName: String(row.file_name || row.original_file_name || "file"),
+          fileUrl: String(row.file_url || ""),
+          expiryDate: String(row.expiry_date || ""),
+          uploadedAt: String(row.uploaded_at || new Date().toISOString())
+        });
+      } catch (taskError) {
+        console.warn("Failed to create onboarding expiry task during sweep", {
+          organizationId: row.organization_id,
+          userId: row.user_id,
+          documentType: row.document_type,
+          originalFileName: row.original_file_name,
+          error: taskError
+        });
+      }
+    }
+  } catch (error) {
+    console.error("Onboarding expiry task sweep failed", error);
+  } finally {
+    onboardingExpirySweepInProgress = false;
+  }
+}
+
+export function startOnboardingExpiryTaskScheduler() {
+  if (!EXPIRY_SWEEP_ENABLED) {
+    console.log("Onboarding expiry task scheduler disabled via HR_ONBOARDING_EXPIRY_SWEEP_ENABLED=false");
+    return;
+  }
+
+  if (onboardingExpirySweepTimer) {
+    return;
+  }
+
+  if (!Number.isFinite(EXPIRY_SWEEP_INTERVAL_MS) || EXPIRY_SWEEP_INTERVAL_MS <= 0) {
+    console.warn("Invalid HR_ONBOARDING_EXPIRY_SWEEP_INTERVAL_MS value. Scheduler not started.");
+    return;
+  }
+
+  void runOnboardingExpiryTaskSweep();
+  onboardingExpirySweepTimer = setInterval(() => {
+    void runOnboardingExpiryTaskSweep();
+  }, EXPIRY_SWEEP_INTERVAL_MS);
+
+  onboardingExpirySweepTimer.unref?.();
+  console.log(`Onboarding expiry task scheduler started (interval: ${EXPIRY_SWEEP_INTERVAL_MS}ms)`);
 }
 
 async function saveOriginalFileLocally(documentId: number, fileName: string, fileData: string | null) {
@@ -294,6 +700,26 @@ async function ensureOnboardingUploadsSchema() {
     );
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_hr_onboarding_uploads_user ON hr_onboarding_uploads(user_id, uploaded_at DESC)`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_hr_onboarding_uploads_org ON hr_onboarding_uploads(organization_id, user_id)`);
+
+    await pool.query(
+      `CREATE TABLE IF NOT EXISTS hr_onboarding_expiry_tasks (
+         id BIGSERIAL PRIMARY KEY,
+         organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+         user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+         document_type_key TEXT NOT NULL,
+         expiry_date DATE NOT NULL,
+         task_id BIGINT REFERENCES tasks(id) ON DELETE SET NULL,
+         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+       )`
+    );
+    await pool.query(
+      `CREATE UNIQUE INDEX IF NOT EXISTS idx_hr_onboarding_expiry_tasks_dedupe
+       ON hr_onboarding_expiry_tasks(organization_id, user_id, document_type_key, expiry_date)`
+    );
+    await pool.query(
+      `CREATE INDEX IF NOT EXISTS idx_hr_onboarding_expiry_tasks_task
+       ON hr_onboarding_expiry_tasks(task_id)`
+    );
   })();
 
   return ensureOnboardingUploadsSchemaPromise;
@@ -390,6 +816,116 @@ function resolveStoredFileUrl(fileName: string, incomingFileUrl: string | null) 
   }
 
   return null;
+}
+
+function parseOnboardingFileId(fileId: string) {
+  const normalized = asString(fileId);
+  if (!normalized) {
+    return null;
+  }
+
+  if (/^\d+$/.test(normalized)) {
+    return { kind: "db" as const, dbId: Number(normalized) };
+  }
+
+  const separator = normalized.indexOf("/");
+  if (separator <= 0 || separator >= normalized.length - 1) {
+    return null;
+  }
+
+  return {
+    kind: "legacy" as const,
+    userId: normalized.slice(0, separator),
+    fileName: normalized.slice(separator + 1)
+  };
+}
+
+function parseOnboardingLocalFilePath(fileUrl: string | null | undefined) {
+  const raw = asString(fileUrl);
+  if (!raw) {
+    return null;
+  }
+
+  let pathname = "";
+  try {
+    pathname = new URL(raw).pathname;
+  } catch {
+    pathname = raw;
+  }
+
+  const marker = "/uploads/onboarding/";
+  const markerIndex = pathname.indexOf(marker);
+  if (markerIndex < 0) {
+    return null;
+  }
+
+  const relativeRaw = pathname.slice(markerIndex + marker.length);
+  const parts = relativeRaw.split("/").filter(Boolean).map((part) => decodeURIComponent(part));
+  if (parts.length < 2) {
+    return null;
+  }
+
+  const folderName = parts[0];
+  const fileName = parts.slice(1).join("/");
+  const folderPath = path.join(getOnboardingUploadsRoot(), folderName);
+  const filePath = path.join(folderPath, fileName);
+  const metadataPath = path.join(folderPath, `${fileName}.json`);
+
+  return { folderName, fileName, folderPath, filePath, metadataPath };
+}
+
+async function readLegacyOnboardingMetadata(fileUrl: string) {
+  const localPath = parseOnboardingLocalFilePath(fileUrl);
+  if (!localPath) {
+    return null;
+  }
+
+  try {
+    const metadataRaw = await fs.readFile(localPath.metadataPath, "utf8");
+    return {
+      localPath,
+      metadata: JSON.parse(metadataRaw) as {
+        documentType?: string;
+        originalFileName?: string;
+        uploadedAt?: string;
+        expiryDate?: string | null;
+        fileUrl?: string;
+      }
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function writeLegacyOnboardingMetadata(fileUrl: string, nextMetadata: {
+  documentType: string;
+  originalFileName: string;
+  uploadedAt: string;
+  expiryDate: string | null;
+  fileUrl: string;
+}) {
+  const localPath = parseOnboardingLocalFilePath(fileUrl);
+  if (!localPath) {
+    return;
+  }
+
+  await fs.writeFile(localPath.metadataPath, JSON.stringify(nextMetadata, null, 2), "utf8");
+}
+
+async function deleteOnboardingLocalArtifacts(fileUrl: string) {
+  const localPath = parseOnboardingLocalFilePath(fileUrl);
+  if (!localPath) {
+    return;
+  }
+
+  await Promise.allSettled([
+    fs.unlink(localPath.filePath),
+    fs.unlink(localPath.metadataPath)
+  ]);
+}
+
+function hasOwnProperty(value: object, key: string) {
+  return Object.prototype.hasOwnProperty.call(value, key);
 }
 
 async function ensureDocumentsSchema() {
@@ -718,6 +1254,14 @@ export async function listHrOnboardingFiles(req: AuthenticatedRequest, res: Resp
     const userName = String(req.user?.full_name || userId);
     const userEmail = String(req.user?.email || "");
     const items = await listOnboardingFilesForUserFromDb(organizationId, userId, userName, userEmail);
+
+    await createUpcomingOnboardingExpiryTasks({
+      organizationId,
+      userId,
+      userName,
+      items
+    });
+
     return res.json({ items });
   } catch (error) {
     console.error("API error in GET /hr/onboarding/files", error);
@@ -809,12 +1353,425 @@ export async function uploadHrOnboardingFiles(req: AuthenticatedRequest, res: Re
           uploaded_at: String(inserted.uploaded_at || saved.uploaded_at),
           expiry_date: inserted.expiry_date ? String(inserted.expiry_date) : saved.expiry_date || null
         });
+
       }
     }
+
+    await createUpcomingOnboardingExpiryTasks({
+      organizationId,
+      userId,
+      userName,
+      items: uploaded
+    });
 
     return res.status(201).json({ items: uploaded });
   } catch (error) {
     console.error("API error in POST /hr/onboarding/files", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+}
+
+export async function updateHrOnboardingFile(req: AuthenticatedRequest, res: Response) {
+  try {
+    await ensureOnboardingUploadsSchema();
+    const organizationId = String(req.user?.organization_id || "");
+    const userId = String(req.user?.user_id || "");
+    const userName = String(req.user?.full_name || userId);
+    const userEmail = String(req.user?.email || "");
+    const body = (req.body || {}) as CreateDocumentBody;
+    const fileId = asString(body.fileId);
+    const parsedFileId = parseOnboardingFileId(fileId);
+
+    if (!parsedFileId) {
+      return res.status(400).json({ message: "fileId is required" });
+    }
+
+    const hasDocumentType = hasOwnProperty(body, "documentType");
+    const hasExpiryDate = hasOwnProperty(body, "expiryDate");
+    if (!hasDocumentType && !hasExpiryDate) {
+      return res.status(400).json({ message: "documentType or expiryDate is required" });
+    }
+
+    if (parsedFileId.kind === "db") {
+      const existingResult = await pool.query(
+        `SELECT
+           id::text AS id,
+           user_id::text AS user_id,
+           stored_file_name AS file_name,
+           original_file_name,
+           document_type,
+           file_url,
+           expiry_date::text AS expiry_date,
+           uploaded_at::text AS uploaded_at
+         FROM hr_onboarding_uploads
+         WHERE organization_id = $1 AND user_id = $2 AND id = $3
+         LIMIT 1`,
+        [organizationId, userId, parsedFileId.dbId]
+      );
+
+      const existing = existingResult.rows[0];
+      if (!existing) {
+        return res.status(404).json({ message: "Onboarding file not found" });
+      }
+
+      const nextDocumentType = hasDocumentType ? (asString(body.documentType) || "Other") : String(existing.document_type || "Other");
+      const nextExpiryDate = hasExpiryDate ? asNullableString(body.expiryDate) : (existing.expiry_date ? String(existing.expiry_date) : null);
+
+      await pool.query(
+        `UPDATE hr_onboarding_uploads
+         SET document_type = $1,
+             expiry_date = $2
+         WHERE organization_id = $3 AND user_id = $4 AND id = $5`,
+        [nextDocumentType, nextExpiryDate, organizationId, userId, parsedFileId.dbId]
+      );
+
+      const legacyMetadata = await readLegacyOnboardingMetadata(String(existing.file_url || ""));
+      if (legacyMetadata) {
+        await writeLegacyOnboardingMetadata(String(existing.file_url || ""), {
+          documentType: nextDocumentType,
+          originalFileName: String(existing.original_file_name || existing.file_name || "Uploaded file"),
+          uploadedAt: String(existing.uploaded_at || new Date().toISOString()),
+          expiryDate: nextExpiryDate,
+          fileUrl: String(existing.file_url || "")
+        });
+      }
+
+      const item = {
+        id: String(existing.id),
+        user_id: userId,
+        user_name: userName,
+        user_email: userEmail,
+        file_name: String(existing.file_name),
+        original_file_name: String(existing.original_file_name),
+        document_type: nextDocumentType,
+        uploaded_at: String(existing.uploaded_at),
+        expiry_date: nextExpiryDate,
+        file_url: String(existing.file_url)
+      };
+
+      await createUpcomingOnboardingExpiryTasks({
+        organizationId,
+        userId,
+        userName,
+        items: [item]
+      });
+
+      return res.json({ item });
+    }
+
+    if (parsedFileId.userId !== userId) {
+      return res.status(403).json({ message: "Forbidden" });
+    }
+
+    const legacyItems = await listOnboardingFilesForUser(userId, userName);
+    const existingLegacy = legacyItems.find((item) => item.id === fileId);
+    if (!existingLegacy) {
+      return res.status(404).json({ message: "Onboarding file not found" });
+    }
+
+    const nextLegacyDocumentType = hasDocumentType ? (asString(body.documentType) || "Other") : String(existingLegacy.document_type || "Other");
+    const nextLegacyExpiryDate = hasExpiryDate ? asNullableString(body.expiryDate) : (existingLegacy.expiry_date ? String(existingLegacy.expiry_date) : null);
+
+    await writeLegacyOnboardingMetadata(String(existingLegacy.file_url || ""), {
+      documentType: nextLegacyDocumentType,
+      originalFileName: String(existingLegacy.original_file_name || existingLegacy.file_name || "Uploaded file"),
+      uploadedAt: String(existingLegacy.uploaded_at || new Date().toISOString()),
+      expiryDate: nextLegacyExpiryDate,
+      fileUrl: String(existingLegacy.file_url || "")
+    });
+
+    const item = {
+      ...existingLegacy,
+      document_type: nextLegacyDocumentType,
+      expiry_date: nextLegacyExpiryDate,
+      user_email: userEmail
+    };
+
+    return res.json({ item });
+  } catch (error) {
+    console.error("API error in PUT /hr/onboarding/files/item", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+}
+
+export async function deleteHrOnboardingFile(req: AuthenticatedRequest, res: Response) {
+  try {
+    await ensureOnboardingUploadsSchema();
+    const organizationId = String(req.user?.organization_id || "");
+    const userId = String(req.user?.user_id || "");
+    const userName = String(req.user?.full_name || userId);
+    const fileId = asString(req.query.fileId);
+    const parsedFileId = parseOnboardingFileId(fileId);
+
+    if (!parsedFileId) {
+      return res.status(400).json({ message: "fileId is required" });
+    }
+
+    if (parsedFileId.kind === "db") {
+      const existingResult = await pool.query(
+        `SELECT id::text AS id, file_url
+         FROM hr_onboarding_uploads
+         WHERE organization_id = $1 AND user_id = $2 AND id = $3
+         LIMIT 1`,
+        [organizationId, userId, parsedFileId.dbId]
+      );
+
+      const existing = existingResult.rows[0];
+      if (!existing) {
+        return res.status(404).json({ message: "Onboarding file not found" });
+      }
+
+      await pool.query(
+        `DELETE FROM hr_onboarding_uploads
+         WHERE organization_id = $1 AND user_id = $2 AND id = $3`,
+        [organizationId, userId, parsedFileId.dbId]
+      );
+
+      await deleteOnboardingLocalArtifacts(String(existing.file_url || ""));
+      return res.json({ success: true });
+    }
+
+    if (parsedFileId.userId !== userId) {
+      return res.status(403).json({ message: "Forbidden" });
+    }
+
+    const legacyItems = await listOnboardingFilesForUser(userId, userName);
+    const existingLegacy = legacyItems.find((item) => item.id === fileId);
+    if (!existingLegacy) {
+      return res.status(404).json({ message: "Onboarding file not found" });
+    }
+
+    await deleteOnboardingLocalArtifacts(String(existingLegacy.file_url || ""));
+    return res.json({ success: true });
+  } catch (error) {
+    console.error("API error in DELETE /hr/onboarding/files/item", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+}
+
+export async function updateAdminHrOnboardingFile(req: AuthenticatedRequest, res: Response) {
+  try {
+    if (!isAdminPlatformUser(req)) {
+      return res.status(403).json({ message: "Forbidden" });
+    }
+
+    await ensureOnboardingUploadsSchema();
+    const organizationId = String(req.user?.organization_id || "");
+    const body = (req.body || {}) as CreateDocumentBody;
+    const targetUserId = asString(body.userId);
+    const fileId = asString(body.fileId);
+    const parsedFileId = parseOnboardingFileId(fileId);
+
+    if (!targetUserId) {
+      return res.status(400).json({ message: "userId is required" });
+    }
+
+    if (!parsedFileId) {
+      return res.status(400).json({ message: "fileId is required" });
+    }
+
+    const userResult = await pool.query(
+      `SELECT
+         u.id::text AS id,
+         TRIM(COALESCE(u.first_name, '') || ' ' || COALESCE(u.last_name, '')) AS full_name,
+         u.email
+       FROM users u
+       WHERE u.organization_id = $1 AND u.id = $2
+       LIMIT 1`,
+      [organizationId, targetUserId]
+    );
+
+    const selectedUser = userResult.rows[0];
+    if (!selectedUser) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    const targetUserName = asString(selectedUser.full_name) || String(selectedUser.id);
+    const targetUserEmail = asString(selectedUser.email);
+
+    const hasDocumentType = hasOwnProperty(body, "documentType");
+    const hasExpiryDate = hasOwnProperty(body, "expiryDate");
+    if (!hasDocumentType && !hasExpiryDate) {
+      return res.status(400).json({ message: "documentType or expiryDate is required" });
+    }
+
+    if (parsedFileId.kind === "db") {
+      const existingResult = await pool.query(
+        `SELECT
+           id::text AS id,
+           user_id::text AS user_id,
+           stored_file_name AS file_name,
+           original_file_name,
+           document_type,
+           file_url,
+           expiry_date::text AS expiry_date,
+           uploaded_at::text AS uploaded_at
+         FROM hr_onboarding_uploads
+         WHERE organization_id = $1 AND user_id = $2 AND id = $3
+         LIMIT 1`,
+        [organizationId, targetUserId, parsedFileId.dbId]
+      );
+
+      const existing = existingResult.rows[0];
+      if (!existing) {
+        return res.status(404).json({ message: "Onboarding file not found" });
+      }
+
+      const nextDocumentType = hasDocumentType ? (asString(body.documentType) || "Other") : String(existing.document_type || "Other");
+      const nextExpiryDate = hasExpiryDate ? asNullableString(body.expiryDate) : (existing.expiry_date ? String(existing.expiry_date) : null);
+
+      await pool.query(
+        `UPDATE hr_onboarding_uploads
+         SET document_type = $1,
+             expiry_date = $2
+         WHERE organization_id = $3 AND user_id = $4 AND id = $5`,
+        [nextDocumentType, nextExpiryDate, organizationId, targetUserId, parsedFileId.dbId]
+      );
+
+      const legacyMetadata = await readLegacyOnboardingMetadata(String(existing.file_url || ""));
+      if (legacyMetadata) {
+        await writeLegacyOnboardingMetadata(String(existing.file_url || ""), {
+          documentType: nextDocumentType,
+          originalFileName: String(existing.original_file_name || existing.file_name || "Uploaded file"),
+          uploadedAt: String(existing.uploaded_at || new Date().toISOString()),
+          expiryDate: nextExpiryDate,
+          fileUrl: String(existing.file_url || "")
+        });
+      }
+
+      const item = {
+        id: String(existing.id),
+        user_id: targetUserId,
+        user_name: targetUserName,
+        user_email: targetUserEmail,
+        file_name: String(existing.file_name),
+        original_file_name: String(existing.original_file_name),
+        document_type: nextDocumentType,
+        uploaded_at: String(existing.uploaded_at),
+        expiry_date: nextExpiryDate,
+        file_url: String(existing.file_url)
+      };
+
+      await createUpcomingOnboardingExpiryTasks({
+        organizationId,
+        userId: targetUserId,
+        userName: targetUserName,
+        items: [item]
+      });
+
+      return res.json({ item });
+    }
+
+    if (parsedFileId.userId !== targetUserId) {
+      return res.status(400).json({ message: "fileId does not match userId" });
+    }
+
+    const legacyItems = await listOnboardingFilesForUser(targetUserId, targetUserName);
+    const existingLegacy = legacyItems.find((item) => item.id === fileId);
+    if (!existingLegacy) {
+      return res.status(404).json({ message: "Onboarding file not found" });
+    }
+
+    const nextLegacyDocumentType = hasDocumentType ? (asString(body.documentType) || "Other") : String(existingLegacy.document_type || "Other");
+    const nextLegacyExpiryDate = hasExpiryDate ? asNullableString(body.expiryDate) : (existingLegacy.expiry_date ? String(existingLegacy.expiry_date) : null);
+
+    await writeLegacyOnboardingMetadata(String(existingLegacy.file_url || ""), {
+      documentType: nextLegacyDocumentType,
+      originalFileName: String(existingLegacy.original_file_name || existingLegacy.file_name || "Uploaded file"),
+      uploadedAt: String(existingLegacy.uploaded_at || new Date().toISOString()),
+      expiryDate: nextLegacyExpiryDate,
+      fileUrl: String(existingLegacy.file_url || "")
+    });
+
+    const item = {
+      ...existingLegacy,
+      document_type: nextLegacyDocumentType,
+      expiry_date: nextLegacyExpiryDate,
+      user_email: targetUserEmail
+    };
+
+    return res.json({ item });
+  } catch (error) {
+    console.error("API error in PUT /hr/onboarding/files/admin/item", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+}
+
+export async function deleteAdminHrOnboardingFile(req: AuthenticatedRequest, res: Response) {
+  try {
+    if (!isAdminPlatformUser(req)) {
+      return res.status(403).json({ message: "Forbidden" });
+    }
+
+    await ensureOnboardingUploadsSchema();
+    const organizationId = String(req.user?.organization_id || "");
+    const targetUserId = asString(req.query.userId);
+    const fileId = asString(req.query.fileId);
+    const parsedFileId = parseOnboardingFileId(fileId);
+
+    if (!targetUserId) {
+      return res.status(400).json({ message: "userId is required" });
+    }
+
+    if (!parsedFileId) {
+      return res.status(400).json({ message: "fileId is required" });
+    }
+
+    const userResult = await pool.query(
+      `SELECT
+         u.id::text AS id,
+         TRIM(COALESCE(u.first_name, '') || ' ' || COALESCE(u.last_name, '')) AS full_name
+       FROM users u
+       WHERE u.organization_id = $1 AND u.id = $2
+       LIMIT 1`,
+      [organizationId, targetUserId]
+    );
+
+    const selectedUser = userResult.rows[0];
+    if (!selectedUser) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    const targetUserName = asString(selectedUser.full_name) || String(selectedUser.id);
+
+    if (parsedFileId.kind === "db") {
+      const existingResult = await pool.query(
+        `SELECT id::text AS id, file_url
+         FROM hr_onboarding_uploads
+         WHERE organization_id = $1 AND user_id = $2 AND id = $3
+         LIMIT 1`,
+        [organizationId, targetUserId, parsedFileId.dbId]
+      );
+
+      const existing = existingResult.rows[0];
+      if (!existing) {
+        return res.status(404).json({ message: "Onboarding file not found" });
+      }
+
+      await pool.query(
+        `DELETE FROM hr_onboarding_uploads
+         WHERE organization_id = $1 AND user_id = $2 AND id = $3`,
+        [organizationId, targetUserId, parsedFileId.dbId]
+      );
+
+      await deleteOnboardingLocalArtifacts(String(existing.file_url || ""));
+      return res.json({ success: true });
+    }
+
+    if (parsedFileId.userId !== targetUserId) {
+      return res.status(400).json({ message: "fileId does not match userId" });
+    }
+
+    const legacyItems = await listOnboardingFilesForUser(targetUserId, targetUserName);
+    const existingLegacy = legacyItems.find((item) => item.id === fileId);
+    if (!existingLegacy) {
+      return res.status(404).json({ message: "Onboarding file not found" });
+    }
+
+    await deleteOnboardingLocalArtifacts(String(existingLegacy.file_url || ""));
+    return res.json({ success: true });
+  } catch (error) {
+    console.error("API error in DELETE /hr/onboarding/files/admin/item", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 }

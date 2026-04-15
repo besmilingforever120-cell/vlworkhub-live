@@ -12,6 +12,7 @@ import { notificationRouter } from "./routes/notification-routes";
 import { adminUserRouter, userRouter } from "./routes/user-routes";
 import { ursafeRouter } from "./routes/ursafe-routes";
 import { hrRouter } from "./routes/hr-routes";
+import { startOnboardingExpiryTaskScheduler } from "./controllers/hr-documents-controller";
 
 const app = express();
 
@@ -65,6 +66,7 @@ async function start() {
   try {
     await verifyDatabaseConnection();
     console.log("PostgreSQL connection verified.");
+    startOnboardingExpiryTaskScheduler();
   } catch (error) {
     console.error("Failed to connect to PostgreSQL.", error);
     process.exit(1);

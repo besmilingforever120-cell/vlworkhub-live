@@ -1,7 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { Download, FolderOpen, Search, Shield } from "lucide-react";
+import { ArrowLeft, ChevronDown, ChevronRight, Download, FolderOpen, Search, Shield } from "lucide-react";
 import { getApiErrorMessage, getHrSignedDocumentFiles, type HrSignedDocumentFileRecord } from "../lib/hr-client";
 
 function formatDate(value: string | null) {
@@ -20,6 +21,7 @@ export function AdminSignedFilesView() {
   const [query, setQuery] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [expandedUsers, setExpandedUsers] = useState<Set<string>>(new Set());
 
   async function load() {
     try {
@@ -65,6 +67,18 @@ export function AdminSignedFilesView() {
     }));
   }, [filteredItems]);
 
+  function toggleUserExpansion(userName: string) {
+    setExpandedUsers((current) => {
+      const next = new Set(current);
+      if (next.has(userName)) {
+        next.delete(userName);
+      } else {
+        next.add(userName);
+      }
+      return next;
+    });
+  }
+
   return (
     <div className="legacy-portal">
       <div className="legacy-header">
@@ -73,6 +87,7 @@ export function AdminSignedFilesView() {
           <p className="legacy-header__subtitle">Review signed document copies grouped by signer folder, including archived and active source documents.</p>
           <div className="legacy-role"><Shield className="h-4 w-4" />Admin-only document audit view</div>
         </div>
+        <Link href="/admin" className="legacy-secondary-btn"><ArrowLeft className="h-4 w-4" />Back to Admin</Link>
       </div>
 
       {error ? <div className="hr-card" style={{ marginBottom: 20, color: "#7f1d1d", borderColor: "#fecaca", background: "#fff1f2" }}>{error}</div> : null}
@@ -94,14 +109,23 @@ export function AdminSignedFilesView() {
       {!loading
         ? groupedItems.map((group) => (
             <section key={group.signerName} className="legacy-card" style={{ marginBottom: 20 }}>
-              <div className="legacy-card-header">
+              <button
+                type="button"
+                className="legacy-card-header"
+                style={{ width: "100%", justifyContent: "space-between", alignItems: "center", textAlign: "left", cursor: "pointer", background: "transparent", border: "none" }}
+                onClick={() => toggleUserExpansion(group.signerName)}
+                aria-expanded={expandedUsers.has(group.signerName)}
+              >
                 <div>
                   <h3 className="legacy-card-title">{group.signerName}</h3>
                   <p className="legacy-card-copy">{group.signerEmail || "No email available"} · {group.files.length} signed file{group.files.length === 1 ? "" : "s"}</p>
                 </div>
-              </div>
+                <span className="text-slate-500" aria-hidden="true">
+                  {expandedUsers.has(group.signerName) ? <ChevronDown className="h-5 w-5" /> : <ChevronRight className="h-5 w-5" />}
+                </span>
+              </button>
 
-              <div className="mt-5 overflow-x-auto">
+              {expandedUsers.has(group.signerName) ? <div className="mt-5 overflow-x-auto">
                 <table className="min-w-full text-left text-sm text-gray-700">
                   <thead className="text-xs uppercase tracking-[0.16em] text-gray-500">
                     <tr>
@@ -131,7 +155,7 @@ export function AdminSignedFilesView() {
                     ))}
                   </tbody>
                 </table>
-              </div>
+              </div> : null}
             </section>
           ))
         : null}

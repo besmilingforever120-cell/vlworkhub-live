@@ -365,9 +365,53 @@ export async function uploadHrOnboardingFiles(payload: {
   });
 }
 
+export async function updateHrOnboardingFile(fileId: string, payload: {
+  documentType?: string;
+  expiryDate?: string | null;
+}) {
+  return request<{ item: HrOnboardingFileRecord }>("/hr/onboarding/files/item", {
+    method: "PUT",
+    body: JSON.stringify({
+      fileId,
+      documentType: payload.documentType,
+      expiryDate: payload.expiryDate
+    })
+  });
+}
+
+export async function deleteHrOnboardingFile(fileId: string) {
+  const encodedFileId = encodeURIComponent(fileId);
+  return request<{ success: true }>(`/hr/onboarding/files/item?fileId=${encodedFileId}`, {
+    method: "DELETE"
+  });
+}
+
 export async function getAdminHrOnboardingFiles(userId: string) {
   const encodedUserId = encodeURIComponent(userId);
   return request<{ items: HrOnboardingFileRecord[] }>(`/hr/onboarding/files/admin?userId=${encodedUserId}`);
+}
+
+export async function updateAdminHrOnboardingFile(userId: string, fileId: string, payload: {
+  documentType?: string;
+  expiryDate?: string | null;
+}) {
+  return request<{ item: HrOnboardingFileRecord }>("/hr/onboarding/files/admin/item", {
+    method: "PUT",
+    body: JSON.stringify({
+      userId,
+      fileId,
+      documentType: payload.documentType,
+      expiryDate: payload.expiryDate
+    })
+  });
+}
+
+export async function deleteAdminHrOnboardingFile(userId: string, fileId: string) {
+  const encodedUserId = encodeURIComponent(userId);
+  const encodedFileId = encodeURIComponent(fileId);
+  return request<{ success: true }>(`/hr/onboarding/files/admin/item?userId=${encodedUserId}&fileId=${encodedFileId}`, {
+    method: "DELETE"
+  });
 }
 
 export async function getHrSignedDocumentFiles() {

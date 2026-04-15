@@ -11,10 +11,13 @@ import {
   File,
   FileUp,
   Monitor,
+  Pencil,
   PenTool,
   Play,
+  Save,
   Send,
   Shield,
+  Trash2,
   Upload,
   UserPlus,
   X
@@ -23,7 +26,9 @@ import type { SessionUser } from "@vlworkhub/types";
 import {
   getApiErrorMessage,
   getCurrentUser,
+  deleteHrOnboardingFile,
   getHrOnboardingFiles,
+  updateHrOnboardingFile,
   uploadHrOnboardingFiles,
   type HrOnboardingFileRecord
 } from "../lib/hr-client";
@@ -127,6 +132,11 @@ export function OnboardingWorkspace() {
   const [selectedUploads, setSelectedUploads] = useState<SelectedUpload[]>([]);
   const [uploading, setUploading] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState<HrOnboardingFileRecord[]>([]);
+  const [editingFileId, setEditingFileId] = useState<string | null>(null);
+  const [editingDocumentType, setEditingDocumentType] = useState("Other");
+  const [editingExpiryDate, setEditingExpiryDate] = useState("");
+  const [savingFileId, setSavingFileId] = useState<string | null>(null);
+  const [deletingFileId, setDeletingFileId] = useState<string | null>(null);
 
   async function load() {
     try {
@@ -248,6 +258,65 @@ export function OnboardingWorkspace() {
       setError(getApiErrorMessage(uploadError));
     } finally {
       setUploading(false);
+    }
+  }
+
+  function startEditUploadedFile(file: HrOnboardingFileRecord) {
+    setEditingFileId(String(file.id));
+    setEditingDocumentType(String(file.document_type || "Other"));
+    setEditingExpiryDate(String(file.expiry_date || "").slice(0, 10));
+    setSuccess("");
+    setError("");
+  }
+
+  function cancelEditUploadedFile() {
+    setEditingFileId(null);
+    setEditingDocumentType("Other");
+    setEditingExpiryDate("");
+  }
+
+  async function saveUploadedFileChanges(file: HrOnboardingFileRecord) {
+    try {
+      setSavingFileId(String(file.id));
+      setError("");
+      setSuccess("");
+      await updateHrOnboardingFile(String(file.id), {
+        documentType: editingDocumentType,
+        expiryDate: editingExpiryDate || null
+      });
+
+      const filesResponse = await getHrOnboardingFiles();
+      setUploadedFiles(filesResponse.items || []);
+      cancelEditUploadedFile();
+      setSuccess("Uploaded file details updated.");
+    } catch (updateError) {
+      setError(getApiErrorMessage(updateError));
+    } finally {
+      setSavingFileId(null);
+    }
+  }
+
+  async function removeUploadedFile(file: HrOnboardingFileRecord) {
+    const shouldDelete = window.confirm(`Delete ${file.original_file_name}? This cannot be undone.`);
+    if (!shouldDelete) {
+      return;
+    }
+
+    try {
+      setDeletingFileId(String(file.id));
+      setError("");
+      setSuccess("");
+      await deleteHrOnboardingFile(String(file.id));
+      const filesResponse = await getHrOnboardingFiles();
+      setUploadedFiles(filesResponse.items || []);
+      if (editingFileId === String(file.id)) {
+        cancelEditUploadedFile();
+      }
+      setSuccess("Uploaded file deleted.");
+    } catch (deleteError) {
+      setError(getApiErrorMessage(deleteError));
+    } finally {
+      setDeletingFileId(null);
     }
   }
 
@@ -459,11 +528,70 @@ export function OnboardingWorkspace() {
               <tbody>
                 {uploadedFiles.map((file) => (
                   <tr key={file.id}>
-                    <td>{file.document_type}</td>
+                    <td>
+                      {editingFileId === String(file.id) ? (
+                        <select value={editingDocumentType} onChange={(event) => setEditingDocumentType(event.target.value)}>
+                          {requiredDocuments.map((document) => <option key={document.id} value={document.id}>{document.label}</option>)}
+                        </select>
+                      ) : file.document_type}
+                    </td>
                     <td>{file.original_file_name}</td>
                     <td>{new Date(file.uploaded_at).toLocaleString()}</td>
-                    <td>{file.expiry_date ? new Date(file.expiry_date).toLocaleDateString() : "-"}</td>
-                    <td><a href={file.file_url} target="_blank" rel="noreferrer" className="legacy-secondary-btn">Open</a></td>
+                    <td>
+                      {editingFileId === String(file.id) ? (
+                        <input type="date" value={editingExpiryDate} onChange={(event) => setEditingExpiryDate(event.target.value)} />
+                      ) : (file.expiry_date ? new Date(file.expiry_date).toLocaleDateString() : "-")}
+                    </td>
+                    <td>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <a
+                          href={file.file_url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="legacy-icon-btn"
+                          aria-label={`Open ${file.original_file_name}`}
+                          title="Open file"
+                        >
+                          <ExternalLink className="h-4 w-4" />
+                        </a>
+                        {editingFileId === String(file.id) ? (
+                          <>
+                            <button
+                              type="button"
+                              className="legacy-icon-btn"
+                              onClick={() => void saveUploadedFileChanges(file)}
+                              disabled={savingFileId === String(file.id)}
+                              aria-label={`Save changes for ${file.original_file_name}`}
+                            >
+                              <Save className="h-4 w-4" />
+                            </button>
+                            <button type="button" className="legacy-icon-btn" onClick={cancelEditUploadedFile} aria-label={`Cancel editing ${file.original_file_name}`}>
+                              <X className="h-4 w-4" />
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              className="legacy-icon-btn"
+                              onClick={() => startEditUploadedFile(file)}
+                              aria-label={`Edit ${file.original_file_name}`}
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </button>
+                            <button
+                              type="button"
+                              className="legacy-icon-btn"
+                              onClick={() => void removeUploadedFile(file)}
+                              disabled={deletingFileId === String(file.id)}
+                              aria-label={`Delete ${file.original_file_name}`}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>

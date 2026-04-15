@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
+  Archive,
   AlertCircle,
   Calendar,
   CheckCircle,
@@ -598,7 +599,8 @@ export function TasksWorkspace() {
                   </div>
                   <div className="legacy-actions-row">
                     {canEdit ? <button type="button" className="legacy-icon-btn" onClick={() => openEdit(item.task)}><Edit className="h-4 w-4" /></button> : null}
-                    {canEdit ? <button type="button" className="legacy-icon-btn" onClick={() => void remove(item.taskId)}><Trash2 className="h-4 w-4" /></button> : null}{canEdit && item.overallStatus === "Completed" ? <button type="button" className="legacy-secondary-btn" onClick={() => void archive(item.taskId)}>Archive</button> : null}
+                    {canEdit ? <button type="button" className="legacy-icon-btn" onClick={() => void remove(item.taskId)}><Trash2 className="h-4 w-4" /></button> : null}
+                    {canEdit && item.overallStatus === "Completed" ? <button type="button" className="legacy-icon-btn" onClick={() => void archive(item.taskId)} aria-label={`Archive ${asString(item.task.title) || "task"}`} title="Archive task"><Archive className="h-4 w-4" /></button> : null}
                   </div>
                 </div>
                 <div className="legacy-meta-list">
