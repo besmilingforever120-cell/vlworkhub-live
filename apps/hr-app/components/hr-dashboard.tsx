@@ -218,6 +218,57 @@ function getCompletedTrainingNames(assignmentId: string, completions: HrRecord[]
   return names;
 }
 
+function getSurveyTargetNames(assignment: HrRecord, users: Array<{ id: string; fullName: string; department: string | null }>) {
+  const tokens = splitNames(String(assignment.assignee_name ?? ""));
+  const names = new Set<string>();
+
+  if (tokens.includes("All Staff")) {
+    users.forEach((user) => {
+      if (user.fullName) names.add(user.fullName);
+    });
+  }
+
+  for (const token of tokens) {
+    if (!token || token === "All Staff") continue;
+    if (token.startsWith("Department:")) {
+      const departmentName = token.replace("Department:", "").trim();
+      users.forEach((user) => {
+        if (user.department && user.department === departmentName) {
+          names.add(user.fullName);
+        }
+      });
+      continue;
+    }
+
+    names.add(token);
+  }
+
+  return names;
+}
+
+function getCompletedSurveyNames(assignmentId: string, completions: HrRecord[]) {
+  const names = new Set<string>();
+  for (const completion of completions) {
+    if (String(completion.assignment_id ?? "") !== assignmentId) continue;
+    const userId = String(completion.user_id ?? "").trim();
+    const userName = String(completion.user_name ?? "").trim();
+    if (userName) names.add(userName);
+    if (userId) names.add(userId);
+  }
+  return names;
+}
+
+function isExpiredAnnouncement(item: HrRecord) {
+  const raw = String(item.end_date ?? "").trim();
+  if (!raw) return false;
+  const endDate = new Date(raw);
+  if (Number.isNaN(endDate.getTime())) return false;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  endDate.setHours(0, 0, 0, 0);
+  return endDate < today;
+}
+
 export function HrDashboard() {
   const [user, setUser] = useState<SessionUser | null>(null);
   const [sharedUsers, setSharedUsers] = useState<Array<{ id: string; fullName: string; department: string | null }>>([]);
@@ -229,6 +280,7 @@ export function HrDashboard() {
   const [trainingAssignments, setTrainingAssignments] = useState<HrRecord[]>([]);
   const [trainingCompletions, setTrainingCompletions] = useState<HrRecord[]>([]);
   const [surveyAssignments, setSurveyAssignments] = useState<HrRecord[]>([]);
+  const [surveyCompletions, setSurveyCompletions] = useState<HrRecord[]>([]);
   const [documents, setDocuments] = useState<HrDocumentRecord[]>([]);
   const [summary, setSummary] = useState<HrDashboardSummary>({ documents: 0, training: 0, tasks: 0, surveys: 0 });
   const [loading, setLoading] = useState(true);
@@ -255,7 +307,7 @@ export function HrDashboard() {
       surveys: Number(summaryResult.surveys || 0)
     });
 
-    const [sessionResult, usersResult, hrRolesResult, announcementsResult, tasksResult, taskAssignmentsResult, taskCompletionResult, trainingResult, trainingCompletionResult, surveysResult, documentsResult] = await Promise.allSettled([
+    const [sessionResult, usersResult, hrRolesResult, announcementsResult, tasksResult, taskAssignmentsResult, taskCompletionResult, trainingResult, trainingCompletionResult, surveysResult, surveyCompletionResult, documentsResult] = await Promise.allSettled([
       getCurrentUser(),
       getPlatformUsers(),
       getHrAssignments(),
@@ -266,6 +318,7 @@ export function HrDashboard() {
       getResource("training_assignments"),
       getResource("training_completions"),
       getResource("survey_assignments"),
+      getResource("survey_completions"),
       getHrDocuments()
     ]);
 
@@ -288,6 +341,7 @@ export function HrDashboard() {
     if (trainingResult.status === "fulfilled") setTrainingAssignments(trainingResult.value);
     if (trainingCompletionResult.status === "fulfilled") setTrainingCompletions(trainingCompletionResult.value);
     if (surveysResult.status === "fulfilled") setSurveyAssignments(surveysResult.value);
+    if (surveyCompletionResult.status === "fulfilled") setSurveyCompletions(surveyCompletionResult.value);
     if (documentsResult.status === "fulfilled") setDocuments(documentsResult.value.items || []);
     setLoading(false);
   }
@@ -387,15 +441,47 @@ export function HrDashboard() {
       return Array.from(targetNames).some((name) => !completedNames.has(name));
     });
   }, [access.role, access.visibleNames, sharedUsers, trainingAssignments, trainingCompletions, user?.fullName]);
-  const visibleSurveys = useMemo(() => filterByAssignees(surveyAssignments, "assignee_name", access.visibleNames).filter((item) => String(item.status ?? "").toLowerCase() !== "completed"), [surveyAssignments, access.visibleNames]);
+  const visibleSurveys = useMemo(() => {
+    const visibleNameSet = new Set(access.visibleNames);
+    const currentName = String(user?.fullName || "").trim();
+    const currentUserId = String(user?.id || "").trim();
+
+    return filterByAssignees(surveyAssignments, "assignee_name", access.visibleNames).filter((assignment) => {
+      if (String(assignment.status ?? "").trim().toLowerCase() === "archived") return false;
+
+      const assignmentId = String(assignment.id ?? "");
+      const targetNames = getSurveyTargetNames(assignment, sharedUsers);
+      const completedMarkers = getCompletedSurveyNames(assignmentId, surveyCompletions);
+
+      if (!targetNames.size) {
+        return String(assignment.status ?? "").trim().toLowerCase() !== "completed";
+      }
+
+      if (access.role === "employee") {
+        if (!currentName || !targetNames.has(currentName)) return false;
+        return !completedMarkers.has(currentName) && !completedMarkers.has(currentUserId);
+      }
+
+      if (access.role === "manager") {
+        const managedTargets = Array.from(targetNames).filter((name) => visibleNameSet.has(name));
+        if (!managedTargets.length) return false;
+        return managedTargets.some((name) => !completedMarkers.has(name));
+      }
+
+      return Array.from(targetNames).some((name) => !completedMarkers.has(name));
+    });
+  }, [access.role, access.visibleNames, sharedUsers, surveyAssignments, surveyCompletions, user?.fullName, user?.id]);
   const activeDocumentsRequiringSignature = useMemo(() => documents.filter((document) => !document.is_completed && document.requires_signature), [documents]);
-  const announcementFeed = useMemo(() => announcements.slice().sort((left, right) => String(right.publish_date || "").localeCompare(String(left.publish_date || ""))).slice(0, 5), [announcements]);
+  const announcementFeed = useMemo(() => announcements
+    .filter((item) => !isExpiredAnnouncement(item))
+    .sort((left, right) => String(right.publish_date || "").localeCompare(String(left.publish_date || "")))
+    .slice(0, 5), [announcements]);
 
   const stats: StatCard[] = [
     { title: "Documents", value: String(activeDocumentsRequiringSignature.length), href: "/documents", color: "green", icon: FileSignature },
     { title: "Training", value: String(visibleTraining.length), href: "/training", color: "purple", icon: BookOpen },
     { title: "Tasks", value: String(activeTasks.length), href: "/tasks", color: "amber", icon: SquareCheckBig },
-    { title: "Surveys", value: String(summary.surveys), href: "/surveys", color: "blue", icon: ClipboardList }
+    { title: "Surveys", value: String(visibleSurveys.length), href: "/surveys", color: "blue", icon: ClipboardList }
   ];
 
   return (

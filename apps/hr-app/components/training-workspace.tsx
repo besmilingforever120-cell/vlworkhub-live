@@ -105,6 +105,12 @@ export function TrainingWorkspace() {
     void load();
   }, []);
 
+  useEffect(() => {
+    if (!canManage && activeTab === "available") {
+      setActiveTab("training");
+    }
+  }, [activeTab, canManage]);
+
   const currentPlatformUser = useMemo(() => getCurrentPlatformUser(user, users), [user, users]);
 
   const visibleNames = useMemo(
@@ -371,10 +377,10 @@ export function TrainingWorkspace() {
 
       <div className="legacy-tabs">
         <button type="button" className={`legacy-tab-btn ${activeTab === "training" ? "is-active" : ""}`} onClick={() => setActiveTab("training")}>Training</button>
-        <button type="button" className={`legacy-tab-btn ${activeTab === "available" ? "is-active" : ""}`} onClick={() => setActiveTab("available")}>Available Trainings</button>
+        {canManage ? <button type="button" className={`legacy-tab-btn ${activeTab === "available" ? "is-active" : ""}`} onClick={() => setActiveTab("available")}>Available Trainings</button> : null}
       </div>
 
-      {activeTab === "training" ? (
+      {activeTab !== "available" || !canManage ? (
         <div className="legacy-panel">
           <div className="legacy-panel-header"><div><h2>Training</h2><p>All visible training assignments appear here in one simple list.</p></div></div>
           <div className="legacy-panel-body">

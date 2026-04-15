@@ -242,6 +242,12 @@ export function SurveysWorkspace() {
   }, []);
 
   useEffect(() => {
+    if (!canManage && activeTab === "available") {
+      setActiveTab("surveys");
+    }
+  }, [activeTab, canManage]);
+
+  useEffect(() => {
     if (!user?.id) return;
     try {
       const raw = window.localStorage.getItem(`vlworkhub-survey-opened-${user.id}`);
@@ -585,10 +591,10 @@ export function SurveysWorkspace() {
 
       <div className="legacy-tabs">
         <button type="button" className={`legacy-tab-btn ${activeTab === "surveys" ? "is-active" : ""}`} onClick={() => setActiveTab("surveys")}>Surveys</button>
-        <button type="button" className={`legacy-tab-btn ${activeTab === "available" ? "is-active" : ""}`} onClick={() => setActiveTab("available")}>Available Surveys</button>
+        {canManage ? <button type="button" className={`legacy-tab-btn ${activeTab === "available" ? "is-active" : ""}`} onClick={() => setActiveTab("available")}>Available Surveys</button> : null}
       </div>
 
-      {activeTab === "surveys" ? (
+      {activeTab !== "available" || !canManage ? (
         <div className="legacy-panel">
           <div className="legacy-panel-header"><div><h2>Surveys</h2><p>All visible survey assignments appear here in one simple list.</p></div></div>
           <div className="legacy-panel-body">
@@ -637,7 +643,35 @@ export function SurveysWorkspace() {
                               </>
                             ) : null}
                             {canArchive ? <button type="button" className="legacy-secondary-btn" onClick={(event) => { event.stopPropagation(); void handleArchiveAssignment(assignment); }}>Archive</button> : null}
-                            {showCompleteAction ? <button type="button" className="legacy-primary-btn disabled:opacity-50 disabled:cursor-not-allowed" disabled={!hasOpened} onClick={(event) => { event.stopPropagation(); if (!hasOpened) return; void markComplete(assignment); }}><CheckCircle2 className="h-4 w-4" />Complete</button> : null}
+                            {showCompleteAction ? (
+                              <>
+                                <button
+                                  type="button"
+                                  className="legacy-secondary-btn"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    const assignmentId = String(assignment.id);
+                                    markSurveyOpened(assignmentId);
+                                    router.push(`/surveys/${String(assignment.survey_id ?? "")}?assignmentId=${assignmentId}`);
+                                  }}
+                                >
+                                  <PlayCircle className="h-4 w-4" />Open Survey
+                                </button>
+                                <button
+                                  type="button"
+                                  className="legacy-primary-btn disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+                                  disabled={!hasOpened}
+                                  title={!hasOpened ? "Open the survey first, then come back to mark it complete." : undefined}
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    if (!hasOpened) return;
+                                    void markComplete(assignment);
+                                  }}
+                                >
+                                  <CheckCircle2 className="h-4 w-4" />Complete
+                                </button>
+                              </>
+                            ) : null}
                             {!showAdminActions && !canArchive && !showCompleteAction ? <span className="text-slate-400">-</span> : null}
                           </div>
                         </td>

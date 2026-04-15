@@ -2,7 +2,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { platformLinks } from "@vlworkhub/config";
 import { HrPortalHeader } from "../../../components/hr-portal-header";
-import { AdminSignedFiles } from "../../../components/admin-signed-files";
+import { AdminSignedFilesView } from "../../../components/admin-signed-files-view";
 
 async function getSession() {
   const cookieHeader = cookies().toString();
@@ -38,7 +38,7 @@ export default async function AdminSignedFilesPage() {
         description="Browse signed document copies by user folder from the HR administration area."
         breadcrumb="Admin"
       />
-      <AdminSignedFiles />
+      <AdminSignedFilesView />
     </div>
   );
 }

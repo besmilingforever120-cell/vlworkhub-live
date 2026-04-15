@@ -167,7 +167,7 @@ export function AnnouncementsWorkspace() {
         {canManage ? <button type="button" className="legacy-primary-btn" onClick={openCreate}><Plus className="h-4 w-4" />New Announcement</button> : null}
       </div>
 
-      {!canManage ? <div className="legacy-panel" style={{ marginBottom: 20 }}><div className="legacy-panel-body" style={{ color: "#1e40af", background: "#eff6ff" }}><Info className="mr-2 inline h-4 w-4" />You have read-only access to announcements. Publishing remains limited to HR admins.</div></div> : null}
+      {!canManage ? <div className="legacy-panel" style={{ marginBottom: 20 }}><div className="legacy-panel-body" style={{ color: "#1e40af", background: "#eff6ff" }}><div className="flex items-center gap-2"><Info className="h-4 w-4 shrink-0" /><span>You have read-only access to announcements. Publishing remains limited to HR admins.</span></div></div></div> : null}
 
       <section className="legacy-stats-grid">
         {[{ label: "All Announcements", value: stats.total, icon: Megaphone, color: "blue" }, { label: "Important", value: stats.important, icon: AlertTriangle, color: "amber" }, { label: "Published", value: stats.published, icon: CheckCircle, color: "green" }].map((stat) => <div key={stat.label} className={`legacy-stat-card ${stat.color}`}><div className="legacy-stat-icon"><stat.icon className="h-5 w-5" /></div><div><p className="legacy-stat-value">{stat.value}</p><p className="legacy-stat-title">{stat.label}</p></div></div>)}

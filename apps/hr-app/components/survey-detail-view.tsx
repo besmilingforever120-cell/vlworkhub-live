@@ -19,24 +19,18 @@ function asString(value: string | number | null | undefined) {
   return String(value ?? "").trim();
 }
 
-function resolveEmbedSource(value: string) {
-  const normalized = asString(value);
-  if (!normalized) return { type: "empty" as const, value: "" };
+function normalizeEmbeddedSurvey(html: string) {
+  const trimmed = html.trim();
+  if (!trimmed) return "";
 
-  const iframeMatch = /<iframe[^>]*src=["']([^"']+)["'][^>]*>/i.exec(normalized);
-  if (iframeMatch?.[1]) {
-    return { type: "src" as const, value: iframeMatch[1] };
-  }
-
-  if (normalized.startsWith("http://") || normalized.startsWith("https://")) {
-    return { type: "src" as const, value: normalized };
-  }
-
-  if (normalized.includes("<iframe")) {
-    return { type: "html" as const, value: normalized };
-  }
-
-  return { type: "empty" as const, value: "" };
+  return trimmed
+    .replace(/\swidth=("[^"]*"|'[^']*'|[^\s>]+)/gi, "")
+    .replace(/\sheight=("[^"]*"|'[^']*'|[^\s>]+)/gi, "")
+    .replace(/\sstyle=("[^"]*"|'[^']*')/gi, "")
+    .replace(
+      /<iframe\b/gi,
+      '<iframe style="width:100%; min-width:100%; height:1100px; min-height:1100px; border:0; display:block;"'
+    );
 }
 
 export function SurveyDetailView({ surveyId }: Props) {
@@ -91,7 +85,6 @@ export function SurveyDetailView({ surveyId }: Props) {
 
   const survey = useMemo(() => surveys.find((item) => String(item.id) === surveyId) || null, [surveys, surveyId]);
   const assignment = useMemo(() => assignments.find((item) => String(item.id) === assignmentId) || null, [assignmentId, assignments]);
-  const embed = useMemo(() => resolveEmbedSource(asString(survey?.url)), [survey?.url]);
 
   if (loading) return <div className="legacy-empty">Loading survey...</div>;
   if (error) return <div className="hr-card" style={{ color: "#b91c1c", borderColor: "#fecaca", background: "#fff1f2" }}>{error}</div>;
@@ -122,16 +115,12 @@ export function SurveyDetailView({ surveyId }: Props) {
             </div>
           </div>
           <div className="legacy-panel-body">
-            <div className="w-full h-[70vh] bg-slate-100 rounded-xl overflow-hidden">
-              {embed.type === "src" ? (
-                <iframe
-                  title={`${asString(survey.title) || "Survey"} form`}
-                  src={embed.value}
-                  className="h-full w-full border-0"
-                  allowFullScreen
+            <div className="w-full min-h-[1100px] bg-slate-100 rounded-xl overflow-hidden">
+              {asString(survey?.url) ? (
+                <div
+                  className="h-full w-full [&_iframe]:!w-full [&_iframe]:!min-w-full [&_iframe]:!border-0"
+                  dangerouslySetInnerHTML={{ __html: normalizeEmbeddedSurvey(asString(survey.url)) }}
                 />
-              ) : embed.type === "html" ? (
-                <div className="h-full w-full [&_iframe]:h-full [&_iframe]:w-full [&_iframe]:border-0" dangerouslySetInnerHTML={{ __html: embed.value }} />
               ) : (
                 <div className="legacy-empty">No survey iframe link configured.</div>
               )}
