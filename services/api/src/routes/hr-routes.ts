@@ -13,9 +13,12 @@ import {
   createHrDocument,
   deleteHrDocument,
   downloadHrDocument,
+  listAdminHrOnboardingFiles,
   listHrDocuments,
+  listHrOnboardingFiles,
   listHrSignedDocumentFiles,
   signHrDocument,
+  uploadHrOnboardingFiles,
   updateHrDocument
 } from "../controllers/hr-documents-controller";
 import { requireAuth } from "../middleware/auth";
@@ -27,6 +30,9 @@ hrRouter.get("/my-role", getMyHrRole);
 hrRouter.get("/dashboard", getHrDashboard);
 hrRouter.get("/documents", listHrDocuments);
 hrRouter.get("/documents/signed-files", listHrSignedDocumentFiles);
+hrRouter.get("/onboarding/files", listHrOnboardingFiles);
+hrRouter.get("/onboarding/files/admin", listAdminHrOnboardingFiles);
+hrRouter.post("/onboarding/files", uploadHrOnboardingFiles);
 hrRouter.post("/documents", createHrDocument);
 hrRouter.post("/documents/:id/sign", signHrDocument);
 hrRouter.post("/documents/:id/archive", archiveHrDocument);

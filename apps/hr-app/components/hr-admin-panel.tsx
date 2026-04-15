@@ -283,6 +283,13 @@ export function HrAdminPanel() {
       </section>
 
       <section className="legacy-stats-grid" style={{ marginTop: 20 }}>
+        <Link href="/admin/onboarding-files" className="legacy-stat-card blue" style={{ textDecoration: "none", cursor: "pointer" }}>
+          <div className="legacy-stat-icon"><FolderOpen className="h-5 w-5" /></div>
+          <div>
+            <p className="legacy-stat-value">Open</p>
+            <p className="legacy-stat-title">Employees Onboarding Files</p>
+          </div>
+        </Link>
         <Link href="/admin/signed-files" className="legacy-stat-card blue" style={{ textDecoration: "none", cursor: "pointer" }}>
           <div className="legacy-stat-icon"><FolderOpen className="h-5 w-5" /></div>
           <div>

@@ -15,7 +15,8 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Shield,
-  SquareCheckBig
+  SquareCheckBig,
+  UserPlus
 } from "lucide-react";
 import type { SessionUser } from "@vlworkhub/types";
 import { platformLinks } from "@vlworkhub/config";
@@ -32,6 +33,7 @@ type ShellItem = {
 const navItems: ShellItem[] = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { label: "Announcements", href: "/announcements", icon: Megaphone },
+  { label: "Onboarding", href: "/onboarding", icon: UserPlus },
   { label: "Tasks", href: "/tasks", icon: SquareCheckBig },
   { label: "Training", href: "/training", icon: BookOpen },
   { label: "Surveys", href: "/surveys", icon: ClipboardList },
@@ -42,6 +44,7 @@ const navItems: ShellItem[] = [
 const pageTitles: Record<string, string> = {
   "/dashboard": "Dashboard",
   "/announcements": "Announcements",
+  "/onboarding": "Onboarding",
   "/tasks": "Tasks",
   "/training": "Training",
   "/surveys": "Surveys",

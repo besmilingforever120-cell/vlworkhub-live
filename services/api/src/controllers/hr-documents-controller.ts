@@ -33,6 +33,12 @@ type CreateDocumentBody = {
   signedBy?: string | null;
   assignedBy?: string | null;
   signedFileUrl?: string | null;
+  files?: Array<{
+    fileName?: string | null;
+    fileData?: string | null;
+    documentType?: string | null;
+    expiryDate?: string | null;
+  }>;
 };
 
 type OrganizationUser = {
@@ -43,6 +49,7 @@ type OrganizationUser = {
 };
 
 let ensureDocumentsSchemaPromise: Promise<void> | null = null;
+let ensureOnboardingUploadsSchemaPromise: Promise<void> | null = null;
 
 function asString(value: unknown) {
   return String(value ?? "").trim();
@@ -97,6 +104,10 @@ function getOriginalUploadsRoot() {
   return path.join(getUploadsRoot(), "original");
 }
 
+function getOnboardingUploadsRoot() {
+  return path.join(getUploadsRoot(), "onboarding");
+}
+
 function getLocalUploadsBaseUrl() {
   return "http://localhost:8080/uploads";
 }
@@ -108,6 +119,12 @@ function sanitizePathSegment(value: string) {
     .replace(/-+/g, "-")
     .replace(/^-|-$/g, "");
   return normalized || "user";
+}
+
+function getUserFolderName(userId: string, userName: string) {
+  const safeName = sanitizePathSegment(userName || userId);
+  const safeId = sanitizePathSegment(userId);
+  return `${safeName}-${safeId}`;
 }
 
 function parseDataUrl(dataUrl: string) {
@@ -164,6 +181,202 @@ async function saveSignedPdfLocally(documentId: number, userId: string, userName
   await fs.writeFile(filePath, parsed.buffer);
 
   return `${getLocalUploadsBaseUrl()}/signed/${encodeURIComponent(folderName)}/${fileName}`;
+}
+
+async function ensureOnboardingUserFolder(userId: string, userName: string) {
+  const folderName = getUserFolderName(userId, userName);
+  const folderPath = path.join(getOnboardingUploadsRoot(), folderName);
+  await fs.mkdir(folderPath, { recursive: true });
+  return { folderName, folderPath };
+}
+
+async function saveOnboardingFileLocally(userId: string, userName: string, fileName: string, fileData: string | null, documentType: string, expiryDate?: string | null) {
+  const parsed = fileData ? parseDataUrl(fileData) : null;
+  if (!parsed) {
+    return null;
+  }
+
+  const { folderName, folderPath } = await ensureOnboardingUserFolder(userId, userName);
+  const timestamp = Date.now();
+  const extension = getFileExtension(fileName, parsed.mimeType);
+  const safeDocumentType = sanitizePathSegment(documentType);
+  const storedFileName = `${safeDocumentType}_${timestamp}${extension}`;
+  const filePath = path.join(folderPath, storedFileName);
+  await fs.writeFile(filePath, parsed.buffer);
+
+  const metadataPath = path.join(folderPath, `${storedFileName}.json`);
+  const metadata = {
+    documentType,
+    originalFileName: fileName,
+    uploadedAt: new Date().toISOString(),
+    expiryDate: asNullableString(expiryDate),
+    fileUrl: `${getLocalUploadsBaseUrl()}/onboarding/${encodeURIComponent(folderName)}/${storedFileName}`
+  };
+  await fs.writeFile(metadataPath, JSON.stringify(metadata, null, 2), "utf8");
+
+  return {
+    id: `${userId}/${storedFileName}`,
+    user_id: userId,
+    user_name: userName,
+    file_name: storedFileName,
+    original_file_name: fileName,
+    document_type: documentType,
+    uploaded_at: metadata.uploadedAt,
+    expiry_date: metadata.expiryDate,
+    file_url: metadata.fileUrl
+  };
+}
+
+async function listOnboardingFilesForUser(userId: string, userName: string) {
+  const { folderPath } = await ensureOnboardingUserFolder(userId, userName);
+  const entries = await fs.readdir(folderPath, { withFileTypes: true });
+  const items: Array<{
+    id: string;
+    user_id: string;
+    user_name: string;
+    file_name: string;
+    original_file_name: string;
+    document_type: string;
+    uploaded_at: string;
+    expiry_date: string | null;
+    file_url: string;
+  }> = [];
+
+  for (const entry of entries) {
+    if (!entry.isFile() || !entry.name.endsWith(".json")) continue;
+    try {
+      const metadataRaw = await fs.readFile(path.join(folderPath, entry.name), "utf8");
+      const metadata = JSON.parse(metadataRaw) as {
+        documentType?: string;
+        originalFileName?: string;
+        uploadedAt?: string;
+        expiryDate?: string | null;
+        fileUrl?: string;
+      };
+      const fileName = entry.name.slice(0, -5);
+      items.push({
+        id: `${userId}/${fileName}`,
+        user_id: userId,
+        user_name: userName,
+        file_name: fileName,
+        original_file_name: String(metadata.originalFileName || fileName),
+        document_type: String(metadata.documentType || "Other"),
+        uploaded_at: String(metadata.uploadedAt || ""),
+        expiry_date: metadata.expiryDate ? String(metadata.expiryDate) : null,
+        file_url: String(metadata.fileUrl || "")
+      });
+    } catch {
+      continue;
+    }
+  }
+
+  return items.sort((left, right) => String(right.uploaded_at).localeCompare(String(left.uploaded_at)));
+}
+
+async function ensureOnboardingUploadsSchema() {
+  if (ensureOnboardingUploadsSchemaPromise) {
+    return ensureOnboardingUploadsSchemaPromise;
+  }
+
+  ensureOnboardingUploadsSchemaPromise = (async () => {
+    await pool.query(
+      `CREATE TABLE IF NOT EXISTS hr_onboarding_uploads (
+         id BIGSERIAL PRIMARY KEY,
+         organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+         user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+         stored_file_name TEXT NOT NULL,
+         original_file_name TEXT NOT NULL,
+         document_type TEXT NOT NULL,
+         file_url TEXT NOT NULL,
+         expiry_date DATE NULL,
+         uploaded_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+       )`
+    );
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_hr_onboarding_uploads_user ON hr_onboarding_uploads(user_id, uploaded_at DESC)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_hr_onboarding_uploads_org ON hr_onboarding_uploads(organization_id, user_id)`);
+  })();
+
+  return ensureOnboardingUploadsSchemaPromise;
+}
+
+function isAdminPlatformUser(req: AuthenticatedRequest) {
+  const platformRole = String(req.user?.platform_role || req.user?.role || "USER").toUpperCase();
+  return platformRole === "SUPER_ADMIN" || platformRole === "ADMIN";
+}
+
+async function insertOnboardingUploadRecord(params: {
+  organizationId: string;
+  userId: string;
+  storedFileName: string;
+  originalFileName: string;
+  documentType: string;
+  fileUrl: string;
+  expiryDate?: string | null;
+}) {
+  const result = await pool.query(
+    `INSERT INTO hr_onboarding_uploads (
+       organization_id,
+       user_id,
+       stored_file_name,
+       original_file_name,
+       document_type,
+       file_url,
+       expiry_date
+     )
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
+     RETURNING id::text AS id, uploaded_at::text AS uploaded_at, expiry_date::text AS expiry_date`,
+    [
+      params.organizationId,
+      params.userId,
+      params.storedFileName,
+      params.originalFileName,
+      params.documentType,
+      params.fileUrl,
+      asNullableString(params.expiryDate)
+    ]
+  );
+
+  return result.rows[0];
+}
+
+async function listOnboardingFilesForUserFromDb(organizationId: string, userId: string, userName: string, userEmail?: string | null) {
+  await ensureOnboardingUploadsSchema();
+  const result = await pool.query(
+    `SELECT
+       id::text AS id,
+       user_id::text AS user_id,
+       stored_file_name AS file_name,
+       original_file_name,
+       document_type,
+       file_url,
+       expiry_date::text AS expiry_date,
+       uploaded_at::text AS uploaded_at
+     FROM hr_onboarding_uploads
+     WHERE organization_id = $1 AND user_id = $2
+     ORDER BY uploaded_at DESC, id DESC`,
+    [organizationId, userId]
+  );
+
+  if (result.rows.length) {
+    return result.rows.map((row) => ({
+      id: String(row.id),
+      user_id: userId,
+      user_name: userName,
+      user_email: userEmail || "",
+      file_name: String(row.file_name),
+      original_file_name: String(row.original_file_name),
+      document_type: String(row.document_type),
+      uploaded_at: String(row.uploaded_at),
+      expiry_date: row.expiry_date ? String(row.expiry_date) : null,
+      file_url: String(row.file_url)
+    }));
+  }
+
+  const legacyItems = await listOnboardingFilesForUser(userId, userName);
+  return legacyItems.map((item) => ({
+    ...item,
+    user_email: userEmail || ""
+  }));
 }
 
 function resolveStoredFileUrl(fileName: string, incomingFileUrl: string | null) {
@@ -493,6 +706,115 @@ export async function listHrDocuments(req: AuthenticatedRequest, res: Response) 
     return res.json({ items });
   } catch (error) {
     console.error("API error in GET /hr/documents", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+}
+
+export async function listHrOnboardingFiles(req: AuthenticatedRequest, res: Response) {
+  try {
+    await ensureOnboardingUploadsSchema();
+    const organizationId = String(req.user?.organization_id || "");
+    const userId = String(req.user?.user_id || "");
+    const userName = String(req.user?.full_name || userId);
+    const userEmail = String(req.user?.email || "");
+    const items = await listOnboardingFilesForUserFromDb(organizationId, userId, userName, userEmail);
+    return res.json({ items });
+  } catch (error) {
+    console.error("API error in GET /hr/onboarding/files", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+}
+
+export async function listAdminHrOnboardingFiles(req: AuthenticatedRequest, res: Response) {
+  try {
+    if (!isAdminPlatformUser(req)) {
+      return res.status(403).json({ message: "Forbidden" });
+    }
+
+    const organizationId = String(req.user?.organization_id || "");
+    const requestedUserId = asString(req.query.userId);
+    if (!requestedUserId) {
+      return res.status(400).json({ message: "userId is required" });
+    }
+
+    const userResult = await pool.query(
+      `SELECT
+         u.id::text AS id,
+         TRIM(COALESCE(u.first_name, '') || ' ' || COALESCE(u.last_name, '')) AS full_name,
+         u.email
+       FROM users u
+       WHERE u.organization_id = $1 AND u.id = $2
+       LIMIT 1`,
+      [organizationId, requestedUserId]
+    );
+
+    const selectedUser = userResult.rows[0];
+    if (!selectedUser) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    const items = await listOnboardingFilesForUserFromDb(
+      organizationId,
+      String(selectedUser.id),
+      String(selectedUser.full_name || selectedUser.id),
+      String(selectedUser.email || "")
+    );
+    return res.json({ items });
+  } catch (error) {
+    console.error("API error in GET /hr/onboarding/files/admin", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+}
+
+export async function uploadHrOnboardingFiles(req: AuthenticatedRequest, res: Response) {
+  try {
+    await ensureOnboardingUploadsSchema();
+    const organizationId = String(req.user?.organization_id || "");
+    const userId = String(req.user?.user_id || "");
+    const userName = String(req.user?.full_name || userId);
+    const userEmail = String(req.user?.email || "");
+    const body = (req.body || {}) as CreateDocumentBody;
+    const files = Array.isArray(body.files) ? body.files : [];
+
+    if (!files.length) {
+      return res.status(400).json({ message: "At least one file is required" });
+    }
+
+    const uploaded = [];
+    for (const file of files) {
+      const fileName = asString(file.fileName);
+      const fileData = asNullableString(file.fileData);
+      const documentType = asString(file.documentType) || "Other";
+      const expiryDate = asNullableString(file.expiryDate);
+      if (!fileName || !fileData) {
+        return res.status(400).json({ message: "Each upload requires fileName and fileData" });
+      }
+
+      const saved = await saveOnboardingFileLocally(userId, userName, fileName, fileData, documentType, expiryDate);
+      if (saved) {
+        const inserted = await insertOnboardingUploadRecord({
+          organizationId,
+          userId,
+          storedFileName: saved.file_name,
+          originalFileName: saved.original_file_name,
+          documentType: saved.document_type,
+          fileUrl: saved.file_url,
+          expiryDate
+        });
+
+        uploaded.push({
+          ...saved,
+          id: String(inserted.id),
+          user_email: userEmail,
+          uploaded_at: String(inserted.uploaded_at || saved.uploaded_at),
+          expiry_date: inserted.expiry_date ? String(inserted.expiry_date) : saved.expiry_date || null
+        });
+      }
+    }
+
+    return res.status(201).json({ items: uploaded });
+  } catch (error) {
+    console.error("API error in POST /hr/onboarding/files", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 }

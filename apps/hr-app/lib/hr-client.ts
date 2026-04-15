@@ -329,9 +329,45 @@ export type HrSignedDocumentFileRecord = {
   archived: boolean;
 };
 
+export type HrOnboardingFileRecord = {
+  id: string;
+  user_id?: string;
+  user_name?: string;
+  user_email?: string;
+  file_name: string;
+  original_file_name: string;
+  document_type: string;
+  uploaded_at: string;
+  expiry_date?: string | null;
+  file_url: string;
+};
+
 export async function getHrDocuments() {
 
   return request<{ items: HrDocumentRecord[] }>("/hr/documents");
+}
+
+export async function getHrOnboardingFiles() {
+  return request<{ items: HrOnboardingFileRecord[] }>("/hr/onboarding/files");
+}
+
+export async function uploadHrOnboardingFiles(payload: {
+  files: Array<{
+    fileName: string;
+    fileData: string;
+    documentType: string;
+    expiryDate?: string | null;
+  }>;
+}) {
+  return request<{ items: HrOnboardingFileRecord[] }>("/hr/onboarding/files", {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function getAdminHrOnboardingFiles(userId: string) {
+  const encodedUserId = encodeURIComponent(userId);
+  return request<{ items: HrOnboardingFileRecord[] }>(`/hr/onboarding/files/admin?userId=${encodedUserId}`);
 }
 
 export async function getHrSignedDocumentFiles() {
