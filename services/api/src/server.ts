@@ -16,10 +16,14 @@ import { startOnboardingExpiryTaskScheduler } from "./controllers/hr-documents-c
 
 const app = express();
 
+function isDynamicDevOriginAllowed(origin: string) {
+  return /^http:\/\/localhost(?::\d+)?$/i.test(origin) || /^http:\/\/192\.168\.\d{1,3}\.\d{1,3}(?::\d+)?$/i.test(origin);
+}
+
 app.use(
   cors({
     origin(origin, callback) {
-      if (!origin || env.allowedOrigins.includes(origin)) {
+      if (!origin || env.allowedOrigins.includes(origin) || isDynamicDevOriginAllowed(origin)) {
         return callback(null, true);
       }
 

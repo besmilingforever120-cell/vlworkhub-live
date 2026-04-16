@@ -2,10 +2,11 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
 const rootUrl = process.env.NEXT_PUBLIC_ROOT_URL || "http://localhost:3000";
-const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+const apiUrl = process.env.NEXT_PUBLIC_API_URL || "";
 const appKey = "URSAFE";
 
 async function getSession(request: NextRequest) {
+  if (!apiUrl) return null;
   const cookie = request.headers.get("cookie") || "";
   const response = await fetch(`${apiUrl}/auth/me`, { headers: { cookie }, cache: "no-store" }).catch(() => null);
   if (!response?.ok) return null;
@@ -13,6 +14,7 @@ async function getSession(request: NextRequest) {
 }
 
 async function getAccess(request: NextRequest) {
+  if (!apiUrl) return [] as Array<{ app: string; enabled: boolean }>;
   const cookie = request.headers.get("cookie") || "";
   const response = await fetch(`${apiUrl}/api/apps/my-access`, { headers: { cookie }, cache: "no-store" }).catch(() => null);
   if (!response?.ok) return [] as Array<{ app: string; enabled: boolean }>;

@@ -118,7 +118,11 @@ function getOnboardingUploadsRoot() {
 }
 
 function getLocalUploadsBaseUrl() {
-  return "http://localhost:8080/uploads";
+  const apiBaseUrl = String(process.env.NEXT_PUBLIC_API_URL || process.env.PUBLIC_API_URL || "").trim();
+  if (!apiBaseUrl) {
+    return "/uploads";
+  }
+  return `${apiBaseUrl.replace(/\/+$/, "")}/uploads`;
 }
 
 function sanitizePathSegment(value: string) {

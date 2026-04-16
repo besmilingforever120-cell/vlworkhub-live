@@ -1,19 +1,21 @@
-const isDevelopment = process.env.NODE_ENV !== "production";
-
 export const platformLinks = {
   root:
+    process.env.NEXT_PUBLIC_MAIN_APP_URL ||
     process.env.NEXT_PUBLIC_ROOT_URL ||
-    (isDevelopment ? "http://localhost:3000" : "http://www.vlworkhub.ca"),
+    "http://www.vlworkhub.ca",
   care:
+    process.env.NEXT_PUBLIC_CARE_APP_URL ||
     process.env.NEXT_PUBLIC_CARE_URL ||
-    (isDevelopment ? "http://localhost:3001" : "http://care.vlworkhub.ca"),
+    "http://care.vlworkhub.ca",
   hr:
+    process.env.NEXT_PUBLIC_HR_APP_URL ||
     process.env.NEXT_PUBLIC_HR_URL ||
-    (isDevelopment ? "http://localhost:3002" : "http://hr.vlworkhub.ca"),
+    "http://hr.vlworkhub.ca",
   ursafe:
+    process.env.NEXT_PUBLIC_URSAFE_APP_URL ||
     process.env.NEXT_PUBLIC_URSAFE_URL ||
-    (isDevelopment ? "http://localhost:3003" : "http://ursafe.vlworkhub.ca"),
-  api: process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080"
+    "http://ursafe.vlworkhub.ca",
+  api: process.env.NEXT_PUBLIC_API_URL || ""
 };
 
 export const appCards = [
