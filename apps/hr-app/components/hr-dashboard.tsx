@@ -521,16 +521,16 @@ export function HrDashboard() {
   const activeDocumentsRequiringSignature = useMemo(() => documents.filter((document) => !document.is_completed && document.requires_signature), [documents]);
   const announcementFeed = useMemo(() => announcements
     .filter((item) => {
-      if (access.role === "admin") {
-        return true;
-      }
-
       if (!isPublishedAnnouncement(item)) {
         return false;
       }
 
       if (isExpiredAnnouncement(item)) {
         return false;
+      }
+
+      if (access.role === "admin") {
+        return true;
       }
 
       return announcementMatchesDepartment(item, currentUserDepartment);
