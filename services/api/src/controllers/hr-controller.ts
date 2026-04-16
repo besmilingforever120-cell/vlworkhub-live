@@ -124,7 +124,7 @@ async function resolveHrRoleSummary(req: AuthenticatedRequest): Promise<HrRoleSu
   const organizationId = String(req.user?.organization_id || "");
   const platformRole = String(req.user?.platform_role || req.user?.role || "USER").toUpperCase();
 
-  if (platformRole === "SUPER_ADMIN") {
+  if (platformRole === "SUPER_ADMIN" || platformRole === "ADMIN") {
     return { userId, role: "admin", managerId: null };
   }
 

@@ -31,6 +31,7 @@ type DocumentForm = {
   description: string;
   assignedUserIds: string[];
   assignedDepartmentIds: string[];
+  assignedDepartmentTypes: DepartmentTypeOption[];
   allStaff: boolean;
   requiresSignature: boolean;
   status: string;
@@ -45,11 +46,14 @@ type ViewerRole = "ADMIN" | "MANAGER" | "EMPLOYEE";
 type ViewerContext = {
   id: string;
   role: ViewerRole;
+  platformRole: string;
   reportIds: string[];
 };
 
 const categoryOptions = ["Policy", "Form", "Contract", "Information", "Training", "Other"] as const;
 const statusOptions = ["Pending Signature", "In Progress", "Signed"] as const;
+const departmentTypeOptions = ["Community housing", "Program"] as const;
+type DepartmentTypeOption = (typeof departmentTypeOptions)[number];
 
 function emptyForm(): DocumentForm {
   return {
@@ -59,6 +63,7 @@ function emptyForm(): DocumentForm {
     description: "",
     assignedUserIds: [],
     assignedDepartmentIds: [],
+    assignedDepartmentTypes: [],
     allStaff: false,
     requiresSignature: true,
     status: "Pending Signature",
@@ -67,10 +72,33 @@ function emptyForm(): DocumentForm {
   };
 }
 
+function getDepartmentIdsForTypes(departments: DepartmentRecord[], selectedTypes: DepartmentTypeOption[]) {
+  if (!selectedTypes.length) return [] as string[];
+  const selected = new Set<DepartmentTypeOption>(selectedTypes);
+  return departments
+    .filter((department) => selected.has((department.department_type || "Program") as DepartmentTypeOption))
+    .map((department) => department.id)
+    .filter(Boolean);
+}
+
+function getSelectedTypesFromDepartmentIds(departments: DepartmentRecord[], departmentIds: string[]) {
+  const selectedIds = new Set(departmentIds);
+  return departmentTypeOptions.filter((type) => {
+    const idsForType = departments
+      .filter((department) => (department.department_type || "Program") === type)
+      .map((department) => department.id);
+    return idsForType.length > 0 && idsForType.every((id) => selectedIds.has(id));
+  });
+}
+
 function normalizeRole(role: string): ViewerRole {
   if (role === "admin") return "ADMIN";
   if (role === "manager") return "MANAGER";
   return "EMPLOYEE";
+}
+
+function normalizePlatformRole(value: string | undefined) {
+  return String(value || "USER").toUpperCase();
 }
 
 function categoryLabel(document: DocumentViewerRecord) {
@@ -193,9 +221,11 @@ export function DocumentsWorkspace() {
   const canManage = canCreateForHrRole(hrRole);
   const viewer = useMemo<ViewerContext | null>(() => {
     if (!user) return null;
+    const platformRole = normalizePlatformRole(user.platformRole || user.role);
     return {
       id: user.id,
-      role: normalizeRole(hrRole),
+      role: platformRole === "SUPER_ADMIN" || platformRole === "ADMIN" ? "ADMIN" : normalizeRole(hrRole),
+      platformRole,
       reportIds: assignments.filter((assignment) => String(assignment.manager_id || "") === user.id).map((assignment) => String(assignment.user_id))
     };
   }, [assignments, hrRole, user]);
@@ -252,7 +282,7 @@ export function DocumentsWorkspace() {
   }
 
   const visibleDocuments = useMemo(() => {
-    const items = documents.filter((document) => canViewDocument(document, viewer));
+    const items = documents;
     if (!viewer) return [] as DocumentViewerRecord[];
     if (viewer.role === "ADMIN") {
       return items.filter((document) => getDocumentStatus(document) !== "archived");
@@ -315,6 +345,7 @@ export function DocumentsWorkspace() {
       description: document.description || "",
       assignedUserIds: [...(document.direct_user_ids || [])],
       assignedDepartmentIds: [...(document.assigned_department_ids || [])],
+      assignedDepartmentTypes: getSelectedTypesFromDepartmentIds(departments, document.assigned_department_ids || []),
       allStaff: Boolean(document.all_staff),
       requiresSignature: Boolean(document.requires_signature),
       status: document.status || "Pending Signature",
@@ -330,9 +361,11 @@ export function DocumentsWorkspace() {
     const nextErrors: ValidationState = {};
     if (!editingDocument && selectedFiles.length === 0) nextErrors.file = "Select at least one file to upload.";
     if (form.category === "Other" && !form.categoryOther.trim()) nextErrors.categoryOther = "Specify the document category.";
-    if (!form.allStaff && form.assignedUserIds.length === 0 && form.assignedDepartmentIds.length === 0) nextErrors.assignments = "Select at least one user, department, or All Staff.";
+    if (!form.allStaff && form.assignedUserIds.length === 0 && form.assignedDepartmentIds.length === 0 && form.assignedDepartmentTypes.length === 0) nextErrors.assignments = "Select at least one user, department, department type, or All Staff.";
     setValidationErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) return;
+
+    const expandedDepartmentIds = Array.from(new Set([...form.assignedDepartmentIds, ...getDepartmentIdsForTypes(departments, form.assignedDepartmentTypes)]));
 
     const sharedPayload = {
       category: form.category,
@@ -344,7 +377,7 @@ export function DocumentsWorkspace() {
       sensitive: form.sensitive,
       allowDownload: form.allowDownload,
       userIds: form.allStaff ? [] : form.assignedUserIds,
-      departmentIds: form.allStaff ? [] : form.assignedDepartmentIds,
+      departmentIds: form.allStaff ? [] : expandedDepartmentIds,
       allStaff: form.allStaff
     };
 
@@ -509,9 +542,33 @@ export function DocumentsWorkspace() {
                   <div className="legacy-form-section">
                     <div className="legacy-form-section__header"><h3>Assignment</h3><p>Choose who should receive this document.</p></div>
                     <div className="legacy-form-section__body">
-                      {checkboxRow("All Staff", form.allStaff, (checked) => setForm((current) => ({ ...current, allStaff: checked, assignedUserIds: checked ? [] : current.assignedUserIds, assignedDepartmentIds: checked ? [] : current.assignedDepartmentIds })))}
+                      {checkboxRow("All Staff", form.allStaff, (checked) => setForm((current) => ({ ...current, allStaff: checked, assignedUserIds: checked ? [] : current.assignedUserIds, assignedDepartmentIds: checked ? [] : current.assignedDepartmentIds, assignedDepartmentTypes: checked ? [] : current.assignedDepartmentTypes })))}
                       <div className="legacy-picker-row"><div><label className="legacy-picker-label">Users</label><div className="legacy-chip-list legacy-chip-list--compact">{selectedUsers.length ? selectedUsers.map((candidate) => <span key={candidate.id} className="legacy-selection-tag">{candidate.name || candidate.email}<button type="button" onClick={() => setForm((current) => ({ ...current, assignedUserIds: current.assignedUserIds.filter((value) => value !== candidate.id) }))} disabled={form.allStaff}><X className="h-3 w-3" /></button></span>) : <span className="legacy-selection-empty">No users selected.</span>}</div></div><button type="button" className="legacy-secondary-btn" onClick={openUserPicker} disabled={form.allStaff}><Plus className="h-4 w-4" />Add Users</button></div>
                       <div className="legacy-picker-row"><div><label className="legacy-picker-label">Departments</label><div className="legacy-chip-list legacy-chip-list--compact">{selectedDepartments.length ? selectedDepartments.map((candidate) => <span key={candidate.id} className="legacy-selection-tag">{candidate.name}<button type="button" onClick={() => setForm((current) => ({ ...current, assignedDepartmentIds: current.assignedDepartmentIds.filter((value) => value !== candidate.id) }))} disabled={form.allStaff}><X className="h-3 w-3" /></button></span>) : <span className="legacy-selection-empty">No departments selected.</span>}</div></div><button type="button" className="legacy-secondary-btn" onClick={openDepartmentPicker} disabled={form.allStaff}><Plus className="h-4 w-4" />Add Departments</button></div>
+                      <div className="legacy-form-group legacy-form-group--full">
+                        <label>Assign to Department Type</label>
+                        <div className="legacy-chip-list" style={{ alignItems: "center" }}>
+                          {departmentTypeOptions.map((type) => {
+                            const checked = form.assignedDepartmentTypes.includes(type);
+                            return (
+                              <label key={type} className={`legacy-filter-btn ${checked ? "is-active" : ""}`} style={{ display: "inline-flex", alignItems: "center", gap: 8, cursor: form.allStaff ? "not-allowed" : "pointer", whiteSpace: "nowrap", minWidth: 156, opacity: form.allStaff ? 0.6 : 1 }}>
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  disabled={form.allStaff}
+                                  onChange={() => setForm((current) => ({
+                                    ...current,
+                                    assignedDepartmentTypes: checked
+                                      ? current.assignedDepartmentTypes.filter((value) => value !== type)
+                                      : [...current.assignedDepartmentTypes, type]
+                                  }))}
+                                />
+                                {type}
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
                       {validationErrors.assignments ? <p className="legacy-field-error">{validationErrors.assignments}</p> : null}
                     </div>
                   </div>

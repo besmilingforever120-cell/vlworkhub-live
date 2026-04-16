@@ -44,8 +44,8 @@ export function parseAssigneeTargets(value: string | number | null | undefined, 
 
 export function buildAssignmentTokens(form: { allStaff: boolean; userIds: string[]; departmentIds: string[] }, users: PlatformUserRecord[], departments: DepartmentRecord[]) {
   if (form.allStaff) return ["All Staff"];
-  const userTokens = form.userIds.map((id) => users.find((candidate) => candidate.id === id)).filter((candidate): candidate is PlatformUserRecord => Boolean(candidate)).map((candidate) => candidate.name || candidate.email);
-  const departmentTokens = form.departmentIds.map((id) => departments.find((candidate) => candidate.id === id)).filter((candidate): candidate is DepartmentRecord => Boolean(candidate)).map((candidate) => `Department: ${candidate.name}`);
+  const userTokens = form.userIds.map((id) => users.find((candidate) => String(candidate.id) === String(id))).filter((candidate): candidate is PlatformUserRecord => Boolean(candidate)).map((candidate) => candidate.name || candidate.email);
+  const departmentTokens = form.departmentIds.map((id) => departments.find((candidate) => String(candidate.id) === String(id))).filter((candidate): candidate is DepartmentRecord => Boolean(candidate)).map((candidate) => `Department: ${candidate.name}`);
   return [...userTokens, ...departmentTokens];
 }
 
@@ -69,8 +69,9 @@ export function getCurrentPlatformUser(user: SessionUser | null, users: Platform
 
 export function getVisibleDepartmentNames(visibleNames: string[], users: PlatformUserRecord[], currentPlatformUser: PlatformUserRecord | null) {
   const names = new Set<string>();
+  const normalizedVisibleNames = new Set(visibleNames.map((name) => normalizeName(name)).filter(Boolean));
   users.forEach((candidate) => {
-    if (visibleNames.includes(candidate.name || candidate.email) && candidate.department_name) names.add(candidate.department_name);
+    if (normalizedVisibleNames.has(normalizeName(candidate.name || candidate.email)) && candidate.department_name) names.add(candidate.department_name);
   });
   if (currentPlatformUser?.department_name) names.add(currentPlatformUser.department_name);
   return Array.from(names);
@@ -79,23 +80,31 @@ export function getVisibleDepartmentNames(visibleNames: string[], users: Platfor
 export function isAssignmentVisible(assignment: TrainingAssignmentRow, hrRole: "admin" | "manager" | "employee", currentUser: SessionUser | null, currentPlatformUser: PlatformUserRecord | null, visibleNames: string[], visibleDepartmentNames: string[]) {
   if (hrRole === "admin") return true;
   const tokens = splitAssignees(assignment.assignee_name);
-  const currentName = currentUser?.fullName || "";
-  const currentDepartment = currentPlatformUser?.department_name || "";
-  if (tokens.includes("All Staff")) return true;
-  if (currentName && tokens.includes(currentName)) return true;
-  if (currentDepartment && tokens.includes(`Department: ${currentDepartment}`)) return true;
+  const normalizedTokens = tokens.map((token) => normalizeName(token));
+  const currentName = normalizeName(currentUser?.fullName || "");
+  const currentDepartment = normalizeName(currentPlatformUser?.department_name || "");
+  if (normalizedTokens.includes(normalizeName("All Staff"))) return true;
+  if (currentName && normalizedTokens.includes(currentName)) return true;
+  if (currentDepartment && normalizedTokens.includes(normalizeName(`Department: ${currentPlatformUser?.department_name || ""}`))) return true;
   if (hrRole === "manager") {
-    if (tokens.some((token) => visibleNames.includes(token))) return true;
-    if (tokens.some((token) => token.startsWith("Department: ") && visibleDepartmentNames.includes(token.replace("Department: ", "").trim()))) return true;
+    const normalizedVisibleNames = new Set(visibleNames.map((name) => normalizeName(name)).filter(Boolean));
+    const normalizedVisibleDepartments = new Set(visibleDepartmentNames.map((name) => normalizeName(name)).filter(Boolean));
+    if (normalizedTokens.some((token) => normalizedVisibleNames.has(token))) return true;
+    if (tokens.some((token) => token.startsWith("Department: ") && normalizedVisibleDepartments.has(normalizeName(token.replace("Department: ", "").trim())))) return true;
   }
   return false;
 }
 
 export function isAssignmentTargetedToUser(assignment: TrainingAssignmentRow, currentUser: SessionUser | null, currentPlatformUser: PlatformUserRecord | null) {
   const tokens = splitAssignees(assignment.assignee_name);
-  const currentName = currentUser?.fullName || "";
-  const currentDepartment = currentPlatformUser?.department_name || "";
-  return Boolean(tokens.includes("All Staff") || (currentName && tokens.includes(currentName)) || (currentDepartment && tokens.includes(`Department: ${currentDepartment}`)));
+  const normalizedTokens = tokens.map((token) => normalizeName(token));
+  const currentName = normalizeName(currentUser?.fullName || "");
+  const currentDepartment = normalizeName(currentPlatformUser?.department_name || "");
+  return Boolean(
+    normalizedTokens.includes(normalizeName("All Staff"))
+    || (currentName && normalizedTokens.includes(currentName))
+    || (currentDepartment && normalizedTokens.includes(normalizeName(`Department: ${currentPlatformUser?.department_name || ""}`)))
+  );
 }
 
 export function getCompletedAssignmentIds(completions: HrRecord[]) {
@@ -130,9 +139,9 @@ function resolveAssignmentTargetNames(assignment: TrainingAssignmentRow, users: 
   for (const token of tokens) {
     if (!token || token === "All Staff") continue;
     if (token.startsWith("Department: ")) {
-      const departmentName = token.replace("Department: ", "").trim();
+      const departmentName = normalizeName(token.replace("Department: ", "").trim());
       users.forEach((candidate) => {
-        if (String(candidate.department_name || "").trim() === departmentName) {
+        if (normalizeName(candidate.department_name) === departmentName) {
           const normalized = normalizeName(candidate.name || candidate.email);
           if (normalized) targetNames.add(normalized);
         }

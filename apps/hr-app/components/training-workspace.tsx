@@ -37,15 +37,40 @@ import { canCreateForHrRole, formatDate, formatHrRoleLabel, getVisibleHrUserName
 
 type TrainingTab = "training" | "available";
 type TrainingLibraryForm = { title: string; videoUrl: string; quizUrl: string };
-type TrainingAssignmentForm = { trainingId: string; dueDate: string; allStaff: boolean; userIds: string[]; departmentIds: string[] };
+const departmentTypeOptions = ["Community housing", "Program"] as const;
+type DepartmentTypeOption = (typeof departmentTypeOptions)[number];
+type TrainingAssignmentForm = { trainingId: string; dueDate: string; allStaff: boolean; userIds: string[]; departmentIds: string[]; departmentTypes: DepartmentTypeOption[] };
 type TrainingValidationErrors = Partial<Record<"title" | "videoUrl" | "trainingId" | "targets", string>>;
+
+function normalizeDepartmentType(value: string | null | undefined) {
+  return String(value || "Program").trim().toLowerCase();
+}
 
 function emptyTrainingForm(): TrainingLibraryForm {
   return { title: "", videoUrl: "", quizUrl: "" };
 }
 
 function emptyAssignmentForm(): TrainingAssignmentForm {
-  return { trainingId: "", dueDate: "", allStaff: false, userIds: [], departmentIds: [] };
+  return { trainingId: "", dueDate: "", allStaff: false, userIds: [], departmentIds: [], departmentTypes: [] };
+}
+
+function getDepartmentIdsForTypes(departments: DepartmentRecord[], selectedTypes: DepartmentTypeOption[]) {
+  if (!selectedTypes.length) return [] as string[];
+  const selected = new Set(selectedTypes.map((type) => normalizeDepartmentType(type)));
+  return departments
+    .filter((department) => selected.has(normalizeDepartmentType(department.department_type)))
+    .map((department) => department.id)
+    .filter(Boolean);
+}
+
+function getSelectedTypesFromDepartmentIds(departments: DepartmentRecord[], departmentIds: string[]) {
+  const selectedIds = new Set(departmentIds);
+  return departmentTypeOptions.filter((type) => {
+    const idsForType = departments
+      .filter((department) => normalizeDepartmentType(department.department_type) === normalizeDepartmentType(type))
+      .map((department) => department.id);
+    return idsForType.length > 0 && idsForType.every((id) => selectedIds.has(id));
+  });
 }
 
 export function TrainingWorkspace() {
@@ -111,7 +136,34 @@ export function TrainingWorkspace() {
     }
   }, [activeTab, canManage]);
 
-  const currentPlatformUser = useMemo(() => getCurrentPlatformUser(user, users), [user, users]);
+  const currentPlatformUser = useMemo(() => {
+    const resolved = getCurrentPlatformUser(user, users);
+    if (!user) return resolved;
+
+    const fallbackDepartmentId = hrAssignments.find((assignment) => String(assignment.user_id ?? "") === user.id)?.department_id || null;
+    const fallbackDepartmentName = fallbackDepartmentId
+      ? departments.find((department) => String(department.id) === String(fallbackDepartmentId))?.name || null
+      : null;
+
+    if (resolved) {
+      if (resolved.department_name) {
+        return resolved;
+      }
+      return {
+        ...resolved,
+        department_id: resolved.department_id || fallbackDepartmentId,
+        department_name: resolved.department_name || fallbackDepartmentName
+      };
+    }
+
+    return {
+      id: user.id,
+      name: user.fullName,
+      email: user.email,
+      department_id: fallbackDepartmentId,
+      department_name: fallbackDepartmentName
+    };
+  }, [departments, hrAssignments, user, users]);
 
   const visibleNames = useMemo(
     () => getVisibleHrUserNames(hrRole, user?.id || "", user?.fullName || "", hrAssignments, users.map((candidate) => ({
@@ -227,14 +279,32 @@ export function TrainingWorkspace() {
   async function submitAssignment() {
     const nextErrors: TrainingValidationErrors = {};
     if (!assignmentForm.trainingId) nextErrors.trainingId = "Select a training item.";
-    if (!assignmentForm.allStaff && assignmentForm.userIds.length === 0 && assignmentForm.departmentIds.length === 0) {
-      nextErrors.targets = "Choose All Staff, at least one user, or at least one department.";
+    if (!assignmentForm.allStaff && assignmentForm.userIds.length === 0 && assignmentForm.departmentIds.length === 0 && assignmentForm.departmentTypes.length === 0) {
+      nextErrors.targets = "Choose All Staff, at least one user, one department, or one department type.";
     }
     setValidationErrors((current) => ({ ...current, ...nextErrors }));
     if (Object.keys(nextErrors).length) return;
 
     const selectedTraining = library.find((item) => Number(item.id) === Number(assignmentForm.trainingId));
-    const tokens = buildAssignmentTokens(assignmentForm, users, departments);
+    const expandedDepartmentIds = Array.from(new Set([...assignmentForm.departmentIds, ...getDepartmentIdsForTypes(departments, assignmentForm.departmentTypes)]));
+    if (!assignmentForm.allStaff && assignmentForm.userIds.length === 0 && expandedDepartmentIds.length === 0) {
+      setValidationErrors((current) => ({
+        ...current,
+        targets: "Selected department types did not match any departments."
+      }));
+      return;
+    }
+    const tokens = buildAssignmentTokens({
+      ...assignmentForm,
+      departmentIds: expandedDepartmentIds
+    }, users, departments);
+    if (!tokens.length) {
+      setValidationErrors((current) => ({
+        ...current,
+        targets: "No valid assignment targets were generated."
+      }));
+      return;
+    }
 
     try {
       if (editingAssignmentId) {
@@ -282,7 +352,8 @@ export function TrainingWorkspace() {
       dueDate: String(assignment.due_date ?? "").slice(0, 10),
       allStaff: parsed.allStaff,
       userIds: parsed.userIds,
-      departmentIds: parsed.departmentIds
+      departmentIds: parsed.departmentIds,
+      departmentTypes: getSelectedTypesFromDepartmentIds(departments, parsed.departmentIds)
     });
     setEditingAssignmentId(Number(assignment.id));
     setValidationErrors({});
@@ -487,7 +558,7 @@ export function TrainingWorkspace() {
               <div className="legacy-form-grid">
                 <div className="legacy-form-group legacy-form-group--full"><label>Select Training <span className="legacy-required">*</span></label><select value={assignmentForm.trainingId} onChange={(event) => setAssignmentForm((current) => ({ ...current, trainingId: event.target.value }))}><option value="">Select training</option>{library.map((item) => <option key={String(item.id)} value={String(item.id)}>{String(item.training_name ?? "Training")}</option>)}</select>{validationErrors.trainingId ? <p className="legacy-field-error">{validationErrors.trainingId}</p> : null}</div>
                 <div className="legacy-form-group"><label>Due Date</label><input type="date" value={assignmentForm.dueDate} onChange={(event) => setAssignmentForm((current) => ({ ...current, dueDate: event.target.value }))} /></div>
-                <div className="legacy-form-group legacy-form-group--full"><div className="legacy-form-section"><div className="legacy-form-section__header"><h3>Assignment</h3><p>Choose who should receive this training.</p></div><div className="legacy-form-section__body"><label className={`legacy-checkbox-row ${assignmentForm.allStaff ? "is-active" : ""}`}><input type="checkbox" checked={assignmentForm.allStaff} onChange={(event) => setAssignmentForm((current) => ({ ...current, allStaff: event.target.checked, userIds: event.target.checked ? [] : current.userIds, departmentIds: event.target.checked ? [] : current.departmentIds }))} /><span>All Staff</span></label><div className="legacy-picker-row"><div><label className="legacy-picker-label">Users</label><div className="legacy-chip-list legacy-chip-list--compact">{selectedUsers.length ? selectedUsers.map((candidate) => <span key={candidate.id} className="legacy-selection-tag">{candidate.name || candidate.email}<button type="button" onClick={() => setAssignmentForm((current) => ({ ...current, userIds: current.userIds.filter((value) => value !== candidate.id) }))} disabled={assignmentForm.allStaff}><X className="h-3 w-3" /></button></span>) : <span className="legacy-selection-empty">No users selected.</span>}</div></div><button type="button" className="legacy-secondary-btn" onClick={openUserPicker} disabled={assignmentForm.allStaff}><Plus className="h-4 w-4" />Add Users</button></div><div className="legacy-picker-row"><div><label className="legacy-picker-label">Departments</label><div className="legacy-chip-list legacy-chip-list--compact">{selectedDepartments.length ? selectedDepartments.map((candidate) => <span key={candidate.id} className="legacy-selection-tag">{candidate.name}<button type="button" onClick={() => setAssignmentForm((current) => ({ ...current, departmentIds: current.departmentIds.filter((value) => value !== candidate.id) }))} disabled={assignmentForm.allStaff}><X className="h-3 w-3" /></button></span>) : <span className="legacy-selection-empty">No departments selected.</span>}</div></div><button type="button" className="legacy-secondary-btn" onClick={openDepartmentPicker} disabled={assignmentForm.allStaff}><Plus className="h-4 w-4" />Add Departments</button></div>{validationErrors.targets ? <p className="legacy-field-error">{validationErrors.targets}</p> : null}</div></div></div>
+                <div className="legacy-form-group legacy-form-group--full"><div className="legacy-form-section"><div className="legacy-form-section__header"><h3>Assignment</h3><p>Choose who should receive this training.</p></div><div className="legacy-form-section__body"><label className={`legacy-checkbox-row ${assignmentForm.allStaff ? "is-active" : ""}`}><input type="checkbox" checked={assignmentForm.allStaff} onChange={(event) => setAssignmentForm((current) => ({ ...current, allStaff: event.target.checked, userIds: event.target.checked ? [] : current.userIds, departmentIds: event.target.checked ? [] : current.departmentIds, departmentTypes: event.target.checked ? [] : current.departmentTypes }))} /><span>All Staff</span></label><div className="legacy-picker-row"><div><label className="legacy-picker-label">Users</label><div className="legacy-chip-list legacy-chip-list--compact">{selectedUsers.length ? selectedUsers.map((candidate) => <span key={candidate.id} className="legacy-selection-tag">{candidate.name || candidate.email}<button type="button" onClick={() => setAssignmentForm((current) => ({ ...current, userIds: current.userIds.filter((value) => value !== candidate.id) }))} disabled={assignmentForm.allStaff}><X className="h-3 w-3" /></button></span>) : <span className="legacy-selection-empty">No users selected.</span>}</div></div><button type="button" className="legacy-secondary-btn" onClick={openUserPicker} disabled={assignmentForm.allStaff}><Plus className="h-4 w-4" />Add Users</button></div><div className="legacy-picker-row"><div><label className="legacy-picker-label">Departments</label><div className="legacy-chip-list legacy-chip-list--compact">{selectedDepartments.length ? selectedDepartments.map((candidate) => <span key={candidate.id} className="legacy-selection-tag">{candidate.name}<button type="button" onClick={() => setAssignmentForm((current) => ({ ...current, departmentIds: current.departmentIds.filter((value) => value !== candidate.id) }))} disabled={assignmentForm.allStaff}><X className="h-3 w-3" /></button></span>) : <span className="legacy-selection-empty">No departments selected.</span>}</div></div><button type="button" className="legacy-secondary-btn" onClick={openDepartmentPicker} disabled={assignmentForm.allStaff}><Plus className="h-4 w-4" />Add Departments</button></div><div className="legacy-form-group legacy-form-group--full"><label>Assign to Department Type</label><div className="legacy-chip-list" style={{ alignItems: "center" }}>{departmentTypeOptions.map((type) => { const checked = assignmentForm.departmentTypes.includes(type); return <label key={type} className={`legacy-filter-btn ${checked ? "is-active" : ""}`} style={{ display: "inline-flex", alignItems: "center", gap: 8, cursor: assignmentForm.allStaff ? "not-allowed" : "pointer", whiteSpace: "nowrap", minWidth: 156, opacity: assignmentForm.allStaff ? 0.6 : 1 }}><input type="checkbox" checked={checked} disabled={assignmentForm.allStaff} onChange={() => setAssignmentForm((current) => ({ ...current, departmentTypes: checked ? current.departmentTypes.filter((value) => value !== type) : [...current.departmentTypes, type] }))} />{type}</label>; })}</div></div>{validationErrors.targets ? <p className="legacy-field-error">{validationErrors.targets}</p> : null}</div></div></div>
               </div>
             </div>
             <div className="legacy-modal-footer"><button type="button" className="legacy-secondary-btn" onClick={resetAssignModal}>Cancel</button><button type="button" className="legacy-primary-btn" onClick={() => void submitAssignment()}><Save className="h-4 w-4" />{editingAssignmentId ? "Update" : "Assign"}</button></div>

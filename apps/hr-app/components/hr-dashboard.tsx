@@ -7,8 +7,10 @@ import {
   BookOpen,
   CheckCircle,
   ClipboardList,
+  ExternalLink,
   FileSignature,
   Megaphone,
+  Paperclip,
   PlayCircle,
   Shield,
   SquareCheckBig
@@ -88,6 +90,30 @@ function daysUntil(value: string) {
   if (Number.isNaN(parsed.getTime())) return null;
   const ms = parsed.getTime() - Date.now();
   return Math.ceil(ms / (1000 * 60 * 60 * 24));
+}
+
+async function openUrlInNewTab(rawUrl: string) {
+  const url = String(rawUrl || "").trim();
+  if (!url || typeof window === "undefined") return;
+
+  if (!url.startsWith("data:")) {
+    window.open(url, "_blank", "noopener,noreferrer");
+    return;
+  }
+
+  try {
+    // Chrome can block direct top-level navigation to data URLs.
+    const response = await fetch(url);
+    const blob = await response.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    const opened = window.open(objectUrl, "_blank", "noopener,noreferrer");
+    if (!opened) {
+      window.location.assign(objectUrl);
+    }
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+  } catch {
+    window.open(url, "_blank", "noopener,noreferrer");
+  }
 }
 
 function resolveAccessContext(user: SessionUser | null, sharedUsers: Array<{ id: string; fullName: string }>, hrRoles: HrRecord[]): HrAccessContext {
@@ -269,6 +295,23 @@ function isExpiredAnnouncement(item: HrRecord) {
   return endDate < today;
 }
 
+function isPublishedAnnouncement(item: HrRecord) {
+  return String(item.status ?? "").trim().toLowerCase() === "published";
+}
+
+function announcementMatchesDepartment(item: HrRecord, departmentName: string | null) {
+  const audience = String(item.audience ?? "").trim();
+  if (!audience) return true;
+
+  const tokens = audience.split(",").map((value) => value.trim().toLowerCase()).filter(Boolean);
+  if (!tokens.length) return true;
+  if (tokens.includes("all staff")) return true;
+
+  const departmentToken = String(departmentName ?? "").trim().toLowerCase();
+  if (!departmentToken) return false;
+  return tokens.includes(departmentToken);
+}
+
 export function HrDashboard() {
   const [user, setUser] = useState<SessionUser | null>(null);
   const [sharedUsers, setSharedUsers] = useState<Array<{ id: string; fullName: string; department: string | null }>>([]);
@@ -366,6 +409,10 @@ export function HrDashboard() {
     }
     return sharedUsers.filter((item) => access.visibleNames.includes(item.fullName));
   }, [access.role, access.visibleNames, sharedUsers]);
+  const currentUserDepartment = useMemo(() => {
+    if (!user) return null;
+    return sharedUsers.find((item) => item.id === user.id)?.department || null;
+  }, [sharedUsers, user]);
   const tasksWithAssignments = useMemo(() => {
     const namesByUserId = new Map(sharedUsers.map((item) => [item.id, item.fullName]));
     const managerNameByUserId = new Map(
@@ -416,7 +463,7 @@ export function HrDashboard() {
     const visibleNameSet = new Set(access.visibleNames);
     const currentName = String(user?.fullName || "").trim();
 
-    return filterByAssignees(trainingAssignments, "assignee_name", access.visibleNames).filter((assignment) => {
+    return trainingAssignments.filter((assignment) => {
       if (String(assignment.status ?? "").trim().toLowerCase() === "archived") return false;
 
       const assignmentId = String(assignment.id ?? "");
@@ -446,7 +493,7 @@ export function HrDashboard() {
     const currentName = String(user?.fullName || "").trim();
     const currentUserId = String(user?.id || "").trim();
 
-    return filterByAssignees(surveyAssignments, "assignee_name", access.visibleNames).filter((assignment) => {
+    return surveyAssignments.filter((assignment) => {
       if (String(assignment.status ?? "").trim().toLowerCase() === "archived") return false;
 
       const assignmentId = String(assignment.id ?? "");
@@ -473,9 +520,23 @@ export function HrDashboard() {
   }, [access.role, access.visibleNames, sharedUsers, surveyAssignments, surveyCompletions, user?.fullName, user?.id]);
   const activeDocumentsRequiringSignature = useMemo(() => documents.filter((document) => !document.is_completed && document.requires_signature), [documents]);
   const announcementFeed = useMemo(() => announcements
-    .filter((item) => !isExpiredAnnouncement(item))
+    .filter((item) => {
+      if (access.role === "admin") {
+        return true;
+      }
+
+      if (!isPublishedAnnouncement(item)) {
+        return false;
+      }
+
+      if (isExpiredAnnouncement(item)) {
+        return false;
+      }
+
+      return announcementMatchesDepartment(item, currentUserDepartment);
+    })
     .sort((left, right) => String(right.publish_date || "").localeCompare(String(left.publish_date || "")))
-    .slice(0, 5), [announcements]);
+    .slice(0, 5), [access.role, announcements, currentUserDepartment]);
 
   const stats: StatCard[] = [
     { title: "Documents", value: String(activeDocumentsRequiringSignature.length), href: "/documents", color: "green", icon: FileSignature },
@@ -595,6 +656,10 @@ export function HrDashboard() {
             const priority = String(item.priority || "Normal");
             const important = priority.toLowerCase().includes("important");
             const audience = String(item.audience || "All Staff");
+            const eventImageUrl = String(item.event_image_url || "").trim();
+            const attachmentUrl = String(item.attachment_url || "").trim();
+            const attachmentName = String(item.attachment_name || "").trim() || "Attachment";
+            const eventLinkUrl = String(item.event_link_url || "").trim();
             return (
               <div key={String(item.id)} className="hr-activity-item">
                 <div className="hr-activity-item__icon hr-activity-item__icon--announcement"><Megaphone className="h-4 w-4" /></div>
@@ -602,6 +667,55 @@ export function HrDashboard() {
                   <p><strong>{String(item.title || "Announcement")}</strong>{important ? <span className="hr-status-chip is-overdue" style={{ marginLeft: "8px" }}>{priority}</span> : null}</p>
                   <div className="hr-activity-item__meta">Audience: {audience} · Publish date: {formatDueDate(String(item.publish_date || ""))}</div>
                   <div className="hr-activity-item__pending">{String(item.body || "No description provided.")}</div>
+                  {eventImageUrl ? (
+                    <a
+                      href={eventImageUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{ display: "inline-block", marginTop: 10 }}
+                      onClick={(event) => {
+                        if (!eventImageUrl.startsWith("data:")) return;
+                        event.preventDefault();
+                        void openUrlInNewTab(eventImageUrl);
+                      }}
+                    >
+                      <img
+                        src={eventImageUrl}
+                        alt={`${String(item.title || "Announcement")} event image`}
+                        style={{ width: "auto", height: "auto", maxWidth: "min(100%, 1200px)", maxHeight: "70vh", objectFit: "contain", borderRadius: 12, border: "1px solid #e5e7eb" }}
+                      />
+                    </a>
+                  ) : null}
+                  {attachmentUrl || eventLinkUrl ? (
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
+                      {attachmentUrl ? (
+                        <button
+                          type="button"
+                          className="hr-status-chip"
+                          style={{ cursor: "pointer", border: "1px solid #d1d5db", background: "#fff", color: "#0f172a" }}
+                          onClick={() => {
+                            void openUrlInNewTab(attachmentUrl);
+                          }}
+                        >
+                          <Paperclip className="h-3.5 w-3.5" style={{ marginRight: 6 }} />
+                          {attachmentName}
+                        </button>
+                      ) : null}
+                      {eventLinkUrl ? (
+                        <button
+                          type="button"
+                          className="hr-status-chip"
+                          style={{ cursor: "pointer", border: "1px solid #d1d5db", background: "#fff", color: "#0f172a" }}
+                          onClick={() => {
+                            void openUrlInNewTab(eventLinkUrl);
+                          }}
+                        >
+                          <ExternalLink className="h-3.5 w-3.5" style={{ marginRight: 6 }} />
+                          Event link
+                        </button>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </div>
               </div>
             );

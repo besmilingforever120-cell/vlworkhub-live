@@ -9,6 +9,7 @@ type DepartmentForm = {
   id?: string;
   name: string;
   address: string;
+  departmentType: "Community housing" | "Program";
   managerId: string;
 };
 
@@ -16,6 +17,7 @@ function emptyForm(): DepartmentForm {
   return {
     name: "",
     address: "",
+    departmentType: "Program",
     managerId: ""
   };
 }
@@ -64,6 +66,7 @@ export function DepartmentAdminPanel() {
       id: department.id,
       name: department.name,
       address: department.address || "",
+      departmentType: department.department_type || "Program",
       managerId: department.manager_id || ""
     });
     setShowModal(true);
@@ -82,6 +85,7 @@ export function DepartmentAdminPanel() {
         body: JSON.stringify({
           name: form.name,
           address: form.address,
+          departmentType: form.departmentType,
           managerId: form.managerId || null
         })
       });
@@ -141,6 +145,7 @@ export function DepartmentAdminPanel() {
             <thead className="text-xs uppercase tracking-[0.16em] text-slate-400">
               <tr>
                 <th className="px-3 py-3">Department Name</th>
+                <th className="px-3 py-3">Department Type</th>
                 <th className="px-3 py-3">Address</th>
                 <th className="px-3 py-3">Manager</th>
                 <th className="px-3 py-3">Created</th>
@@ -151,6 +156,7 @@ export function DepartmentAdminPanel() {
               {departments.map((department) => (
                 <tr key={department.id} className="border-t border-white/10">
                   <td className="px-3 py-4 font-medium text-white">{department.name}</td>
+                  <td className="px-3 py-4 text-slate-300">{department.department_type || "Program"}</td>
                   <td className="px-3 py-4 text-slate-300">{department.address || "-"}</td>
                   <td className="px-3 py-4 text-slate-300">{department.manager_name ? `${department.manager_name}${department.manager_email ? ` (${department.manager_email})` : ""}` : "Unassigned"}</td>
                   <td className="px-3 py-4 text-slate-400">{department.created_at ? new Date(department.created_at).toLocaleDateString() : "-"}</td>
@@ -180,6 +186,7 @@ export function DepartmentAdminPanel() {
 
             <div className="mt-8 grid gap-4 md:grid-cols-2">
               <label className="text-sm text-slate-300 md:col-span-2">Department Name<input value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white" /></label>
+              <label className="text-sm text-slate-300 md:col-span-2">Department Type<select value={form.departmentType} onChange={(event) => setForm((current) => ({ ...current, departmentType: event.target.value as "Community housing" | "Program" }))} className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white"><option value="Community housing">Community housing</option><option value="Program">Program</option></select></label>
               <label className="text-sm text-slate-300 md:col-span-2">Address<input value={form.address} onChange={(event) => setForm((current) => ({ ...current, address: event.target.value }))} className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white" /></label>
               <label className="text-sm text-slate-300 md:col-span-2">Manager<select value={form.managerId} onChange={(event) => setForm((current) => ({ ...current, managerId: event.target.value }))} className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white"><option value="">Unassigned</option>{users.map((user) => <option key={user.id} value={user.id}>{`${user.first_name} ${user.last_name}`.trim()} ({user.email})</option>)}</select></label>
             </div>

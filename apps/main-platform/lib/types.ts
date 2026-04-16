@@ -19,6 +19,7 @@ export type DepartmentRecord = {
   organization_id: string;
   name: string;
   address: string | null;
+  department_type: "Community housing" | "Program";
   manager_id: string | null;
   manager_name: string | null;
   manager_email: string | null;

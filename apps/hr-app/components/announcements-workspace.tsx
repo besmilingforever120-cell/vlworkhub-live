@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Calendar, CheckCircle, Edit, Info, Megaphone, Plus, Save, Search, Shield, Trash2, X } from "lucide-react";
+import { AlertTriangle, Calendar, CheckCircle, Edit, ExternalLink, Info, Megaphone, Paperclip, Plus, Save, Search, Shield, Trash2, X } from "lucide-react";
 import type { SessionUser } from "@vlworkhub/types";
 import {
   createResource,
@@ -9,6 +9,7 @@ import {
   getApiErrorMessage,
   getCurrentUser,
   getDepartments,
+  getPlatformUsers,
   getResource,
   updateResource,
   type DepartmentRecord,
@@ -28,6 +29,10 @@ type FormState = {
   end_date: string;
   priority: string;
   status: string;
+  event_link_url: string;
+  event_image_url: string;
+  attachment_name: string;
+  attachment_url: string;
 };
 
 function emptyForm(): FormState {
@@ -39,8 +44,45 @@ function emptyForm(): FormState {
     start_date: "",
     end_date: "",
     priority: "Normal",
-    status: "Draft"
+    status: "Draft",
+    event_link_url: "",
+    event_image_url: "",
+    attachment_name: "",
+    attachment_url: ""
   };
+}
+
+function readFileAsDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("Failed to read file"));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function openUrlInNewTab(rawUrl: string) {
+  const url = String(rawUrl || "").trim();
+  if (!url || typeof window === "undefined") return;
+
+  if (!url.startsWith("data:")) {
+    window.open(url, "_blank", "noopener,noreferrer");
+    return;
+  }
+
+  try {
+    // Chrome can block direct top-level navigation to data URLs.
+    const response = await fetch(url);
+    const blob = await response.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    const opened = window.open(objectUrl, "_blank", "noopener,noreferrer");
+    if (!opened) {
+      window.location.assign(objectUrl);
+    }
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+  } catch {
+    window.open(url, "_blank", "noopener,noreferrer");
+  }
 }
 
 function isExpired(item: HrRecord) {
@@ -54,10 +96,28 @@ function isExpired(item: HrRecord) {
   return endDate < today;
 }
 
+function isPublished(item: HrRecord) {
+  return String(item.status ?? "").trim().toLowerCase() === "published";
+}
+
+function audienceMatchesDepartment(item: HrRecord, departmentName: string | null) {
+  const audience = String(item.audience ?? "").trim();
+  if (!audience) return true;
+
+  const tokens = audience.split(",").map((value) => value.trim().toLowerCase()).filter(Boolean);
+  if (!tokens.length) return true;
+  if (tokens.includes("all staff")) return true;
+
+  const departmentToken = String(departmentName ?? "").trim().toLowerCase();
+  if (!departmentToken) return false;
+  return tokens.includes(departmentToken);
+}
+
 export function AnnouncementsWorkspace() {
   const { role: hrRole } = useHrRole();
   const [user, setUser] = useState<SessionUser | null>(null);
   const [items, setItems] = useState<HrRecord[]>([]);
+  const [currentDepartment, setCurrentDepartment] = useState<string | null>(null);
   const [departments, setDepartments] = useState<DepartmentRecord[]>([]);
   const [query, setQuery] = useState("");
   const [priorityFilter, setPriorityFilter] = useState<(typeof priorities)[number]>("All");
@@ -69,10 +129,12 @@ export function AnnouncementsWorkspace() {
   async function load() {
     try {
       setError("");
-      const [session, announcementData, departmentData] = await Promise.all([getCurrentUser(), getResource("announcements"), getDepartments()]);
+      const [session, announcementData, departmentData, platformUsers] = await Promise.all([getCurrentUser(), getResource("announcements"), getDepartments(), getPlatformUsers()]);
       setUser(session);
       setItems(announcementData);
       setDepartments(departmentData.items || []);
+      const department = (platformUsers.items || []).find((item) => String(item.id) === session.id)?.department_name || null;
+      setCurrentDepartment(department);
     } catch (loadError) {
       setError(getApiErrorMessage(loadError));
     }
@@ -85,16 +147,37 @@ export function AnnouncementsWorkspace() {
   const canManage = canCreateForHrRole(hrRole);
   const canEdit = canEditForHrRole(hrRole);
 
-  const filtered = useMemo(() => items.filter((item) => {
+  const isAdminViewer = useMemo(() => {
+    const platformRole = String(user?.platformRole || user?.role || "USER").toUpperCase();
+    return platformRole === "SUPER_ADMIN" || platformRole === "ADMIN";
+  }, [user]);
+
+  const visibleItems = useMemo(() => items.filter((item) => {
+    if (isAdminViewer) {
+      return true;
+    }
+
+    if (!isPublished(item)) {
+      return false;
+    }
+
+    if (isExpired(item)) {
+      return false;
+    }
+
+    return audienceMatchesDepartment(item, currentDepartment);
+  }), [currentDepartment, isAdminViewer, items]);
+
+  const filtered = useMemo(() => visibleItems.filter((item) => {
     const matchesPriority = priorityFilter === "All" || String(item.priority ?? "Normal") === priorityFilter;
     const text = [item.title, item.body, item.audience].map((value) => String(value ?? "").toLowerCase());
     return matchesPriority && text.some((value) => value.includes(query.toLowerCase()));
-  }), [items, priorityFilter, query]);
+  }), [priorityFilter, query, visibleItems]);
 
   const stats = {
-    total: items.length,
-    important: items.filter((item) => String(item.priority ?? "").includes("Important")).length,
-    published: items.filter((item) => String(item.status ?? "").toLowerCase() === "published").length
+    total: visibleItems.length,
+    important: visibleItems.filter((item) => String(item.priority ?? "").includes("Important")).length,
+    published: visibleItems.filter((item) => String(item.status ?? "").toLowerCase() === "published").length
   };
 
   function openCreate() {
@@ -113,7 +196,11 @@ export function AnnouncementsWorkspace() {
       start_date: String(item.start_date ?? ""),
       end_date: String(item.end_date ?? ""),
       priority: String(item.priority ?? "Normal"),
-      status: String(item.status ?? "Draft")
+      status: String(item.status ?? "Draft"),
+      event_link_url: String(item.event_link_url ?? ""),
+      event_image_url: String(item.event_image_url ?? ""),
+      attachment_name: String(item.attachment_name ?? ""),
+      attachment_url: String(item.attachment_url ?? "")
     });
     setShowForm(true);
   }
@@ -128,7 +215,11 @@ export function AnnouncementsWorkspace() {
         start_date: form.start_date || null,
         end_date: form.end_date || null,
         priority: form.priority,
-        status: form.status
+        status: form.status,
+        event_link_url: form.event_link_url || null,
+        event_image_url: form.event_image_url || null,
+        attachment_name: form.attachment_name || null,
+        attachment_url: form.attachment_url || null
       };
 
       if (editingId) {
@@ -175,7 +266,7 @@ export function AnnouncementsWorkspace() {
 
       <section className="legacy-toolbar">
         <div className="legacy-search"><Search className="h-4 w-4" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search announcements..." /></div>
-        <div className="legacy-filter-group"><Info className="h-4 w-4" />{priorities.map((priority) => <button key={priority} type="button" className={`legacy-filter-btn ${priorityFilter === priority ? "is-active" : ""}`} onClick={() => setPriorityFilter(priority)}>{priority}<span className="legacy-count">{priority === "All" ? items.length : items.filter((item) => String(item.priority ?? "Normal") === priority).length}</span></button>)}</div>
+        <div className="legacy-filter-group"><Info className="h-4 w-4" />{priorities.map((priority) => <button key={priority} type="button" className={`legacy-filter-btn ${priorityFilter === priority ? "is-active" : ""}`} onClick={() => setPriorityFilter(priority)}>{priority}<span className="legacy-count">{priority === "All" ? visibleItems.length : visibleItems.filter((item) => String(item.priority ?? "Normal") === priority).length}</span></button>)}</div>
       </section>
 
       <div className="legacy-grid-cards" style={{ gridTemplateColumns: "1fr" }}>
@@ -196,11 +287,47 @@ export function AnnouncementsWorkspace() {
                 </div>
               </div>
               <div className="legacy-card-copy" style={{ marginBottom: 16 }}>{String(item.body ?? "No announcement content provided.").slice(0, 240)}{String(item.body ?? "").length > 240 ? "..." : ""}</div>
+              {String(item.event_image_url ?? "").trim() ? (
+                <div style={{ marginBottom: 16 }}>
+                  <img
+                    src={String(item.event_image_url)}
+                    alt={`${String(item.title ?? "Announcement")} event image`}
+                    style={{ width: "100%", maxHeight: 280, objectFit: "cover", borderRadius: 14, border: "1px solid #e5e7eb" }}
+                  />
+                </div>
+              ) : null}
               <div className="legacy-meta-list">
                 <div className="legacy-meta-item"><strong>Audience:</strong> {String(item.audience ?? "All Staff")}</div>
                 <div className="legacy-meta-item"><Calendar className="h-4 w-4" />Publish: {formatDate(item.publish_date)} · Start: {formatDate(item.start_date)} · End: {formatDate(item.end_date)}</div>
                 <div className="legacy-meta-item"><strong>Author:</strong> {user?.fullName || "HR Team"}</div>
               </div>
+              {String(item.attachment_url ?? "").trim() || String(item.event_link_url ?? "").trim() ? (
+                <div className="legacy-actions-row" style={{ justifyContent: "flex-start", marginTop: 12 }}>
+                  {String(item.attachment_url ?? "").trim() ? (
+                    <button
+                      type="button"
+                      className="legacy-secondary-btn"
+                      onClick={() => {
+                        void openUrlInNewTab(String(item.attachment_url));
+                      }}
+                    >
+                      <Paperclip className="h-4 w-4" />
+                      {String(item.attachment_name ?? "").trim() || "Attachment"}
+                    </button>
+                  ) : null}
+                  {String(item.event_link_url ?? "").trim() ? (
+                    <button
+                      type="button"
+                      className="legacy-secondary-btn"
+                      onClick={() => {
+                        void openUrlInNewTab(String(item.event_link_url));
+                      }}
+                    >
+                      <ExternalLink className="h-4 w-4" />Event Link
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
               {canManage ? <div className="legacy-actions-row" style={{ justifyContent: "flex-end", borderTop: "1px solid #e5e7eb", paddingTop: 14 }}><button type="button" className="legacy-icon-btn" onClick={() => openEdit(item)}><Edit className="h-4 w-4" /></button><button type="button" className="legacy-icon-btn" onClick={() => void remove(Number(item.id))}><Trash2 className="h-4 w-4" /></button></div> : null}
             </article>
           );
@@ -220,6 +347,48 @@ export function AnnouncementsWorkspace() {
                 <div className="legacy-form-group"><label>Start Date</label><input type="date" value={form.start_date} onChange={(event) => setForm((current) => ({ ...current, start_date: event.target.value }))} /></div>
                 <div className="legacy-form-group"><label>End Date</label><input type="date" value={form.end_date} onChange={(event) => setForm((current) => ({ ...current, end_date: event.target.value }))} /></div>
                 <div className="legacy-form-group legacy-form-group--full"><label>Audience</label><select value={form.audience} onChange={(event) => setForm((current) => ({ ...current, audience: event.target.value }))}><option value="All Staff">All Staff</option>{departments.map((department) => <option key={department.id} value={department.name}>{department.name}</option>)}</select></div>
+                <div className="legacy-form-group legacy-form-group--full"><label>Event Link</label><input value={form.event_link_url} onChange={(event) => setForm((current) => ({ ...current, event_link_url: event.target.value }))} placeholder="https://..." /></div>
+                <div className="legacy-form-group legacy-form-group--full">
+                  <label>Event Image</label>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={async (event) => {
+                      const file = event.target.files?.[0] || null;
+                      if (!file) {
+                        setForm((current) => ({ ...current, event_image_url: "" }));
+                        return;
+                      }
+                      try {
+                        const dataUrl = await readFileAsDataUrl(file);
+                        setForm((current) => ({ ...current, event_image_url: dataUrl }));
+                      } catch (uploadError) {
+                        setError(getApiErrorMessage(uploadError));
+                      }
+                    }}
+                  />
+                  {form.event_image_url ? <img src={form.event_image_url} alt="Event preview" style={{ marginTop: 10, width: "100%", maxHeight: 220, objectFit: "cover", borderRadius: 12, border: "1px solid #e5e7eb" }} /> : null}
+                </div>
+                <div className="legacy-form-group legacy-form-group--full">
+                  <label>Attachment File</label>
+                  <input
+                    type="file"
+                    onChange={async (event) => {
+                      const file = event.target.files?.[0] || null;
+                      if (!file) {
+                        setForm((current) => ({ ...current, attachment_name: "", attachment_url: "" }));
+                        return;
+                      }
+                      try {
+                        const dataUrl = await readFileAsDataUrl(file);
+                        setForm((current) => ({ ...current, attachment_name: file.name, attachment_url: dataUrl }));
+                      } catch (uploadError) {
+                        setError(getApiErrorMessage(uploadError));
+                      }
+                    }}
+                  />
+                  {form.attachment_name ? <div className="legacy-meta-item" style={{ marginTop: 10 }}><Paperclip className="h-4 w-4" />{form.attachment_name}</div> : null}
+                </div>
                 <div className="legacy-form-group legacy-form-group--full"><label>Content</label><textarea value={form.body} onChange={(event) => setForm((current) => ({ ...current, body: event.target.value }))} /></div>
               </div>
             </div>

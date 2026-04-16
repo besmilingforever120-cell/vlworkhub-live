@@ -10,7 +10,7 @@ export const resourceMap = {
   employees: { table: "employees", fields: ["full_name", "department", "job_title", "email"] },
   announcements: {
     table: "announcements",
-    fields: ["title", "body", "audience", "publish_date", "start_date", "end_date", "priority", "status"]
+    fields: ["title", "body", "audience", "publish_date", "start_date", "end_date", "priority", "status", "event_image_url", "attachment_name", "attachment_url", "event_link_url"]
   },
   tasks: {
     table: "tasks",

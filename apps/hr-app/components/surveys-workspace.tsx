@@ -25,7 +25,9 @@ import { buildAssignmentTargetSummary, buildAssignmentTokens, parseAssigneeTarge
 
 type SurveyTab = "surveys" | "available";
 type SurveyLibraryForm = { title: string; url: string };
-type SurveyAssignmentForm = { surveyId: string; dueDate: string; allStaff: boolean; userIds: string[]; departmentIds: string[] };
+const departmentTypeOptions = ["Community housing", "Program"] as const;
+type DepartmentTypeOption = (typeof departmentTypeOptions)[number];
+type SurveyAssignmentForm = { surveyId: string; dueDate: string; allStaff: boolean; userIds: string[]; departmentIds: string[]; departmentTypes: DepartmentTypeOption[] };
 type SurveyValidationErrors = Partial<Record<"title" | "url" | "surveyId" | "targets", string>>;
 
 type SurveyLibraryRow = HrRecord & {
@@ -54,7 +56,26 @@ function emptySurveyForm(): SurveyLibraryForm {
 }
 
 function emptyAssignmentForm(): SurveyAssignmentForm {
-  return { surveyId: "", dueDate: "", allStaff: false, userIds: [], departmentIds: [] };
+  return { surveyId: "", dueDate: "", allStaff: false, userIds: [], departmentIds: [], departmentTypes: [] };
+}
+
+function getDepartmentIdsForTypes(departments: DepartmentRecord[], selectedTypes: DepartmentTypeOption[]) {
+  if (!selectedTypes.length) return [] as string[];
+  const selected = new Set<DepartmentTypeOption>(selectedTypes);
+  return departments
+    .filter((department) => selected.has((department.department_type || "Program") as DepartmentTypeOption))
+    .map((department) => department.id)
+    .filter(Boolean);
+}
+
+function getSelectedTypesFromDepartmentIds(departments: DepartmentRecord[], departmentIds: string[]) {
+  const selectedIds = new Set(departmentIds);
+  return departmentTypeOptions.filter((type) => {
+    const idsForType = departments
+      .filter((department) => (department.department_type || "Program") === type)
+      .map((department) => department.id);
+    return idsForType.length > 0 && idsForType.every((id) => selectedIds.has(id));
+  });
 }
 
 function normalizeName(value: string | number | null | undefined) {
@@ -379,28 +400,64 @@ export function SurveysWorkspace() {
   async function submitAssignment() {
     const nextErrors: SurveyValidationErrors = {};
     if (!assignmentForm.surveyId) nextErrors.surveyId = "Select a survey item.";
-    if (!assignmentForm.allStaff && assignmentForm.userIds.length === 0 && assignmentForm.departmentIds.length === 0) {
-      nextErrors.targets = "Choose All Staff, at least one user, or at least one department.";
+    if (!assignmentForm.allStaff && assignmentForm.userIds.length === 0 && assignmentForm.departmentIds.length === 0 && assignmentForm.departmentTypes.length === 0) {
+      nextErrors.targets = "Choose All Staff, at least one user, one department, or one department type.";
     }
     setValidationErrors((current) => ({ ...current, ...nextErrors }));
     if (Object.keys(nextErrors).length) return;
 
     const selectedSurvey = library.find((item) => Number(item.id) === Number(assignmentForm.surveyId));
+    const expandedDepartmentIds = Array.from(new Set([...assignmentForm.departmentIds, ...getDepartmentIdsForTypes(departments, assignmentForm.departmentTypes)]));
 
     try {
       if (editingAssignmentId) {
         const existing = assignments.find((item) => Number(item.id) === editingAssignmentId);
-        const userId = assignmentForm.allStaff ? null : (assignmentForm.userIds[0] || null);
-        const departmentId = assignmentForm.allStaff ? null : (assignmentForm.departmentIds[0] || null);
-        await updateResource("survey_assignments", editingAssignmentId, {
-          title: String(selectedSurvey?.title ?? "Survey assignment"),
-          survey_id: assignmentForm.surveyId,
-          due_date: assignmentForm.dueDate || "",
-          status: String(existing?.status ?? "Assigned"),
-          user_id: userId,
-          department_id: departmentId,
-          all_staff: assignmentForm.allStaff ? "true" : "false"
-        });
+        const status = String(existing?.status ?? "Assigned");
+        const targetCount = assignmentForm.allStaff ? 1 : assignmentForm.userIds.length + expandedDepartmentIds.length;
+
+        if (targetCount <= 1) {
+          const userId = assignmentForm.allStaff ? null : (assignmentForm.userIds[0] || null);
+          const departmentId = assignmentForm.allStaff ? null : (expandedDepartmentIds[0] || null);
+          await updateResource("survey_assignments", editingAssignmentId, {
+            title: String(selectedSurvey?.title ?? "Survey assignment"),
+            survey_id: assignmentForm.surveyId,
+            due_date: assignmentForm.dueDate || "",
+            status,
+            user_id: userId,
+            department_id: departmentId,
+            all_staff: assignmentForm.allStaff ? "true" : "false"
+          });
+        } else {
+          await deleteResource("survey_assignments", editingAssignmentId);
+
+          const basePayload = {
+            title: String(selectedSurvey?.title ?? "Survey assignment"),
+            survey_id: assignmentForm.surveyId,
+            due_date: assignmentForm.dueDate || "",
+            status
+          };
+
+          const requests: Array<Promise<{ id: number }>> = [];
+          assignmentForm.userIds.forEach((userId) => {
+            requests.push(createResource("survey_assignments", {
+              ...basePayload,
+              user_id: userId,
+              department_id: null,
+              all_staff: "false"
+            }));
+          });
+
+          expandedDepartmentIds.forEach((departmentId) => {
+            requests.push(createResource("survey_assignments", {
+              ...basePayload,
+              user_id: null,
+              department_id: departmentId,
+              all_staff: "false"
+            }));
+          });
+
+          await Promise.all(requests);
+        }
       } else {
         const basePayload = {
           title: String(selectedSurvey?.title ?? "Survey assignment"),
@@ -427,7 +484,7 @@ export function SurveysWorkspace() {
             }));
           });
 
-          assignmentForm.departmentIds.forEach((departmentId) => {
+          expandedDepartmentIds.forEach((departmentId) => {
             requests.push(createResource("survey_assignments", {
               ...basePayload,
               user_id: null,
@@ -466,7 +523,8 @@ export function SurveysWorkspace() {
       dueDate: String(assignment.due_date ?? "").slice(0, 10),
       allStaff,
       userIds: allStaff ? [] : (assignmentUserId ? [assignmentUserId] : parsed.userIds),
-      departmentIds: allStaff ? [] : (assignmentDepartmentId ? [assignmentDepartmentId] : parsed.departmentIds)
+      departmentIds: allStaff ? [] : (assignmentDepartmentId ? [assignmentDepartmentId] : parsed.departmentIds),
+      departmentTypes: allStaff ? [] : getSelectedTypesFromDepartmentIds(departments, assignmentDepartmentId ? [assignmentDepartmentId] : parsed.departmentIds)
     });
     setEditingAssignmentId(Number(assignment.id));
     setValidationErrors({});
@@ -740,7 +798,7 @@ export function SurveysWorkspace() {
               <div className="legacy-form-grid">
                 <div className="legacy-form-group legacy-form-group--full"><label>Select Survey <span className="legacy-required">*</span></label><select value={assignmentForm.surveyId} onChange={(event) => setAssignmentForm((current) => ({ ...current, surveyId: event.target.value }))}><option value="">Select survey</option>{library.map((item) => <option key={String(item.id)} value={String(item.id)}>{String(item.title ?? "Survey")}</option>)}</select>{validationErrors.surveyId ? <p className="legacy-field-error">{validationErrors.surveyId}</p> : null}</div>
                 <div className="legacy-form-group"><label>Due Date</label><input type="date" value={assignmentForm.dueDate} onChange={(event) => setAssignmentForm((current) => ({ ...current, dueDate: event.target.value }))} /></div>
-                <div className="legacy-form-group legacy-form-group--full"><div className="legacy-form-section"><div className="legacy-form-section__header"><h3>Assignment</h3><p>Choose who should receive this survey.</p></div><div className="legacy-form-section__body"><label className={`legacy-checkbox-row ${assignmentForm.allStaff ? "is-active" : ""}`}><input type="checkbox" checked={assignmentForm.allStaff} onChange={(event) => setAssignmentForm((current) => ({ ...current, allStaff: event.target.checked, userIds: event.target.checked ? [] : current.userIds, departmentIds: event.target.checked ? [] : current.departmentIds }))} /><span>All Staff</span></label><div className="legacy-picker-row"><div><label className="legacy-picker-label">Users</label><div className="legacy-chip-list legacy-chip-list--compact">{selectedUsers.length ? selectedUsers.map((candidate) => <span key={candidate.id} className="legacy-selection-tag">{candidate.name || candidate.email}<button type="button" onClick={() => setAssignmentForm((current) => ({ ...current, userIds: current.userIds.filter((value) => value !== candidate.id) }))} disabled={assignmentForm.allStaff}><X className="h-3 w-3" /></button></span>) : <span className="legacy-selection-empty">No users selected.</span>}</div></div><button type="button" className="legacy-secondary-btn" onClick={openUserPicker} disabled={assignmentForm.allStaff}><Plus className="h-4 w-4" />Add Users</button></div><div className="legacy-picker-row"><div><label className="legacy-picker-label">Departments</label><div className="legacy-chip-list legacy-chip-list--compact">{selectedDepartments.length ? selectedDepartments.map((candidate) => <span key={candidate.id} className="legacy-selection-tag">{candidate.name}<button type="button" onClick={() => setAssignmentForm((current) => ({ ...current, departmentIds: current.departmentIds.filter((value) => value !== candidate.id) }))} disabled={assignmentForm.allStaff}><X className="h-3 w-3" /></button></span>) : <span className="legacy-selection-empty">No departments selected.</span>}</div></div><button type="button" className="legacy-secondary-btn" onClick={openDepartmentPicker} disabled={assignmentForm.allStaff}><Plus className="h-4 w-4" />Add Departments</button></div>{validationErrors.targets ? <p className="legacy-field-error">{validationErrors.targets}</p> : null}</div></div></div>
+                <div className="legacy-form-group legacy-form-group--full"><div className="legacy-form-section"><div className="legacy-form-section__header"><h3>Assignment</h3><p>Choose who should receive this survey.</p></div><div className="legacy-form-section__body"><label className={`legacy-checkbox-row ${assignmentForm.allStaff ? "is-active" : ""}`}><input type="checkbox" checked={assignmentForm.allStaff} onChange={(event) => setAssignmentForm((current) => ({ ...current, allStaff: event.target.checked, userIds: event.target.checked ? [] : current.userIds, departmentIds: event.target.checked ? [] : current.departmentIds, departmentTypes: event.target.checked ? [] : current.departmentTypes }))} /><span>All Staff</span></label><div className="legacy-picker-row"><div><label className="legacy-picker-label">Users</label><div className="legacy-chip-list legacy-chip-list--compact">{selectedUsers.length ? selectedUsers.map((candidate) => <span key={candidate.id} className="legacy-selection-tag">{candidate.name || candidate.email}<button type="button" onClick={() => setAssignmentForm((current) => ({ ...current, userIds: current.userIds.filter((value) => value !== candidate.id) }))} disabled={assignmentForm.allStaff}><X className="h-3 w-3" /></button></span>) : <span className="legacy-selection-empty">No users selected.</span>}</div></div><button type="button" className="legacy-secondary-btn" onClick={openUserPicker} disabled={assignmentForm.allStaff}><Plus className="h-4 w-4" />Add Users</button></div><div className="legacy-picker-row"><div><label className="legacy-picker-label">Departments</label><div className="legacy-chip-list legacy-chip-list--compact">{selectedDepartments.length ? selectedDepartments.map((candidate) => <span key={candidate.id} className="legacy-selection-tag">{candidate.name}<button type="button" onClick={() => setAssignmentForm((current) => ({ ...current, departmentIds: current.departmentIds.filter((value) => value !== candidate.id) }))} disabled={assignmentForm.allStaff}><X className="h-3 w-3" /></button></span>) : <span className="legacy-selection-empty">No departments selected.</span>}</div></div><button type="button" className="legacy-secondary-btn" onClick={openDepartmentPicker} disabled={assignmentForm.allStaff}><Plus className="h-4 w-4" />Add Departments</button></div><div className="legacy-form-group legacy-form-group--full"><label>Assign to Department Type</label><div className="legacy-chip-list" style={{ alignItems: "center" }}>{departmentTypeOptions.map((type) => { const checked = assignmentForm.departmentTypes.includes(type); return <label key={type} className={`legacy-filter-btn ${checked ? "is-active" : ""}`} style={{ display: "inline-flex", alignItems: "center", gap: 8, cursor: assignmentForm.allStaff ? "not-allowed" : "pointer", whiteSpace: "nowrap", minWidth: 156, opacity: assignmentForm.allStaff ? 0.6 : 1 }}><input type="checkbox" checked={checked} disabled={assignmentForm.allStaff} onChange={() => setAssignmentForm((current) => ({ ...current, departmentTypes: checked ? current.departmentTypes.filter((value) => value !== type) : [...current.departmentTypes, type] }))} />{type}</label>; })}</div></div>{validationErrors.targets ? <p className="legacy-field-error">{validationErrors.targets}</p> : null}</div></div></div>
               </div>
             </div>
             <div className="legacy-modal-footer"><button type="button" className="legacy-secondary-btn" onClick={resetAssignModal}>Cancel</button><button type="button" className="legacy-primary-btn" onClick={() => void submitAssignment()}><Save className="h-4 w-4" />{editingAssignmentId ? "Update" : "Assgin"}</button></div>

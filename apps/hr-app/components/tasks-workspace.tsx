@@ -42,6 +42,8 @@ import { canCreateForHrRole, canEditForHrRole, formatDate, formatHrRoleLabel, ge
 
 const statusOptions = ["All", "Not Started", "In Progress", "Completed", "Blocked"] as const;
 const priorityOptions = ["All", "Low", "Normal", "High", "Critical"] as const;
+const departmentTypeOptions = ["Community housing", "Program"] as const;
+type DepartmentTypeOption = (typeof departmentTypeOptions)[number];
 
 type TaskForm = {
   title: string;
@@ -51,6 +53,7 @@ type TaskForm = {
   description: string;
   userIds: string[];
   departmentNames: string[];
+  departmentTypes: DepartmentTypeOption[];
   allStaff: boolean;
 };
 
@@ -88,6 +91,7 @@ function emptyForm(): TaskForm {
     description: "",
     userIds: [],
     departmentNames: [],
+    departmentTypes: [],
     allStaff: false
   };
 }
@@ -147,10 +151,23 @@ function buildAssignedToSummary(form: TaskForm, users: TaskUser[]) {
       .map((userId) => users.find((user) => user.id === userId)?.fullName || "")
       .filter(Boolean),
     ...form.departmentNames.map((name) => `Department:${name}`),
+    ...form.departmentTypes.map((type) => `Department Type:${type}`),
     ...(form.allStaff ? ["All Staff"] : [])
   ];
 
   return tokens.join(", ");
+}
+
+function getDepartmentNamesForTypes(departments: DepartmentRecord[], selectedTypes: DepartmentTypeOption[]) {
+  if (!selectedTypes.length) {
+    return [] as string[];
+  }
+
+  const selected = new Set<DepartmentTypeOption>(selectedTypes);
+  return departments
+    .filter((department) => selected.has((department.department_type || "Program") as DepartmentTypeOption))
+    .map((department) => department.name)
+    .filter(Boolean);
 }
 
 function getScopedUsers(hrRole: "admin" | "manager" | "employee", users: TaskUser[], visibleNames: string[]) {
@@ -401,6 +418,17 @@ export function TasksWorkspace() {
   function openEdit(task: HrRecord) {
     const taskId = asNumber(task.id);
     const currentAssignments = getTaskAssignmentsFor(taskId, taskAssignments);
+    const assignedDepartmentNames = currentAssignments
+      .filter((assignment) => assignment.assignment_type === "department" && assignment.assigned_department_name)
+      .map((assignment) => String(assignment.assigned_department_name));
+    const assignedDepartmentNameSet = new Set(assignedDepartmentNames);
+    const selectedDepartmentTypes = departmentTypeOptions.filter((type) => {
+      const namesForType = departments
+        .filter((department) => (department.department_type || "Program") === type)
+        .map((department) => department.name);
+      return namesForType.length > 0 && namesForType.every((name) => assignedDepartmentNameSet.has(name));
+    });
+
     setEditingId(taskId);
     setForm({
       title: asString(task.title),
@@ -409,7 +437,8 @@ export function TasksWorkspace() {
       status: asString(task.status) || "Not Started",
       description: asString(task.description),
       userIds: currentAssignments.filter((assignment) => assignment.assignment_type === "user" && assignment.assigned_user_id).map((assignment) => String(assignment.assigned_user_id)),
-      departmentNames: currentAssignments.filter((assignment) => assignment.assignment_type === "department" && assignment.assigned_department_name).map((assignment) => String(assignment.assigned_department_name)),
+      departmentNames: assignedDepartmentNames,
+      departmentTypes: selectedDepartmentTypes,
       allStaff: currentAssignments.some((assignment) => assignment.assignment_type === "all_staff")
     });
     setShowForm(true);
@@ -418,6 +447,9 @@ export function TasksWorkspace() {
   async function replaceAssignments(taskId: number) {
     const currentAssignments = getTaskAssignmentsFor(taskId, taskAssignments);
     await Promise.all(currentAssignments.map((assignment) => deleteResource("task_assignments", assignment.id)));
+
+    const departmentNamesFromTypes = getDepartmentNamesForTypes(departments, form.departmentTypes);
+    const resolvedDepartmentNames = Array.from(new Set([...form.departmentNames, ...departmentNamesFromTypes]));
 
     const nextAssignments: Array<Record<string, string | null>> = [
       ...form.userIds.map((userId) => {
@@ -430,7 +462,7 @@ export function TasksWorkspace() {
           assigned_department_name: null
         };
       }),
-      ...form.departmentNames.map((departmentName) => ({
+      ...resolvedDepartmentNames.map((departmentName) => ({
         task_id: String(taskId),
         assignment_type: "department",
         assigned_user_id: null,
@@ -458,15 +490,18 @@ export function TasksWorkspace() {
         return;
       }
 
-      if (!form.allStaff && form.userIds.length === 0 && form.departmentNames.length === 0) {
-        setError("Select at least one user, one department, or All Staff.");
+      if (!form.allStaff && form.userIds.length === 0 && form.departmentNames.length === 0 && form.departmentTypes.length === 0) {
+        setError("Select at least one user, one department, one department type, or All Staff.");
         return;
       }
+
+      const departmentNamesFromTypes = getDepartmentNamesForTypes(departments, form.departmentTypes);
+      const resolvedDepartmentNames = Array.from(new Set([...form.departmentNames, ...departmentNamesFromTypes]));
 
       setError("");
       const payload = {
         title: form.title,
-        assigned_to: buildAssignedToSummary(form, users),
+        assigned_to: buildAssignedToSummary({ ...form, departmentNames: resolvedDepartmentNames, departmentTypes: [] }, users),
         due_date: form.due_date,
         status: form.status,
         priority: form.priority,
@@ -658,6 +693,29 @@ export function TasksWorkspace() {
                     {departments.map((department) => {
                       const selected = form.departmentNames.includes(department.name);
                       return <button key={department.id} type="button" className={`legacy-filter-btn ${selected ? "is-active" : ""}`} onClick={() => setForm((current) => ({ ...current, departmentNames: selected ? current.departmentNames.filter((value) => value !== department.name) : [...current.departmentNames, department.name] }))}>{department.name}</button>;
+                    })}
+                  </div>
+                </div>
+                <div className="legacy-form-group legacy-form-group--full">
+                  <label>Assign to Department Type</label>
+                  <div className="legacy-chip-list" style={{ alignItems: "center" }}>
+                    {departmentTypeOptions.map((type) => {
+                      const checked = form.departmentTypes.includes(type);
+                      return (
+                        <label key={type} className={`legacy-filter-btn ${checked ? "is-active" : ""}`} style={{ display: "inline-flex", alignItems: "center", gap: 8, cursor: "pointer", whiteSpace: "nowrap", minWidth: 156 }}>
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => setForm((current) => ({
+                              ...current,
+                              departmentTypes: checked
+                                ? current.departmentTypes.filter((value) => value !== type)
+                                : [...current.departmentTypes, type]
+                            }))}
+                          />
+                          {type}
+                        </label>
+                      );
                     })}
                   </div>
                 </div>

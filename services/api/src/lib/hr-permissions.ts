@@ -74,7 +74,7 @@ function hasTaskAudienceMatch(tokens: string[], context: HrPermissionContext) {
 
 export async function getUserHrRole(userId: string, organizationId: string, platformRole?: string): Promise<{ role: HrPermissionRole; managerId: string | null }> {
   const normalizedPlatformRole = String(platformRole || "USER").toUpperCase();
-  if (normalizedPlatformRole === "SUPER_ADMIN") {
+  if (normalizedPlatformRole === "SUPER_ADMIN" || normalizedPlatformRole === "ADMIN") {
     return { role: "admin" as const, managerId: null };
   }
 
@@ -235,7 +235,7 @@ export function filterHrResourceRows(resourceName: string, rows: Array<Record<st
     case "task_user_states":
       return rows.filter((row) => context.visibleUserIds.includes(String(row.user_id ?? "")) || context.visibleUserNames.includes(String(row.user_name ?? "")));
     case "training_assignments":
-      return rows.filter((row) => splitNames(row.assignee_name).some((name) => context.visibleUserNames.includes(name)));
+      return rows.filter((row) => hasTaskAudienceMatch(splitNames(row.assignee_name), context));
     case "training_completions":
       return rows.filter((row) => context.visibleUserNames.includes(String(row.user_name ?? "")));
     case "survey_assignments":

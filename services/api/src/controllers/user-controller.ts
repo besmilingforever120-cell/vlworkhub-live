@@ -47,6 +47,7 @@ export async function listAccessibleDepartments(req: AuthenticatedRequest, res: 
          d.id,
          d.organization_id,
          d.name,
+         d.department_type,
          d.address,
          d.manager_id,
          TRIM(COALESCE(u.first_name, '') || ' ' || COALESCE(u.last_name, '')) AS manager_name,
@@ -309,6 +310,7 @@ export async function listDepartments(req: AuthenticatedRequest, res: Response) 
          d.id,
          d.organization_id,
          d.name,
+        d.department_type,
          d.address,
          d.manager_id,
          TRIM(COALESCE(u.first_name, '') || ' ' || COALESCE(u.last_name, '')) AS manager_name,
@@ -334,17 +336,21 @@ export async function createDepartment(req: AuthenticatedRequest, res: Response)
       return res.status(403).json({ message: "Access denied" });
     }
 
-    const { name, address, managerId = null } = req.body as { name: string; address?: string; managerId?: string | null };
+    const { name, address, departmentType = "Program", managerId = null } = req.body as { name: string; address?: string; departmentType?: string; managerId?: string | null };
 
     if (!name) {
       return res.status(400).json({ message: "Department name is required" });
     }
 
+    if (!["Community housing", "Program"].includes(String(departmentType))) {
+      return res.status(400).json({ message: "departmentType must be Community housing or Program" });
+    }
+
     const result = await pool.query(
-      `INSERT INTO departments (organization_id, name, address, manager_id)
-       VALUES ($1, $2, $3, $4)
+      `INSERT INTO departments (organization_id, name, department_type, address, manager_id)
+       VALUES ($1, $2, $3, $4, $5)
        RETURNING id`,
-      [req.user?.organization_id, name.trim(), address?.trim() || null, managerId]
+      [req.user?.organization_id, name.trim(), String(departmentType), address?.trim() || null, managerId]
     );
 
     return res.status(201).json({ id: result.rows[0].id });
@@ -361,19 +367,24 @@ export async function updateDepartment(req: AuthenticatedRequest, res: Response)
     }
 
     const departmentId = String(req.params.id || "");
-    const { name, address, managerId = null } = req.body as { name: string; address?: string; managerId?: string | null };
+    const { name, address, departmentType = "Program", managerId = null } = req.body as { name: string; address?: string; departmentType?: string; managerId?: string | null };
 
     if (!departmentId || !name) {
       return res.status(400).json({ message: "Department id and name are required" });
     }
 
+    if (!["Community housing", "Program"].includes(String(departmentType))) {
+      return res.status(400).json({ message: "departmentType must be Community housing or Program" });
+    }
+
     await pool.query(
       `UPDATE departments
        SET name = $1,
-           address = $2,
-           manager_id = $3
-       WHERE id = $4 AND organization_id = $5`,
-      [name.trim(), address?.trim() || null, managerId, departmentId, req.user?.organization_id]
+           department_type = $2,
+           address = $3,
+           manager_id = $4
+       WHERE id = $5 AND organization_id = $6`,
+      [name.trim(), String(departmentType), address?.trim() || null, managerId, departmentId, req.user?.organization_id]
     );
 
     return res.json({ success: true });

@@ -117,12 +117,69 @@ function getOnboardingUploadsRoot() {
   return path.join(getUploadsRoot(), "onboarding");
 }
 
+function getApiBaseUrl() {
+  return String(process.env.API_BASE_URL || process.env.NEXT_PUBLIC_API_URL || process.env.PUBLIC_API_URL || "")
+    .trim()
+    .replace(/\/+$/, "");
+}
+
 function getLocalUploadsBaseUrl() {
-  const apiBaseUrl = String(process.env.NEXT_PUBLIC_API_URL || process.env.PUBLIC_API_URL || "").trim();
+  const apiBaseUrl = getApiBaseUrl();
   if (!apiBaseUrl) {
     return "/uploads";
   }
-  return `${apiBaseUrl.replace(/\/+$/, "")}/uploads`;
+  return `${apiBaseUrl}/uploads`;
+}
+
+function normalizeFileUrlForApi(fileUrl: string | null | undefined) {
+  const normalized = String(fileUrl || "").trim();
+  if (!normalized) {
+    return "";
+  }
+
+  const apiBaseUrl = getApiBaseUrl();
+  let next = normalized;
+
+  if (apiBaseUrl && /^https?:\/\/(localhost|127\.0\.0\.1):8080/i.test(next)) {
+    next = next.replace(/^https?:\/\/(localhost|127\.0\.0\.1):8080/i, apiBaseUrl);
+  }
+
+  if (next.startsWith("/uploads/")) {
+    return apiBaseUrl ? `${apiBaseUrl}${next}` : next;
+  }
+
+  if (next.startsWith("uploads/")) {
+    return apiBaseUrl ? `${apiBaseUrl}/${next}` : `/${next}`;
+  }
+
+  return next;
+}
+
+function extractUploadsRelativePath(fileUrl: string | null | undefined) {
+  const normalized = normalizeFileUrlForApi(fileUrl);
+  if (!normalized) {
+    return null;
+  }
+
+  const fromPathname = (pathname: string) => {
+    if (!pathname.startsWith("/uploads/")) {
+      return null;
+    }
+
+    const raw = pathname.slice("/uploads/".length);
+    try {
+      return decodeURIComponent(raw);
+    } catch {
+      return raw;
+    }
+  };
+
+  try {
+    const parsed = new URL(normalized);
+    return fromPathname(parsed.pathname);
+  } catch {
+    return fromPathname(normalized);
+  }
 }
 
 function sanitizePathSegment(value: string) {
@@ -499,7 +556,10 @@ async function listUpcomingOnboardingExpiryRows() {
     [EXPIRY_TASK_WINDOW_DAYS]
   );
 
-  return result.rows as UpcomingOnboardingExpiryRow[];
+  return result.rows.map((row) => ({
+    ...row,
+    file_url: normalizeFileUrlForApi(String(row.file_url || ""))
+  })) as UpcomingOnboardingExpiryRow[];
 }
 
 export async function runOnboardingExpiryTaskSweep() {
@@ -523,7 +583,7 @@ export async function runOnboardingExpiryTaskSweep() {
           documentType: String(row.document_type || "Other"),
           originalFileName: String(row.original_file_name || row.file_name || "Uploaded file"),
           storedFileName: String(row.file_name || row.original_file_name || "file"),
-          fileUrl: String(row.file_url || ""),
+          fileUrl: normalizeFileUrlForApi(String(row.file_url || "")),
           expiryDate: String(row.expiry_date || ""),
           uploadedAt: String(row.uploaded_at || new Date().toISOString())
         });
@@ -809,7 +869,7 @@ async function listOnboardingFilesForUserFromDb(organizationId: string, userId: 
       document_type: String(row.document_type),
       uploaded_at: String(row.uploaded_at),
       expiry_date: row.expiry_date ? String(row.expiry_date) : null,
-      file_url: String(row.file_url)
+      file_url: normalizeFileUrlForApi(String(row.file_url || ""))
     }));
   }
 
@@ -1106,7 +1166,10 @@ async function getDocumentRows(organizationId: string) {
     [organizationId]
   );
 
-  return result.rows as DocumentRecord[];
+  return result.rows.map((row) => ({
+    ...row,
+    file_url: normalizeFileUrlForApi(String(row.file_url || ""))
+  })) as DocumentRecord[];
 }
 
 function resolveEffectiveAssignees(row: DocumentRecord, organizationUsers: OrganizationUser[]) {
@@ -1154,11 +1217,18 @@ function canViewDocument(row: DocumentRecord, context: Awaited<ReturnType<typeof
   const assignment = resolveEffectiveAssignees(row, organizationUsers);
 
   if (context.role === "admin") {
-    return assignment.effectiveUserIds.length > 0 || assignment.allStaff;
+    return true;
   }
 
-  const unsignedEffectiveUserIds = getUnsignedEffectiveAssigneeIds(row, assignment.effectiveUserIds);
-  return unsignedEffectiveUserIds.some((userId) => context.visibleUserIds.includes(userId));
+  if (context.role === "manager") {
+    if (assignment.effectiveUserIds.includes(context.userId)) {
+      return true;
+    }
+
+    return assignment.departmentNames.some((departmentName) => context.visibleDepartmentNames.includes(departmentName));
+  }
+
+  return assignment.effectiveUserIds.includes(context.userId);
 }
 
 function canCurrentUserSign(row: DocumentRecord, context: Awaited<ReturnType<typeof getHrPermissionContext>>, organizationUsers: OrganizationUser[]) {
@@ -1247,14 +1317,22 @@ export async function listHrDocuments(req: AuthenticatedRequest, res: Response) 
   try {
     await ensureDocumentsSchema();
     const organizationId = String(req.user?.organization_id || "");
+    const platformRole = String(req.user?.platform_role || req.user?.role || "USER").toUpperCase();
     const context = await getHrPermissionContext(
       String(req.user?.user_id || ""),
       organizationId,
-      String(req.user?.platform_role || req.user?.role || "USER"),
+      platformRole,
       String(req.user?.full_name || "")
     );
     const [rows, organizationUsers] = await Promise.all([getDocumentRows(organizationId), listOrganizationUsers(organizationId)]);
     const items = rows.filter((row) => canViewDocument(row, context, organizationUsers)).map((row) => decorateDocument(row, context, organizationUsers));
+    console.log("[HR Documents Visibility]", {
+      userId: context.userId,
+      platformRole,
+      hrRole: context.role,
+      totalDocuments: rows.length,
+      returnedDocuments: items.length
+    });
     return res.json({ items });
   } catch (error) {
     console.error("API error in GET /hr/documents", error);
@@ -2218,7 +2296,7 @@ export async function listHrSignedDocumentFiles(req: AuthenticatedRequest, res: 
         document_status: String(row.document_status || "Unknown"),
         signed_at: row.signed_at,
         signature_id: signatureId,
-        signed_file_url: signedFileUrl,
+        signed_file_url: signedFileUrl ? normalizeFileUrlForApi(signedFileUrl) : null,
         archived: String(row.document_status || "").trim().toLowerCase() === "archived"
       };
     });
@@ -2263,13 +2341,15 @@ export async function downloadHrDocument(req: AuthenticatedRequest, res: Respons
       return res.status(404).json({ message: "Document file not found" });
     }
 
-    if (fileUrl.startsWith(`${getLocalUploadsBaseUrl()}/`)) {
-      const relativePath = fileUrl.replace(`${getLocalUploadsBaseUrl()}/`, "");
+    const normalizedFileUrl = normalizeFileUrlForApi(fileUrl);
+    const relativePath = extractUploadsRelativePath(normalizedFileUrl);
+
+    if (relativePath) {
       const filePath = path.join(getUploadsRoot(), relativePath);
       return res.download(filePath, String(access.row.file_name || `document-${documentId}.pdf`));
     }
 
-    return res.redirect(fileUrl);
+    return res.redirect(normalizedFileUrl);
   } catch (error) {
     console.error("API error in GET /hr/documents/:id/download", error);
     return res.status(500).json({ error: "Internal server error" });

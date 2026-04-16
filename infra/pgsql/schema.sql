@@ -122,8 +122,22 @@ CREATE TABLE IF NOT EXISTS announcements (
   end_date DATE,
   priority TEXT,
   status TEXT,
+  event_image_url TEXT,
+  attachment_name TEXT,
+  attachment_url TEXT,
+  event_link_url TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+ALTER TABLE IF EXISTS public.announcements ADD COLUMN IF NOT EXISTS event_image_url TEXT;
+ALTER TABLE IF EXISTS public.announcements ADD COLUMN IF NOT EXISTS attachment_name TEXT;
+ALTER TABLE IF EXISTS public.announcements ADD COLUMN IF NOT EXISTS attachment_url TEXT;
+ALTER TABLE IF EXISTS public.announcements ADD COLUMN IF NOT EXISTS event_link_url TEXT;
+
+ALTER TABLE IF EXISTS hr.announcements ADD COLUMN IF NOT EXISTS event_image_url TEXT;
+ALTER TABLE IF EXISTS hr.announcements ADD COLUMN IF NOT EXISTS attachment_name TEXT;
+ALTER TABLE IF EXISTS hr.announcements ADD COLUMN IF NOT EXISTS attachment_url TEXT;
+ALTER TABLE IF EXISTS hr.announcements ADD COLUMN IF NOT EXISTS event_link_url TEXT;
 
 CREATE TABLE IF NOT EXISTS tasks (
   id BIGSERIAL PRIMARY KEY,
@@ -593,10 +607,28 @@ CREATE TABLE IF NOT EXISTS departments (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
+  department_type TEXT NOT NULL DEFAULT 'Program' CHECK (department_type IN ('Community housing', 'Program')),
   address TEXT,
   manager_id UUID REFERENCES users(id) ON DELETE SET NULL,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+ALTER TABLE IF EXISTS public.departments ADD COLUMN IF NOT EXISTS department_type TEXT;
+UPDATE public.departments SET department_type = 'Program' WHERE department_type IS NULL;
+ALTER TABLE public.departments ALTER COLUMN department_type SET DEFAULT 'Program';
+ALTER TABLE public.departments ALTER COLUMN department_type SET NOT NULL;
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'departments_department_type_check'
+  ) THEN
+    ALTER TABLE public.departments
+      ADD CONSTRAINT departments_department_type_check
+      CHECK (department_type IN ('Community housing', 'Program'));
+  END IF;
+END $$;
 
 CREATE INDEX IF NOT EXISTS idx_departments_manager
 ON departments(manager_id);

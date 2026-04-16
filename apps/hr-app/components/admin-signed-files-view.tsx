@@ -147,7 +147,7 @@ export function AdminSignedFilesView() {
                         <td className="px-3 py-4 text-xs text-gray-500">{file.signature_id || "-"}</td>
                         <td className="px-3 py-4">
                           <div className="flex items-center gap-2">
-                            {file.signed_file_url ? <button type="button" className="legacy-secondary-btn" onClick={() => window.open(file.signed_file_url || "", "_blank", "noopener,noreferrer")}>Open</button> : <span className="text-slate-400">No file</span>}
+                            {file.signed_file_url ? <button type="button" className="legacy-icon-btn" title="Open signed file" onClick={() => window.open(file.signed_file_url || "", "_blank", "noopener,noreferrer")}><FolderOpen className="h-4 w-4" /></button> : <span className="text-slate-400">No file</span>}
                             {file.signed_file_url ? <button type="button" className="legacy-icon-btn" title="Download signed file" onClick={() => window.open(file.signed_file_url || "", "_blank", "noopener,noreferrer")}><Download className="h-4 w-4" /></button> : null}
                           </div>
                         </td>
