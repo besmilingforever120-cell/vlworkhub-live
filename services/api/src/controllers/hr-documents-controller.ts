@@ -221,7 +221,8 @@ async function listTableColumns(db: { query: (text: string, values?: unknown[]) 
   const result = await db.query(
     `SELECT column_name
      FROM information_schema.columns
-     WHERE table_schema = 'public' AND table_name = $1`,
+     WHERE table_name = $1
+       AND table_schema IN ('hr', 'care', 'ursafe', 'public')`,
     [tableName]
   );
 
@@ -303,6 +304,12 @@ async function createOnboardingExpiryTask(params: {
   expiryDate: string;
   uploadedAt: string;
 }) {
+  // Defensive guard: only create expiry tasks when a valid expiry date exists
+  // and it falls within the configured window from today.
+  if (!shouldCreateExpiryTask(params.expiryDate)) {
+    return;
+  }
+
   const parsedExpiryDate = parseDateOnly(params.expiryDate);
   if (!parsedExpiryDate) {
     return;
@@ -500,6 +507,10 @@ export async function runOnboardingExpiryTaskSweep() {
   try {
     const rows = await listUpcomingOnboardingExpiryRows();
     for (const row of rows) {
+      if (!shouldCreateExpiryTask(row.expiry_date)) {
+        continue;
+      }
+
       try {
         await createOnboardingExpiryTask({
           organizationId: String(row.organization_id),
@@ -946,7 +957,8 @@ async function ensureDocumentsSchema() {
     const requiresSignatureType = await pool.query(
       `SELECT data_type
        FROM information_schema.columns
-       WHERE table_schema = 'public' AND table_name = 'documents' AND column_name = 'requires_signature'
+       WHERE table_name = 'documents' AND column_name = 'requires_signature'
+         AND table_schema IN ('hr', 'care', 'ursafe', 'public')
        LIMIT 1`
     );
 

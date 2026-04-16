@@ -474,7 +474,7 @@ async function ensureTasksArchivedColumn() {
     return tasksArchivedColumnPromise;
   }
   tasksArchivedColumnPromise = (async () => {
-    const existing = await pool.query(`SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'tasks' AND column_name = 'archived' LIMIT 1`);
+    const existing = await pool.query(`SELECT 1 FROM information_schema.columns WHERE table_name = 'tasks' AND column_name = 'archived' LIMIT 1`);
     if (existing.rowCount) {
       return true;
     }
@@ -485,7 +485,7 @@ async function ensureTasksArchivedColumn() {
 }
 
 async function tasksTableHasArchivedColumn() {
-  const result = await pool.query(`SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'tasks' AND column_name = 'archived' LIMIT 1`);
+  const result = await pool.query(`SELECT 1 FROM information_schema.columns WHERE table_name = 'tasks' AND column_name = 'archived' LIMIT 1`);
   return Number(result.rowCount || 0) > 0;
 }
 
@@ -497,7 +497,7 @@ async function tableHasOrganizationId(tableName: string) {
   const result = await pool.query(
     `SELECT 1
      FROM information_schema.columns
-     WHERE table_schema = 'public'
+     WHERE table_schema IN ('hr', 'care', 'ursafe', 'public')
        AND table_name = $1
        AND column_name = 'organization_id'
      LIMIT 1`,

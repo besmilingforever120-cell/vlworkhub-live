@@ -18,11 +18,24 @@ function isCompletionDone(item: HrRecord) {
   return Number(item.progress_percent ?? 0) >= 100 || Boolean(String(item.completed_on ?? "").trim());
 }
 
+function parseCompletedTimestamp(value: string) {
+  const normalized = String(value || "").trim();
+  if (!normalized) return null;
+
+  const hasTimezone = /([zZ]|[+-]\d{2}:?\d{2})$/.test(normalized);
+  const candidate = hasTimezone ? normalized : `${normalized.replace(" ", "T")}Z`;
+  const parsed = new Date(candidate);
+  if (!Number.isNaN(parsed.getTime())) return parsed;
+
+  const fallback = new Date(normalized);
+  return Number.isNaN(fallback.getTime()) ? null : fallback;
+}
+
 function formatDate(value: string | null) {
   if (!value) return "-";
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return value;
-  return parsed.toLocaleString();
+  const parsed = parseCompletedTimestamp(value);
+  if (!parsed) return value;
+  return parsed.toLocaleString(undefined, { timeZone: "America/Los_Angeles" });
 }
 
 function getSurveyHref(value: string) {
@@ -90,8 +103,8 @@ export function AdminArchivedTrainings() {
       }
 
       nextItems.sort((a, b) => {
-        const aTime = a.completedOn ? new Date(a.completedOn).getTime() : 0;
-        const bTime = b.completedOn ? new Date(b.completedOn).getTime() : 0;
+        const aTime = a.completedOn ? (parseCompletedTimestamp(a.completedOn)?.getTime() || 0) : 0;
+        const bTime = b.completedOn ? (parseCompletedTimestamp(b.completedOn)?.getTime() || 0) : 0;
         return bTime - aTime;
       });
 

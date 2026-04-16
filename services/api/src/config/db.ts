@@ -6,7 +6,8 @@ if (!env.databaseUrl) {
 }
 
 export const pool = new Pool({
-  connectionString: env.databaseUrl
+  connectionString: env.databaseUrl,
+  options: "-c search_path=hr,care,ursafe,public"
 });
 
 export async function verifyDatabaseConnection() {

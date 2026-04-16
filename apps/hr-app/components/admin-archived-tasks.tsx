@@ -18,11 +18,41 @@ function asString(value: string | number | null | undefined) {
   return String(value ?? "").trim();
 }
 
+function parseCompletedTimestamp(value: string) {
+  const normalized = String(value || "").trim();
+  if (!normalized) return null;
+
+  const sqlDateTimeMatch = normalized.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,6}))?)?$/);
+  if (sqlDateTimeMatch) {
+    const [, year, month, day, hour, minute, second = "0", fractional = ""] = sqlDateTimeMatch;
+    const milliseconds = Number((fractional + "000").slice(0, 3));
+    return new Date(Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second), milliseconds));
+  }
+
+  const usDateTimeMatch = normalized.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:,\s*|\s+)(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)$/i);
+  if (usDateTimeMatch) {
+    const [, month, day, year, hour12, minute, second = "0", meridiem] = usDateTimeMatch;
+    let hour = Number(hour12) % 12;
+    if (String(meridiem).toUpperCase() === "PM") {
+      hour += 12;
+    }
+    return new Date(Date.UTC(Number(year), Number(month) - 1, Number(day), hour, Number(minute), Number(second), 0));
+  }
+
+  const hasTimezone = /([zZ]|[+-]\d{2}:?\d{2}|(?:UTC|GMT|EST|EDT|CST|CDT|MST|MDT|PST|PDT))$/.test(normalized);
+  const candidate = hasTimezone ? normalized : `${normalized.replace(" ", "T")}Z`;
+  const parsed = new Date(candidate);
+  if (!Number.isNaN(parsed.getTime())) return parsed;
+
+  const fallback = new Date(normalized);
+  return Number.isNaN(fallback.getTime()) ? null : fallback;
+}
+
 function formatDate(value: string | null) {
   if (!value) return "-";
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return value;
-  return parsed.toLocaleString();
+  const parsed = parseCompletedTimestamp(value);
+  if (!parsed) return value;
+  return parsed.toLocaleString(undefined, { timeZone: "America/Los_Angeles" });
 }
 
 function isCompletionDone(item: HrRecord) {
@@ -74,8 +104,8 @@ export function AdminArchivedTasks() {
       }
 
       nextItems.sort((a, b) => {
-        const aTime = a.completedOn ? new Date(a.completedOn).getTime() : 0;
-        const bTime = b.completedOn ? new Date(b.completedOn).getTime() : 0;
+        const aTime = a.completedOn ? (parseCompletedTimestamp(a.completedOn)?.getTime() || 0) : 0;
+        const bTime = b.completedOn ? (parseCompletedTimestamp(b.completedOn)?.getTime() || 0) : 0;
         return bTime - aTime;
       });
 

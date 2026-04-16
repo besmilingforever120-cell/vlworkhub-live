@@ -282,6 +282,7 @@ const Training: React.FC = () => {
   const formatDateTime = (dateString?: string): string => {
     if (!dateString) return '';
     return new Date(dateString).toLocaleString(undefined, {
+      timeZone: 'America/Los_Angeles',
       month: 'short',
       day: 'numeric',
       year: 'numeric',

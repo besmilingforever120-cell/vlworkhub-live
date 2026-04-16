@@ -275,6 +275,7 @@ const AssigneeList: React.FC<{
                     {us.CompletedOn && (
                       <span className={styles.completedDate}>
                         {new Date(us.CompletedOn).toLocaleDateString(undefined, {
+                          timeZone: 'America/Los_Angeles',
                           month: 'short',
                           day: 'numeric'
                         })}
