@@ -1,117 +1,252 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
+import { useRouter } from "next/navigation";
+import type { Route } from "next";
 import { platformLinks } from "@vlworkhub/config";
-import type { SessionUser, UrsafeActiveSession, UrsafeEmergency, UrsafeShift, UrsafeTrip, UrsafeUser } from "@vlworkhub/types";
-import { ErrorBanner, MetricCard, ShellHero, SectionCard } from "../../components/ursafe-ui";
-import { getActiveSessions, getApiErrorMessage, getCurrentUser, getEmergencies, getShifts, getTrips, getUrsafeUsers } from "../../lib/ursafe-client";
+import type { SessionUser, UrsafeTrip, UrsafeUser } from "@vlworkhub/types";
+import { ErrorBanner } from "../../components/ursafe-ui";
+import UrsafeAppHeader, { HeaderActionButton } from "../../components/ursafe-app-header";
+import { getApiErrorMessage, getCurrentUser, getTrips, getUrsafeUsers } from "../../lib/ursafe-client";
+
+type DashboardStats = {
+  totalTrips: number;
+  totalKilometers: number;
+  pendingApproval: number;
+  approvedKilometers: number;
+};
+
+const defaultStats: DashboardStats = {
+  totalTrips: 0,
+  totalKilometers: 0,
+  pendingApproval: 0,
+  approvedKilometers: 0
+};
+
+function resolveRole(user: SessionUser | null) {
+  const normalizedRoles = new Set(
+    [user?.role, user?.platformRole, ...(user?.roles ?? [])]
+      .filter(Boolean)
+      .map((value) => String(value).toUpperCase())
+  );
+
+  return {
+    isSuperAdmin: normalizedRoles.has("SUPER_ADMIN"),
+    isAdmin: normalizedRoles.has("ADMIN") || normalizedRoles.has("SUPER_ADMIN"),
+    isManager: normalizedRoles.has("MANAGER")
+  };
+}
+
+function getScopedTrips(trips: UrsafeTrip[], users: UrsafeUser[], user: SessionUser | null, isManager: boolean) {
+  const activeUsers = users.filter((candidate) => candidate.isActive);
+  const activeUserIds = new Set(activeUsers.map((candidate) => candidate.id));
+
+  if (!user) {
+    return trips.filter((trip) => activeUserIds.has(trip.userId));
+  }
+
+  if (!isManager) {
+    return trips.filter((trip) => activeUserIds.has(trip.userId));
+  }
+
+  const managedIds = new Set(
+    activeUsers.filter((candidate) => candidate.managerId === user.id).map((candidate) => candidate.id)
+  );
+
+  if (activeUserIds.has(user.id)) {
+    managedIds.add(user.id);
+  }
+
+  return trips.filter((trip) => managedIds.has(trip.userId));
+}
+
+function formatKilometers(value: number) {
+  return value.toFixed(2);
+}
+
+async function signOut() {
+  const response = await fetch(`${platformLinks.api}/auth/logout`, {
+    method: "POST",
+    credentials: "include"
+  }).catch(() => null);
+
+  if (!response?.ok) {
+    throw new Error("Failed to sign out.");
+  }
+}
+
+function QuickLinkCard(props: {
+  title: string;
+  description: string;
+  emoji: string;
+  href: Route;
+  borderClassName?: string;
+  onClick: (href: Route) => void;
+}) {
+  return (
+    <button
+      onClick={() => props.onClick(props.href)}
+      className={`rounded-lg border bg-white p-8 text-left shadow transition-shadow hover:shadow-lg ${props.borderClassName ?? "border-slate-200"}`}
+      type="button"
+    >
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <h3 className="mb-2 text-2xl font-bold text-slate-900">{props.title}</h3>
+          <p className="text-sm text-slate-600">{props.description}</p>
+        </div>
+        <div className="text-4xl">{props.emoji}</div>
+      </div>
+    </button>
+  );
+}
 
 export default function UrsafeDashboardPage() {
+  const router = useRouter();
   const [user, setUser] = useState<SessionUser | null>(null);
-  const [users, setUsers] = useState<UrsafeUser[]>([]);
-  const [trips, setTrips] = useState<UrsafeTrip[]>([]);
-  const [shifts, setShifts] = useState<UrsafeShift[]>([]);
-  const [emergencies, setEmergencies] = useState<UrsafeEmergency[]>([]);
-  const [sessions, setSessions] = useState<UrsafeActiveSession[]>([]);
+  const [stats, setStats] = useState<DashboardStats>(defaultStats);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const { isSuperAdmin, isAdmin } = resolveRole(user);
 
   useEffect(() => {
     async function load() {
       try {
         setError(null);
-        const [session, userItems, tripItems, shiftItems, emergencyItems, activeSessions] = await Promise.all([
-          getCurrentUser(),
-          getUrsafeUsers(),
-          getTrips(),
-          getShifts(),
-          getEmergencies(true),
-          getActiveSessions()
-        ]);
+        setLoading(true);
+
+        const [session, tripsData, usersData] = await Promise.all([getCurrentUser(), getTrips(), getUrsafeUsers()]);
         setUser(session);
-        setUsers(userItems);
-        setTrips(tripItems);
-        setShifts(shiftItems);
-        setEmergencies(emergencyItems);
-        setSessions(activeSessions);
+
+        const sessionRoleState = resolveRole(session);
+        const scopedTrips = getScopedTrips(tripsData, usersData, session, sessionRoleState.isManager);
+        const totalTrips = scopedTrips.length;
+        const totalKilometers = scopedTrips.reduce((sum, trip) => sum + (trip.distanceInMiles || 0), 0) * 1.60934;
+        const pendingApproval = scopedTrips.filter((trip) => trip.status === "pending_approval").length;
+        const approvedKilometers =
+          scopedTrips.filter((trip) => trip.status === "approved").reduce((sum, trip) => sum + (trip.distanceInMiles || 0), 0) * 1.60934;
+
+        setStats({
+          totalTrips,
+          totalKilometers,
+          pendingApproval,
+          approvedKilometers
+        });
       } catch (loadError) {
         setError(getApiErrorMessage(loadError));
+        setStats(defaultStats);
+      } finally {
+        setLoading(false);
       }
     }
 
     void load();
   }, []);
 
-  const pendingTrips = trips.filter((trip) => trip.status === "pending_approval").length;
-  const activeShifts = shifts.filter((shift) => shift.status === "active").length;
-  const kmsToday = trips.reduce((sum, trip) => sum + trip.distanceInMiles * 1.60934, 0);
+  const signedInLabel = user ? `Signed in as ${user.fullName}` : "Signed in";
 
   return (
-    <div className="space-y-8">
-      <ShellHero
-        eyebrow="URSafe Operations"
-        title="Field safety and mileage command center"
-        description="This integrated URSafe workspace preserves the real operating flows from the legacy app: trip review, active shift monitoring, emergency response, and mobile presence tracking."
-        ctaHref={`${platformLinks.root}/dashboard`}
-        ctaLabel="Back to VLWorkHub"
-        badge={user ? `Signed in as ${user.fullName}` : undefined}
+    <div className="min-h-screen bg-gray-100">
+      <UrsafeAppHeader
+        title="URSafe App Dashboard"
+        badge={isAdmin ? "Admin" : "My Team"}
+        badgeTone="blue"
+        meta={signedInLabel}
+        actions={
+          <HeaderActionButton
+            label="Sign Out"
+            icon="🚪"
+            tone="danger"
+            onClick={async () => {
+              try {
+                await signOut();
+              } catch {
+                // keep redirect behavior even if logout request fails
+              }
+              router.push("/");
+              router.refresh();
+            }}
+          />
+        }
       />
 
-      {error ? <ErrorBanner message={error} /> : null}
+      <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+        {error ? <ErrorBanner message={error} /> : null}
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <MetricCard label="Mileage Logs" value={String(trips.length)} helper="Trips captured across the org" tone="blue" />
-        <MetricCard label="Pending Approval" value={String(pendingTrips)} helper="Trips waiting for manager review" tone="amber" />
-        <MetricCard label="Active Shifts" value={String(activeShifts)} helper="Employees currently on duty" tone="emerald" />
-        <MetricCard label="Open Emergencies" value={String(emergencies.length)} helper="Critical events needing response" tone="rose" />
-      </section>
-
-      <section className="grid gap-6 xl:grid-cols-[1.3fr,1fr]">
-        <SectionCard title="Operations Snapshot" description="The same URSafe workflow pillars from the legacy system are available here as first-class pages.">
-          <div className="grid gap-4 md:grid-cols-2">
-            <Link href="/mileage" className="rounded-3xl border border-sky-400/20 bg-sky-400/10 p-5 transition hover:border-sky-300">
-              <p className="text-xs uppercase tracking-[0.3em] text-sky-200">Mileage Tracking</p>
-              <h3 className="mt-3 text-2xl font-semibold text-white">Trips and reimbursements</h3>
-              <p className="mt-2 text-sm text-slate-300">Start a trip, review mileage, approve submissions, and export operating totals.</p>
-            </Link>
-            <Link href="/incidents" className="rounded-3xl border border-rose-400/20 bg-rose-400/10 p-5 transition hover:border-rose-300">
-              <p className="text-xs uppercase tracking-[0.3em] text-rose-200">Safety Incidents</p>
-              <h3 className="mt-3 text-2xl font-semibold text-white">Emergency monitoring</h3>
-              <p className="mt-2 text-sm text-slate-300">Monitor unresolved alerts, resolve incidents, and review team safety posture.</p>
-            </Link>
-            <Link href="/checklists" className="rounded-3xl border border-emerald-400/20 bg-emerald-400/10 p-5 transition hover:border-emerald-300">
-              <p className="text-xs uppercase tracking-[0.3em] text-emerald-200">Shift Checklists</p>
-              <h3 className="mt-3 text-2xl font-semibold text-white">Check-ins and shift safety</h3>
-              <p className="mt-2 text-sm text-slate-300">Preserve the work-alone safety workflow with shift start, check-ins, and SOS escalation.</p>
-            </Link>
-            <Link href="/emergency-contacts" className="rounded-3xl border border-white/10 bg-white/5 p-5 transition hover:border-cyan-300">
-              <p className="text-xs uppercase tracking-[0.3em] text-cyan-200">Emergency Contacts</p>
-              <h3 className="mt-3 text-2xl font-semibold text-white">Contact and device watchlist</h3>
-              <p className="mt-2 text-sm text-slate-300">Keep emergency contacts visible beside live mobile presence and device status.</p>
-            </Link>
+        {loading ? (
+          <div className="flex min-h-[320px] items-center justify-center rounded-lg bg-white shadow">
+            <div className="text-xl text-slate-700">Loading...</div>
           </div>
-        </SectionCard>
+        ) : (
+          <>
+            <div className="mb-8 grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4">
+              <div className="rounded-lg bg-white p-6 shadow">
+                <div className="text-sm text-slate-600">Total Trips</div>
+                <div className="text-3xl font-bold text-blue-600">{stats.totalTrips}</div>
+              </div>
+              <div className="rounded-lg bg-white p-6 shadow">
+                <div className="text-sm text-slate-600">Total Kilometers</div>
+                <div className="text-3xl font-bold text-green-600">{formatKilometers(stats.totalKilometers)}</div>
+              </div>
+              <div className="rounded-lg bg-white p-6 shadow">
+                <div className="text-sm text-slate-600">Pending Approval</div>
+                <div className="text-3xl font-bold text-yellow-600">{stats.pendingApproval}</div>
+              </div>
+              <div className="rounded-lg bg-white p-6 shadow">
+                <div className="text-sm text-slate-600">Approved Kilometers</div>
+                <div className="text-3xl font-bold text-purple-600">{formatKilometers(stats.approvedKilometers)}</div>
+              </div>
+            </div>
 
-        <SectionCard title="Live Status" description="Immediate signal from active sessions, shifts, and emergency volume.">
-          <div className="space-y-4">
-            <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
-              <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Connected Sessions</p>
-              <p className="mt-2 text-3xl font-black text-white">{sessions.length}</p>
-              <p className="mt-2 text-sm text-slate-400">{sessions.filter((session) => session.status === "online").length} broadcasting live location data.</p>
+            <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
+              <QuickLinkCard
+                title="Live Tracking"
+                description="Monitor employees in real-time"
+                emoji="🗺️"
+                href="/live-tracking"
+                borderClassName="border-2 border-green-500"
+                onClick={(href) => router.push(href)}
+              />
+
+              <QuickLinkCard
+                title="Trips"
+                description="View and approve trips"
+                emoji="🚗"
+                href="/trips"
+                onClick={(href) => router.push(href)}
+              />
+
+              <QuickLinkCard
+                title="Safety Center"
+                description="Manage emergencies and incidents"
+                emoji="🛡️"
+                href="/safety-monitoring"
+                borderClassName="border-2 border-red-500"
+                onClick={(href) => router.push(href)}
+              />
+
+              <QuickLinkCard
+                title="Shift History"
+                description="Review timelines and check-ins"
+                emoji="🕒"
+                href="/shift-history"
+                borderClassName="border-2 border-indigo-500"
+                onClick={(href) => router.push(href)}
+              />
+
+              {isSuperAdmin || isAdmin ? (
+                <QuickLinkCard
+                  title="Settings"
+                  description="Configure system settings"
+                  emoji="⚙️"
+                  href="/settings"
+                  onClick={(href) => router.push(href)}
+                />
+              ) : null}
             </div>
-            <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
-              <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Mileage Volume</p>
-              <p className="mt-2 text-3xl font-black text-white">{kmsToday.toFixed(1)} km</p>
-              <p className="mt-2 text-sm text-slate-400">Total recorded distance from the shared PostgreSQL-backed API.</p>
-            </div>
-            <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
-              <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Active Roster</p>
-              <p className="mt-2 text-3xl font-black text-white">{users.filter((item) => item.isActive).length}</p>
-              <p className="mt-2 text-sm text-slate-400">URSafe-enabled staff available to web and mobile workflows.</p>
-            </div>
-          </div>
-        </SectionCard>
-      </section>
+          </>
+        )}
+      </main>
     </div>
   );
 }

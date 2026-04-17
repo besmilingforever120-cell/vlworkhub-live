@@ -143,3 +143,10 @@ export interface UrsafeActiveSession {
   batteryLevel?: number;
   notes?: string;
 }
+
+export interface UrsafeSettings {
+  ratePerKm: number;
+  smtpEmail?: string;
+  smtpPassword?: string;
+  logoData?: string | null;
+}

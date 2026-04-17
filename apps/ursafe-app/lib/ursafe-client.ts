@@ -6,6 +6,7 @@ import type {
   UrsafeActiveSession,
   UrsafeCheckIn,
   UrsafeEmergency,
+  UrsafeSettings,
   UrsafeShift,
   UrsafeTrip,
   UrsafeUser
@@ -176,6 +177,17 @@ export async function getActiveSessions() {
 export async function clearActiveSession(userId: string) {
   return request<{ success: true }>(`/ursafe/active-sessions/user/${userId}`, {
     method: "DELETE"
+  });
+}
+
+export async function getUrsafeSettings() {
+  return request<UrsafeSettings>("/ursafe/settings");
+}
+
+export async function saveUrsafeSettings(payload: UrsafeSettings) {
+  return request<UrsafeSettings>("/ursafe/settings", {
+    method: "POST",
+    body: JSON.stringify(payload)
   });
 }
 

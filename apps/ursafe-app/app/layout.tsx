@@ -1,16 +1,13 @@
 import "./globals.css";
-import { AppShell } from "@vlworkhub/ui";
-import { ursafeMeta, ursafeNav } from "../lib/resource-config";
+import { UrsafeShell } from "../components/ursafe-shell";
 
 export const metadata = { title: "VLWorkHub UR Safe" };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body>
-        <AppShell appName={ursafeMeta.appName} rootHref={ursafeMeta.rootHref} navItems={ursafeNav}>
-          {children}
-        </AppShell>
+      <body className="min-h-screen bg-gray-100 text-slate-900 antialiased">
+        <UrsafeShell>{children}</UrsafeShell>
       </body>
     </html>
   );

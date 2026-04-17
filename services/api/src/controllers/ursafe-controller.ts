@@ -41,16 +41,32 @@ function parseEmergencyNotes(value: unknown) {
 }
 
 function toTrip(row: Record<string, unknown>) {
+  const firstName = row.first_name ? String(row.first_name) : "";
+  const lastName = row.last_name ? String(row.last_name) : "";
+  const distanceKm = row.distance_km !== undefined && row.distance_km !== null
+    ? Number(row.distance_km)
+    : Number(row.distance_miles || 0) * 1.60934;
+  const distanceMiles = row.distance_miles !== undefined && row.distance_miles !== null
+    ? Number(row.distance_miles)
+    : (distanceKm / 1.60934);
+
   return {
     id: String(row.id),
     userId: String(row.user_id),
+    user_id: String(row.user_id),
+    first_name: firstName || undefined,
+    last_name: lastName || undefined,
+    email: row.email ? String(row.email) : undefined,
     status: String(row.status || "pending_approval"),
     category: String(row.category || "business"),
+    start_time: String(row.start_time || ""),
+    end_time: row.end_time ? String(row.end_time) : undefined,
+    distance_km: distanceKm,
     startLocation: parseJson(row.start_location, null),
     endLocation: parseJson(row.end_location, null),
     startTime: String(row.start_time || ""),
     endTime: row.end_time ? String(row.end_time) : undefined,
-    distanceInMiles: Number(row.distance_miles || 0),
+    distanceInMiles: Number.isFinite(distanceMiles) ? distanceMiles : 0,
     route: parseJson(row.route, []),
     notes: row.notes ? String(row.notes) : undefined,
     vehicleInfo: row.vehicle_info ? String(row.vehicle_info) : undefined,
@@ -59,9 +75,26 @@ function toTrip(row: Record<string, unknown>) {
 }
 
 function toShift(row: Record<string, unknown>) {
+  const shiftStart = row.shift_start ? String(row.shift_start) : String(row.start_time || "");
+  const shiftEnd = row.shift_end ? String(row.shift_end) : (row.end_time ? String(row.end_time) : undefined);
+  const computedDurationMinutes = (() => {
+    if (typeof row.duration === "number") return Number(row.duration);
+    const start = new Date(shiftStart).getTime();
+    const end = shiftEnd ? new Date(shiftEnd).getTime() : Date.now();
+    if (!Number.isFinite(start) || !Number.isFinite(end)) return 0;
+    return Math.max(0, Math.round((end - start) / 60000));
+  })();
+  const firstName = row.first_name ? String(row.first_name) : "";
+  const lastName = row.last_name ? String(row.last_name) : "";
+  const employeeName = `${firstName} ${lastName}`.trim() || undefined;
+
   return {
     id: String(row.id),
     userId: String(row.user_id),
+    user_id: String(row.user_id),
+    shift_start: shiftStart,
+    shift_end: shiftEnd,
+    duration: computedDurationMinutes,
     startTime: String(row.start_time || ""),
     endTime: row.end_time ? String(row.end_time) : undefined,
     status: String(row.status || "active"),
@@ -73,7 +106,11 @@ function toShift(row: Record<string, unknown>) {
     clientName: row.client_name ? String(row.client_name) : undefined,
     clientAddress: row.client_address ? String(row.client_address) : undefined,
     expectedDuration: row.expected_duration ? Number(row.expected_duration) : undefined,
-    notes: row.notes ? String(row.notes) : undefined
+    notes: row.notes ? String(row.notes) : undefined,
+    employeeName,
+    email: row.email ? String(row.email) : undefined,
+    firstName: firstName || undefined,
+    lastName: lastName || undefined
   };
 }
 
@@ -91,13 +128,24 @@ function toCheckIn(row: Record<string, unknown>) {
 
 function toEmergency(row: Record<string, unknown>) {
   const details = parseEmergencyNotes(row.notes);
+  const firstName = row.first_name ? String(row.first_name) : "";
+  const lastName = row.last_name ? String(row.last_name) : "";
+  const employeeName = `${firstName} ${lastName}`.trim() || undefined;
+  const createdAt = row.created_at ? String(row.created_at) : String(row.timestamp || "");
+  const status = row.status
+    ? String(row.status)
+    : (Boolean(row.resolved) ? "resolved" : "open");
+
   return {
     id: String(row.id),
     userId: String(row.user_id),
+    user_id: String(row.user_id),
     shiftId: row.shift_id ? String(row.shift_id) : undefined,
     type: String(row.type || "sos"),
+    status,
+    created_at: createdAt,
     location: parseJson(row.location, null),
-    timestamp: String(row.timestamp || ""),
+    timestamp: String(row.timestamp || createdAt),
     resolved: Boolean(row.resolved),
     resolvedBy: row.resolved_by ? String(row.resolved_by) : undefined,
     resolvedAt: row.resolved_at ? String(row.resolved_at) : undefined,
@@ -107,7 +155,11 @@ function toEmergency(row: Record<string, unknown>) {
     canResumeWork: details.canResumeWork,
     actionsTaken: details.actionsTaken,
     followUpRequired: details.followUpRequired,
-    followUpNotes: details.followUpNotes
+    followUpNotes: details.followUpNotes,
+    employeeName,
+    email: row.email ? String(row.email) : undefined,
+    firstName: firstName || undefined,
+    lastName: lastName || undefined
   };
 }
 
@@ -188,9 +240,12 @@ export async function listTrips(req: AuthenticatedRequest, res: Response) {
   const items = await withFallback(
     async () => {
       const result = await pool.query(
-        `SELECT * FROM ursafe_trips
-         WHERE organization_id = $1 AND ($2::uuid IS NULL OR user_id = $2::uuid)
-         ORDER BY start_time DESC`,
+        `SELECT t.*, u.first_name, u.last_name, u.email,
+                COALESCE(t.distance_km, t.distance_miles * 1.60934) AS distance_km
+         FROM ursafe.ursafe_trips t
+         LEFT JOIN public.users u ON u.id = t.user_id
+         WHERE t.organization_id = $1 AND ($2::uuid IS NULL OR t.user_id = $2::uuid)
+         ORDER BY t.start_time DESC`,
         [organizationId, userId || null]
       );
       return result.rows.map((row) => toTrip(row));
@@ -209,7 +264,11 @@ export async function getTrip(req: AuthenticatedRequest, res: Response) {
   const trip = await withFallback(
     async () => {
       const result = await pool.query(
-        `SELECT * FROM ursafe_trips WHERE organization_id = $1 AND id = $2 LIMIT 1`,
+        `SELECT t.*, u.first_name, u.last_name, u.email,
+                COALESCE(t.distance_km, t.distance_miles * 1.60934) AS distance_km
+         FROM ursafe.ursafe_trips t
+         LEFT JOIN public.users u ON u.id = t.user_id
+         WHERE t.organization_id = $1 AND t.id = $2 LIMIT 1`,
         [organizationId, tripId]
       );
       return result.rows[0] ? toTrip(result.rows[0]) : null;
@@ -248,7 +307,7 @@ export async function createTrip(req: AuthenticatedRequest, res: Response) {
   const created = await withFallback(
     async () => {
       const result = await pool.query(
-        `INSERT INTO ursafe_trips (
+        `INSERT INTO ursafe.ursafe_trips (
           organization_id, user_id, status, category, start_location, end_location, start_time, end_time,
           distance_miles, route, notes, vehicle_info, purpose
         ) VALUES ($1,$2,$3,$4,$5::jsonb,$6::jsonb,$7,$8,$9,$10::jsonb,$11,$12,$13)
@@ -293,7 +352,7 @@ export async function updateTrip(req: AuthenticatedRequest, res: Response) {
   await withFallback(
     async () => {
       await pool.query(
-        `UPDATE ursafe_trips
+        `UPDATE ursafe.ursafe_trips
          SET status = COALESCE($1, status),
              notes = COALESCE($2, notes),
              end_time = COALESCE($3, end_time),
@@ -318,7 +377,7 @@ export async function deleteTrip(req: AuthenticatedRequest, res: Response) {
 
   await withFallback(
     async () => {
-      await pool.query(`DELETE FROM ursafe_trips WHERE organization_id = $1 AND id = $2`, [organizationId, tripId]);
+      await pool.query(`DELETE FROM ursafe.ursafe_trips WHERE organization_id = $1 AND id = $2`, [organizationId, tripId]);
       return true;
     },
     () => deleteDevResource("ursafe_trips", organizationId, tripId)
@@ -332,22 +391,38 @@ export async function listShifts(req: AuthenticatedRequest, res: Response) {
   const userId = typeof req.query.userId === "string" ? req.query.userId : undefined;
   const activeOnly = req.query.activeOnly === "true";
 
-  const items = await withFallback(
-    async () => {
-      const result = await pool.query(
-        `SELECT * FROM ursafe_shifts
-         WHERE organization_id = $1
-           AND ($2::uuid IS NULL OR user_id = $2::uuid)
-           AND ($3::boolean = FALSE OR status = 'active')
-         ORDER BY start_time DESC`,
-        [organizationId, userId || null, activeOnly]
-      );
-      return result.rows.map((row) => toShift(row));
-    },
-    () => listDevResource("ursafe_shifts", organizationId)
-      .filter((row) => (!userId || String(row.user_id) === userId) && (!activeOnly || row.status === "active"))
-      .map((row) => toShift(row))
+  const result = await pool.query(
+    `SELECT s.id,
+            s.user_id,
+            s.start_time,
+            s.end_time,
+            s.start_time AS shift_start,
+            s.end_time AS shift_end,
+            ROUND(EXTRACT(EPOCH FROM (COALESCE(s.end_time, NOW()) - s.start_time)) / 60.0)::int AS duration,
+            s.status,
+            s.last_check_in,
+            s.check_in_count,
+            s.start_location,
+            s.end_location,
+            s.current_location,
+            s.current_location AS location,
+            s.client_name,
+            s.client_address,
+            s.expected_duration,
+            s.notes,
+            u.first_name,
+            u.last_name,
+            u.email
+     FROM ursafe.ursafe_shifts s
+     LEFT JOIN public.users u ON u.id = s.user_id
+     WHERE s.organization_id = $1
+       AND ($2::uuid IS NULL OR s.user_id = $2::uuid)
+       AND ($3::boolean = FALSE OR s.status = 'active')
+     ORDER BY s.start_time DESC`,
+    [organizationId, userId || null, activeOnly]
   );
+
+  const items = result.rows.map((row) => toShift(row));
 
   return res.json({ items });
 }
@@ -495,20 +570,31 @@ export async function createCheckIn(req: AuthenticatedRequest, res: Response) {
 export async function listEmergencies(req: AuthenticatedRequest, res: Response) {
   const organizationId = orgId(req);
   const unresolvedOnly = req.query.unresolvedOnly === "true";
-  const items = await withFallback(
-    async () => {
-      const result = await pool.query(
-        `SELECT * FROM ursafe_emergencies
-         WHERE organization_id = $1 AND ($2::boolean = FALSE OR resolved = FALSE)
-         ORDER BY timestamp DESC`,
-        [organizationId, unresolvedOnly]
-      );
-      return result.rows.map((row) => toEmergency(row));
-    },
-    () => listDevResource("ursafe_emergencies", organizationId)
-      .filter((row) => !unresolvedOnly || !row.resolved)
-      .map((row) => toEmergency(row))
+  const result = await pool.query(
+    `SELECT e.id,
+            e.user_id,
+            e.shift_id,
+            e.type,
+            CASE WHEN e.resolved THEN 'resolved' ELSE 'open' END AS status,
+            COALESCE(e.timestamp, e.created_at) AS created_at,
+            e.location,
+            e.timestamp,
+            e.resolved,
+            e.resolved_by,
+            e.resolved_at,
+            e.notes,
+            u.first_name,
+            u.last_name,
+            u.email
+     FROM ursafe.ursafe_emergencies e
+     LEFT JOIN public.users u ON u.id = e.user_id
+     WHERE e.organization_id = $1
+       AND ($2::boolean = FALSE OR e.resolved = FALSE)
+     ORDER BY COALESCE(e.timestamp, e.created_at) DESC`,
+    [organizationId, unresolvedOnly]
   );
+
+  const items = result.rows.map((row) => toEmergency(row));
 
   return res.json({ items });
 }

@@ -7,6 +7,7 @@ import {
   createShift,
   createTrip,
   deleteTrip,
+  getSettings,
   getTrip,
   listActiveSessions,
   listCheckIns,
@@ -15,6 +16,7 @@ import {
   listTrips,
   listUsers,
   resolveEmergency,
+  saveSettings,
   updateShift,
   updateTrip
 } from "../controllers/ursafe-controller";
@@ -38,3 +40,5 @@ ursafeRouter.post("/emergencies", createEmergency);
 ursafeRouter.put("/emergencies/:id", resolveEmergency);
 ursafeRouter.get("/active-sessions", listActiveSessions);
 ursafeRouter.delete("/active-sessions/user/:userId", clearActiveSession);
+ursafeRouter.get("/settings", getSettings);
+ursafeRouter.post("/settings", saveSettings);
