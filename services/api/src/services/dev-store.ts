@@ -29,7 +29,7 @@ type StoreKey =
   | "ursafe_shifts"
   | "ursafe_check_ins"
   | "ursafe_emergencies"
-  | "ursafe_active_sessions";
+  | "ursafe_settings";
 
 const DEV_ORG_ID = "11111111-1111-1111-1111-111111111111";
 const URSAFE_MANAGER_ID = "33333333-3333-3333-3333-333333333333";
@@ -130,8 +130,8 @@ let devStore: Record<StoreKey, StoreItem[]> = {
   ursafe_emergencies: [
     { id: 1, organization_id: DEV_ORG_ID, user_id: URSAFE_EMPLOYEE_ID, shift_id: 1, type: "sos", location: '{"latitude":49.2480,"longitude":-122.9870,"timestamp":"2026-03-12T20:06:00.000Z","address":"Client home"}', timestamp: "2026-03-12T20:06:00.000Z", resolved: false, resolved_by: null, resolved_at: null, notes: "Employee requested immediate supervisor support" }
   ],
-  ursafe_active_sessions: [
-    { id: 1, organization_id: DEV_ORG_ID, user_id: URSAFE_EMPLOYEE_ID, status: "online", device_name: "iPhone 15", platform: "ios", started_at: "2026-03-12T17:45:00.000Z", last_seen_at: "2026-03-12T20:08:00.000Z", location: '{"latitude":49.2480,"longitude":-122.9870,"timestamp":"2026-03-12T20:08:00.000Z","address":"Client home"}', last_known_activity: "foreground", battery_level: 54, notes: '{"connectionStatus":"online"}' }
+  ursafe_settings: [
+    { id: 1, organization_id: DEV_ORG_ID, rate_per_km: 0.68, smtp_email: "", smtp_password: "", logo_data: null }
   ]
 };
 

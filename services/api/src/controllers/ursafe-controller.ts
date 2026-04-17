@@ -10,28 +10,6 @@ import {
 } from "../services/dev-store";
 
 const DEV_ORG_ID = "11111111-1111-1111-1111-111111111111";
-const DEV_USERS = [
-  {
-    id: "33333333-3333-3333-3333-333333333333",
-    email: "manager@vlworkhub.ca",
-    first_name: "Casey",
-    last_name: "Morgan",
-    department: "Field Operations",
-    manager_user_id: null,
-    is_active: true,
-    roles: ["Manager"]
-  },
-  {
-    id: "44444444-4444-4444-4444-444444444444",
-    email: "employee@vlworkhub.ca",
-    first_name: "Jordan",
-    last_name: "Lee",
-    department: "Community Support",
-    manager_user_id: "33333333-3333-3333-3333-333333333333",
-    is_active: true,
-    roles: ["Employee"]
-  }
-] as const;
 
 function parseJson<T>(value: unknown, fallback: T): T {
   if (!value) return fallback;
@@ -149,6 +127,15 @@ function toActiveSession(row: Record<string, unknown>) {
   };
 }
 
+function toSettings(row: Record<string, unknown>) {
+  return {
+    ratePerKm: Number(row.rate_per_km || 0.68),
+    smtpEmail: row.smtp_email ? String(row.smtp_email) : "",
+    smtpPassword: row.smtp_password ? String(row.smtp_password) : "",
+    logoData: row.logo_data ? String(row.logo_data) : null
+  };
+}
+
 async function withFallback<T>(operation: () => Promise<T>, fallback: () => T) {
   try {
     return await operation();
@@ -167,44 +154,30 @@ function orgId(req: AuthenticatedRequest) {
 
 export async function listUsers(req: AuthenticatedRequest, res: Response) {
   const organizationId = orgId(req);
-  const users = await withFallback(
-    async () => {
-      const result = await pool.query(
-        `SELECT u.id, u.email, u.first_name, u.last_name, p.department, p.manager_user_id, COALESCE(p.is_active, TRUE) AS is_active,
-                COALESCE(array_remove(array_agg(DISTINCT ur.role), NULL), '{}') AS roles
-         FROM users u
-         INNER JOIN user_app_access uaa ON uaa.user_id = u.id AND uaa.app = 'ursafe'
-         LEFT JOIN user_roles ur ON ur.user_id = u.id
-         LEFT JOIN ursafe_user_profiles p ON p.user_id = u.id
-         WHERE u.organization_id = $1 AND u.status = 'active'
-         GROUP BY u.id, p.department, p.manager_user_id, p.is_active
-         ORDER BY u.first_name, u.last_name`,
-        [organizationId]
-      );
-      return result.rows.map((row) => ({
-        id: row.id,
-        email: row.email,
-        firstName: row.first_name,
-        lastName: row.last_name,
-        department: row.department,
-        managerId: row.manager_user_id,
-        isActive: row.is_active,
-        role: row.roles[0] || "Employee",
-        roles: row.roles
-      }));
-    },
-    () => DEV_USERS.map((user) => ({
-      id: user.id,
-      email: user.email,
-      firstName: user.first_name,
-      lastName: user.last_name,
-      department: user.department,
-      managerId: user.manager_user_id,
-      isActive: user.is_active,
-      role: user.roles[0],
-      roles: [...user.roles]
-    }))
+  const result = await pool.query(
+    `SELECT u.id, u.email, u.first_name, u.last_name, p.department, p.manager_user_id, COALESCE(p.is_active, TRUE) AS is_active,
+            COALESCE(array_remove(array_agg(DISTINCT ur.role), NULL), '{}') AS roles
+     FROM users u
+     INNER JOIN user_app_access uaa ON uaa.user_id = u.id AND uaa.app = 'ursafe'
+     LEFT JOIN user_roles ur ON ur.user_id = u.id
+     LEFT JOIN ursafe_user_profiles p ON p.user_id = u.id
+     WHERE u.organization_id = $1 AND u.status = 'active'
+     GROUP BY u.id, p.department, p.manager_user_id, p.is_active
+     ORDER BY u.first_name, u.last_name`,
+    [organizationId]
   );
+
+  const users = result.rows.map((row) => ({
+    id: row.id,
+    email: row.email,
+    firstName: row.first_name,
+    lastName: row.last_name,
+    department: row.department,
+    managerId: row.manager_user_id,
+    isActive: row.is_active,
+    role: row.roles[0] || "Employee",
+    roles: row.roles
+  }));
 
   return res.json({ items: users });
 }
@@ -611,16 +584,29 @@ export async function resolveEmergency(req: AuthenticatedRequest, res: Response)
 
 export async function listActiveSessions(req: AuthenticatedRequest, res: Response) {
   const organizationId = orgId(req);
-  const items = await withFallback(
-    async () => {
-      const result = await pool.query(
-        `SELECT * FROM ursafe_active_sessions WHERE organization_id = $1 ORDER BY last_seen_at DESC`,
-        [organizationId]
-      );
-      return result.rows.map((row) => toActiveSession(row));
-    },
-    () => listDevResource("ursafe_active_sessions", organizationId).map((row) => toActiveSession(row))
+  const result = await pool.query(
+    `SELECT id,
+            user_id,
+            status,
+            device AS device_name,
+            NULL::text AS platform,
+            tracking_since AS started_at,
+            last_seen AS last_seen_at,
+            CASE
+              WHEN latitude IS NOT NULL AND longitude IS NOT NULL THEN
+                jsonb_build_object('latitude', latitude, 'longitude', longitude, 'timestamp', last_seen)
+              ELSE NULL
+            END AS location,
+            NULL::text AS last_known_activity,
+            NULL::integer AS battery_level,
+            notes
+     FROM ursafe.active_sessions
+     WHERE organization_id = $1
+     ORDER BY last_seen DESC`,
+    [organizationId]
   );
+
+  const items = result.rows.map((row) => toActiveSession(row));
 
   return res.json({ items });
 }
@@ -629,16 +615,68 @@ export async function clearActiveSession(req: AuthenticatedRequest, res: Respons
   const organizationId = orgId(req);
   const userId = req.params.userId;
 
-  await withFallback(
+  await pool.query(`DELETE FROM ursafe.active_sessions WHERE organization_id = $1 AND user_id = $2`, [organizationId, userId]);
+
+  return res.json({ success: true });
+}
+
+export async function getSettings(req: AuthenticatedRequest, res: Response) {
+  const organizationId = orgId(req);
+  const settings = await withFallback(
     async () => {
-      await pool.query(`DELETE FROM ursafe_active_sessions WHERE organization_id = $1 AND user_id = $2`, [organizationId, userId]);
-      return true;
+      const result = await pool.query(
+        `SELECT rate_per_km, smtp_email, smtp_password, logo_data
+         FROM ursafe_settings
+         WHERE organization_id = $1
+         LIMIT 1`,
+        [organizationId]
+      );
+      return result.rows[0] ? toSettings(result.rows[0]) : { ratePerKm: 0.68, smtpEmail: "", smtpPassword: "", logoData: null };
     },
     () => {
-      const session = listDevResource("ursafe_active_sessions", organizationId).find((entry) => String(entry.user_id) === userId);
-      return session ? deleteDevResource("ursafe_active_sessions", organizationId, session.id) : false;
+      const row = listDevResource("ursafe_settings", organizationId)[0];
+      return row ? toSettings(row) : { ratePerKm: 0.68, smtpEmail: "", smtpPassword: "", logoData: null };
     }
   );
 
-  return res.json({ success: true });
+  return res.json(settings);
+}
+
+export async function saveSettings(req: AuthenticatedRequest, res: Response) {
+  const organizationId = orgId(req);
+  const payload = req.body as Record<string, unknown>;
+  const values = {
+    rate_per_km: Number(payload.ratePerKm || 0.68),
+    smtp_email: payload.smtpEmail ? String(payload.smtpEmail) : "",
+    smtp_password: payload.smtpPassword ? String(payload.smtpPassword) : "",
+    logo_data: payload.logoData ? String(payload.logoData) : null
+  };
+
+  const saved = await withFallback(
+    async () => {
+      const result = await pool.query(
+        `INSERT INTO ursafe_settings (organization_id, rate_per_km, smtp_email, smtp_password, logo_data)
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (organization_id)
+         DO UPDATE SET
+           rate_per_km = EXCLUDED.rate_per_km,
+           smtp_email = EXCLUDED.smtp_email,
+           smtp_password = EXCLUDED.smtp_password,
+           logo_data = EXCLUDED.logo_data
+         RETURNING rate_per_km, smtp_email, smtp_password, logo_data`,
+        [organizationId, values.rate_per_km, values.smtp_email, values.smtp_password, values.logo_data]
+      );
+      return toSettings(result.rows[0]);
+    },
+    () => {
+      const existing = listDevResource("ursafe_settings", organizationId)[0];
+      if (existing) {
+        const updated = updateDevResource("ursafe_settings", organizationId, existing.id, values);
+        return toSettings(updated || existing);
+      }
+      return toSettings(createDevResource("ursafe_settings", organizationId, values));
+    }
+  );
+
+  return res.json(saved);
 }

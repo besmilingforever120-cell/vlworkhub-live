@@ -70,4 +70,69 @@ ALTER TABLE IF EXISTS public.ursafe_check_ins SET SCHEMA ursafe;
 ALTER TABLE IF EXISTS public.ursafe_emergencies SET SCHEMA ursafe;
 ALTER TABLE IF EXISTS public.ursafe_active_sessions SET SCHEMA ursafe;
 
+CREATE TABLE IF NOT EXISTS ursafe.active_sessions (
+	id BIGSERIAL PRIMARY KEY,
+	organization_id UUID NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
+	user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+	latitude NUMERIC(10, 7),
+	longitude NUMERIC(10, 7),
+	device TEXT,
+	status TEXT NOT NULL DEFAULT 'online' CHECK (status IN ('online', 'idle', 'lost')),
+	last_seen TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+	tracking_since TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+	notes TEXT,
+	created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+	UNIQUE (organization_id, user_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_ursafe_active_sessions_org_last_seen
+	ON ursafe.active_sessions (organization_id, last_seen DESC);
+
+DO $$
+BEGIN
+	IF to_regclass('ursafe.ursafe_active_sessions') IS NOT NULL THEN
+		INSERT INTO ursafe.active_sessions (
+			organization_id,
+			user_id,
+			latitude,
+			longitude,
+			device,
+			status,
+			last_seen,
+			tracking_since,
+			notes
+		)
+		SELECT
+			organization_id,
+			user_id,
+			CASE
+				WHEN location IS NOT NULL AND location ? 'latitude' THEN NULLIF(location ->> 'latitude', '')::NUMERIC(10, 7)
+				ELSE NULL
+			END AS latitude,
+			CASE
+				WHEN location IS NOT NULL AND location ? 'longitude' THEN NULLIF(location ->> 'longitude', '')::NUMERIC(10, 7)
+				ELSE NULL
+			END AS longitude,
+			device_name AS device,
+			CASE
+				WHEN status IN ('online', 'idle', 'lost') THEN status
+				WHEN status = 'stale' THEN 'lost'
+				ELSE 'online'
+			END AS status,
+			COALESCE(last_seen_at, NOW()) AS last_seen,
+			COALESCE(started_at, last_seen_at, NOW()) AS tracking_since,
+			notes
+		FROM ursafe.ursafe_active_sessions
+		ON CONFLICT (organization_id, user_id)
+		DO UPDATE SET
+			latitude = EXCLUDED.latitude,
+			longitude = EXCLUDED.longitude,
+			device = EXCLUDED.device,
+			status = EXCLUDED.status,
+			last_seen = EXCLUDED.last_seen,
+			tracking_since = EXCLUDED.tracking_since,
+			notes = EXCLUDED.notes;
+	END IF;
+END $$;
+
 COMMIT;
