@@ -3,8 +3,9 @@
 import "leaflet/dist/leaflet.css";
 
 import type { UrsafeEmergency, UrsafeShift, UrsafeTrip, UrsafeUser } from "@vlworkhub/types";
-import L from "leaflet";
-import { useEffect, useMemo, useRef } from "react";
+import type { DivIcon, Marker as LeafletMarker } from "leaflet";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { usePathname } from "next/navigation";
 import { MapContainer, Marker, Polyline, Popup, TileLayer, useMap } from "react-leaflet";
 
 type EnrichedShift = UrsafeShift & {
@@ -29,26 +30,6 @@ type LegacyMapViewProps = {
   onMarkerClick: (userId: string) => void;
 };
 
-delete (L.Icon.Default.prototype as { _getIconUrl?: unknown })._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png",
-  iconUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png",
-  shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png"
-});
-
-const createCustomIcon = (color: string) => {
-  return L.divIcon({
-    className: "custom-div-icon",
-    html: `<div style="background-color: ${color}; width: 30px; height: 30px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.3);"></div>`,
-    iconSize: [30, 30],
-    iconAnchor: [15, 15]
-  });
-};
-
-const tripIcon = createCustomIcon("#3b82f6");
-const shiftIcon = createCustomIcon("#10b981");
-const emergencyIcon = createCustomIcon("#ef4444");
-
 function MapUpdater({ center, disabled }: { center: [number, number]; disabled?: boolean }) {
   const map = useMap();
   useEffect(() => {
@@ -69,10 +50,56 @@ function EmergencyFocus({ emergency }: { emergency?: EmergencyWithUser | null })
 }
 
 export default function LegacyMapView(props: LegacyMapViewProps) {
+  const pathname = usePathname();
   const defaultCenter: [number, number] = [49.2827, -123.1207];
-  const markerRefs = useRef<Record<string, L.Marker>>({});
+  const markerRefs = useRef<Record<string, LeafletMarker>>({});
+  const [isMounted, setIsMounted] = useState(false);
+  const [icons, setIcons] = useState<{ trip: DivIcon; shift: DivIcon; emergency: DivIcon } | null>(null);
 
-  const registerMarker = (userId: string) => (marker: L.Marker | null) => {
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadLeaflet = async () => {
+      const leafletModule = await import("leaflet");
+      const leaflet = leafletModule.default ?? leafletModule;
+
+      delete (leaflet.Icon.Default.prototype as { _getIconUrl?: unknown })._getIconUrl;
+      leaflet.Icon.Default.mergeOptions({
+        iconRetinaUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png",
+        iconUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png",
+        shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png"
+      });
+
+      const createCustomIcon = (color: string) => {
+        return leaflet.divIcon({
+          className: "custom-div-icon",
+          html: `<div style="background-color: ${color}; width: 30px; height: 30px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.3);"></div>`,
+          iconSize: [30, 30],
+          iconAnchor: [15, 15]
+        });
+      };
+
+      if (!cancelled) {
+        setIcons({
+          trip: createCustomIcon("#3b82f6"),
+          shift: createCustomIcon("#10b981"),
+          emergency: createCustomIcon("#ef4444")
+        });
+      }
+    };
+
+    void loadLeaflet();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const registerMarker = (userId: string) => (marker: LeafletMarker | null) => {
     if (!marker) {
       delete markerRefs.current[userId];
       return;
@@ -142,8 +169,17 @@ export default function LegacyMapView(props: LegacyMapViewProps) {
     marker?.openPopup();
   }, [props.focusedEmergency]);
 
+  if (!isMounted) {
+    return <div className="h-full w-full bg-slate-100" />;
+  }
+
   return (
-    <MapContainer center={mapCenter} zoom={12} style={{ height: "100%", width: "100%" }}>
+    <MapContainer
+      key={`${pathname || "live-tracking"}-legacy-map-view-mounted`}
+      center={mapCenter}
+      zoom={12}
+      style={{ height: "100%", width: "100%" }}
+    >
       <MapUpdater center={mapCenter} disabled={Boolean(props.focusedEmergency)} />
       <EmergencyFocus emergency={props.focusedEmergency} />
       <TileLayer attribution="OpenStreetMap contributors" url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
@@ -151,7 +187,7 @@ export default function LegacyMapView(props: LegacyMapViewProps) {
       {props.shifts.map((shift) => {
         if (!shift.currentLocation) return null;
         const emergencyForShift = emergencyByUserId.get(shift.userId);
-        const markerIcon = emergencyForShift ? emergencyIcon : shiftIcon;
+        const markerIcon = emergencyForShift ? icons?.emergency : icons?.shift;
 
         const duration = Math.floor((new Date().getTime() - new Date(shift.startTime).getTime()) / 60000);
         const hours = Math.floor(duration / 60);
@@ -220,7 +256,7 @@ export default function LegacyMapView(props: LegacyMapViewProps) {
             <Polyline positions={routeCoordinates} color="#3b82f6" weight={3} opacity={0.6} />
             <Marker
               position={[lastPosition.latitude, lastPosition.longitude]}
-              icon={tripIcon}
+              icon={icons?.trip}
               eventHandlers={{ click: () => props.onMarkerClick(trip.userId) }}
             >
               <Popup>
@@ -256,7 +292,7 @@ export default function LegacyMapView(props: LegacyMapViewProps) {
           <Marker
             key={`emergency-${emergency.id}`}
             position={[emergency.location.latitude, emergency.location.longitude]}
-            icon={emergencyIcon}
+            icon={icons?.emergency}
             ref={registerMarker(emergency.userId)}
             eventHandlers={{ click: () => props.onMarkerClick(emergency.userId) }}
           >

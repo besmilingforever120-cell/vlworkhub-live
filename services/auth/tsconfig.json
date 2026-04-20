@@ -1,12 +1,18 @@
 {
-  "extends": "../../tsconfig.base.json",
+  "ignoreDeprecations": "6.0",
   "compilerOptions": {
-    "outDir": "dist",
-    "rootDir": "src",
+    "target": "ES2022",
+    "lib": ["es2022"],
+    "strict": true,
+    "esModuleInterop": true,
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
+    "resolveJsonModule": true,
+    "outDir": "dist",
+    "rootDir": "src",
     "noEmit": false,
     "declaration": false
   },
-  "include": ["src/**/*"]
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist"]
 }

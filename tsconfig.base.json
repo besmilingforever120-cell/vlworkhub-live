@@ -11,14 +11,7 @@
     "moduleResolution": "Bundler",
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "jsx": "preserve",
-    "baseUrl": ".",
-    "paths": {
-      "@vlworkhub/ui": ["packages/ui/src/index.ts"],
-      "@vlworkhub/ui/*": ["packages/ui/src/*"],
-      "@vlworkhub/config": ["packages/config/index.ts"],
-      "@vlworkhub/config/*": ["packages/config/*"],
-      "@vlworkhub/types": ["packages/types/index.ts"]
-    }
+    "ignoreDeprecations": "6.0",
+    "jsx": "preserve"
   }
 }

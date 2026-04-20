@@ -5,7 +5,11 @@ import { HrPortalHeader } from "../../../components/hr-portal-header";
 import { AdminOnboardingFilesView } from "../../../components/admin-onboarding-files-view";
 
 async function getSession() {
-  const cookieHeader = cookies().toString();
+  const cookieStore = await cookies();
+  const cookieHeader = cookieStore
+    .getAll()
+    .map((c) => `${c.name}=${c.value}`)
+    .join("; ");
   const response = await fetch(`${platformLinks.api}/auth/me`, {
     headers: { cookie: cookieHeader },
     cache: "no-store"

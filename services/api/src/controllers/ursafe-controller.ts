@@ -697,11 +697,118 @@ export async function listActiveSessions(req: AuthenticatedRequest, res: Respons
   return res.json({ items });
 }
 
+export async function upsertActiveSession(req: AuthenticatedRequest, res: Response) {
+  const organizationId = orgId(req);
+  const payload = req.body as Record<string, unknown>;
+  const targetUserId = payload.userId ? String(payload.userId) : String(req.user?.user_id || "");
+
+  if (!targetUserId) {
+    return res.status(400).json({ message: "userId is required" });
+  }
+
+  const location = (payload.location && typeof payload.location === "object")
+    ? (payload.location as Record<string, unknown>)
+    : undefined;
+  const latitude = typeof location?.latitude === "number" ? Number(location.latitude) : null;
+  const longitude = typeof location?.longitude === "number" ? Number(location.longitude) : null;
+  const rawStatus = String(payload.status || "online").toLowerCase();
+  const status = rawStatus === "idle" || rawStatus === "lost" ? rawStatus : "online";
+  const startedAt = String(payload.startedAt || payload.trackingSince || payload.lastSeenAt || new Date().toISOString());
+  const lastSeenAt = String(payload.lastSeenAt || new Date().toISOString());
+  const device = payload.deviceName ? String(payload.deviceName) : (payload.device ? String(payload.device) : "mobile");
+  const notes = payload.notes ? String(payload.notes) : null;
+
+  const item = await withFallback(
+    async () => {
+      await pool.query(
+        `INSERT INTO ursafe.active_sessions (
+           organization_id,
+           user_id,
+           latitude,
+           longitude,
+           device,
+           status,
+           last_seen,
+           tracking_since,
+           notes
+         )
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+         ON CONFLICT (organization_id, user_id)
+         DO UPDATE SET
+           latitude = EXCLUDED.latitude,
+           longitude = EXCLUDED.longitude,
+           device = EXCLUDED.device,
+           status = EXCLUDED.status,
+           last_seen = EXCLUDED.last_seen,
+           tracking_since = LEAST(ursafe.active_sessions.tracking_since, EXCLUDED.tracking_since),
+           notes = EXCLUDED.notes`,
+        [organizationId, targetUserId, latitude, longitude, device, status, lastSeenAt, startedAt, notes]
+      );
+
+      const result = await pool.query(
+        `SELECT id,
+                user_id,
+                status,
+                device AS device_name,
+                NULL::text AS platform,
+                tracking_since AS started_at,
+                last_seen AS last_seen_at,
+                CASE
+                  WHEN latitude IS NOT NULL AND longitude IS NOT NULL THEN
+                    jsonb_build_object('latitude', latitude, 'longitude', longitude, 'timestamp', last_seen)
+                  ELSE NULL
+                END AS location,
+                NULL::text AS last_known_activity,
+                NULL::integer AS battery_level,
+                notes
+         FROM ursafe.active_sessions
+         WHERE organization_id = $1 AND user_id = $2
+         LIMIT 1`,
+        [organizationId, targetUserId]
+      );
+
+      return result.rows[0] ? toActiveSession(result.rows[0]) : null;
+    },
+    () => {
+      const existing = listDevResource("ursafe_active_sessions", organizationId)
+        .find((entry) => String(entry.user_id) === targetUserId);
+      const values = {
+        user_id: targetUserId,
+        status,
+        device_name: device,
+        started_at: startedAt,
+        last_seen_at: lastSeenAt,
+        location: location || null,
+        notes
+      };
+      const row = existing
+        ? updateDevResource("ursafe_active_sessions", organizationId, Number(existing.id), values)
+        : createDevResource("ursafe_active_sessions", organizationId, values);
+      return toActiveSession((row || existing || values) as Record<string, unknown>);
+    }
+  );
+
+  return res.json({ item });
+}
+
 export async function clearActiveSession(req: AuthenticatedRequest, res: Response) {
   const organizationId = orgId(req);
   const userId = req.params.userId;
 
   await pool.query(`DELETE FROM ursafe.active_sessions WHERE organization_id = $1 AND user_id = $2`, [organizationId, userId]);
+
+  return res.json({ success: true });
+}
+
+export async function clearActiveSessionById(req: AuthenticatedRequest, res: Response) {
+  const organizationId = orgId(req);
+  const sessionId = Number(req.params.id);
+
+  if (!Number.isFinite(sessionId)) {
+    return res.status(400).json({ message: "Invalid session id" });
+  }
+
+  await pool.query(`DELETE FROM ursafe.active_sessions WHERE organization_id = $1 AND id = $2`, [organizationId, sessionId]);
 
   return res.json({ success: true });
 }

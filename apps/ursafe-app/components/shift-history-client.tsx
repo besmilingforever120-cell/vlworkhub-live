@@ -278,8 +278,8 @@ export default function ShiftHistoryClient() {
 
                   {expanded ? (
                     <div className="mt-4 space-y-3">
-                      {entry.timeline.map((event) => (
-                        <div key={event.id} className="rounded-xl border border-gray-100 bg-gray-50 p-3">
+                      {entry.timeline.map((event, index) => (
+                        <div key={`${event.id}-${event.timestamp}-${index}`} className="rounded-xl border border-gray-100 bg-gray-50 p-3">
                           <div className="flex items-center justify-between gap-3">
                             <p className="font-semibold text-slate-900">{event.label}</p>
                             <p className="text-xs text-slate-500">{new Date(event.timestamp).toLocaleString()}</p>

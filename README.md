@@ -25,9 +25,9 @@ Production-oriented monorepo for the VLWorkHub platform.
 4. Verify containers with `docker compose ps`.
 5. Verify PostgreSQL and API:
    `docker compose logs postgres`
-   `curl http://localhost:8080/health`
+   `curl http://192.168.1.156:8080/health`
 6. Test authentication after startup:
-   `curl -i -X POST http://localhost:8080/auth/login -H "Content-Type: application/json" -d '{"email":"admin@vlworkhub.ca","password":"Password123!"}'`
+   `curl -i -X POST http://192.168.1.156:8080/auth/login -H "Content-Type: application/json" -d '{"email":"admin@vlworkhub.ca","password":"Password123!"}'`
 
 Expected checks:
 - `postgres` should report healthy and initialize `infra/pgsql/schema.sql`

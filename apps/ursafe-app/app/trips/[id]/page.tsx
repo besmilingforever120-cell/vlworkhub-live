@@ -16,9 +16,7 @@ import {
   updateTrip
 } from "../../../lib/ursafe-client";
 
-const TripRouteMap = dynamic(() => import("../../../components/trip-route-map"), {
-  ssr: false
-});
+const TripRouteMap = dynamic(() => import("../../../components/trip-route-map"), { ssr: false });
 
 export default function TripDetailPage() {
   const params = useParams<{ id: string }>();

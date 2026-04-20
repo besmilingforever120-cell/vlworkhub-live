@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import type { Request, Response } from "express";
 import type { QueryResultRow } from "pg";
-import { buildCookie, clearCookie, signAuthToken } from "@vlworkhub/auth";
+import { clearCookie, signAuthToken } from "@vlworkhub/auth";
 import { env } from "../config/env";
 import { pool } from "../config/db";
 import type { AuthenticatedRequest } from "../middleware/auth";
@@ -37,7 +37,7 @@ function hashPassword(password: string) {
 }
 
 function passwordMatches(password: string, storedPasswordHash: string) {
-  return storedPasswordHash === password || storedPasswordHash === hashPassword(password);
+  return storedPasswordHash === hashPassword(password);
 }
 
 async function findUserByEmail(email: string) {
@@ -118,7 +118,12 @@ export async function login(req: Request, res: Response) {
       env.jwtSecret
     );
 
-    res.setHeader("Set-Cookie", buildCookie(token, env.cookieDomain));
+    res.cookie("token", token, {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: env.nodeEnv === "production",
+      path: "/"
+    });
     return res.json({ token, user: sessionUser });
   } catch (error) {
     console.error("API error in POST /auth/login", error);
@@ -128,6 +133,12 @@ export async function login(req: Request, res: Response) {
 
 export async function logout(_: Request, res: Response) {
   try {
+    res.clearCookie("token", {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: env.nodeEnv === "production",
+      path: "/"
+    });
     res.setHeader("Set-Cookie", clearCookie(env.cookieDomain));
     return res.json({ success: true });
   } catch (error) {

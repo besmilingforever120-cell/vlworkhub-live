@@ -1,1 +1,9 @@
-export default { experimental: { typedRoutes: true } };
+const envAllowedOrigins = (process.env.NEXT_ALLOWED_DEV_ORIGINS || "")
+	.split(",")
+	.map((origin) => origin.trim())
+	.filter(Boolean);
+
+export default {
+	experimental: { typedRoutes: true },
+	allowedDevOrigins: ["192.168.1.156", ...envAllowedOrigins]
+};

@@ -12,6 +12,8 @@ import {
   getUrsafeUsers
 } from "../lib/ursafe-client";
 
+const ActiveUsersMap = dynamic(() => import("./active-users-map"), { ssr: false });
+
 type DecoratedSession = UrsafeActiveSession & {
   user?: UrsafeUser;
   minutesSinceLastSeen: number;
@@ -22,8 +24,6 @@ type DecoratedSession = UrsafeActiveSession & {
   connectionStatus: ConnectionStatus;
   status: ActivePresenceStatus;
 };
-
-const ActiveUsersMap = dynamic(() => import("./active-users-map"), { ssr: false });
 
 const REFRESH_INTERVAL_MS = 10000;
 const LOST_CONNECTION_THRESHOLD_MINUTES = 5;

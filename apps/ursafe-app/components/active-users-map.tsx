@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { usePathname } from "next/navigation";
 import { MapContainer, Marker, TileLayer, Tooltip, useMap } from "react-leaflet";
-import L from "leaflet";
+import type { DivIcon } from "leaflet";
 import "leaflet/dist/leaflet.css";
 import type { UrsafeActiveSession, UrsafeUser } from "@vlworkhub/types";
 
@@ -38,27 +39,59 @@ function getStatusColor(status: ActivePresenceStatus) {
 }
 
 function buildMarkerIcon(session: DecoratedSession, highlighted: boolean) {
-  const color = getStatusColor(session.status);
-  const pulse = highlighted ? "pulse" : "";
-  const disconnectedRing = session.isDisconnected
-    ? "box-shadow:0 0 0 6px rgba(244,63,94,0.28),0 0 0 12px rgba(244,63,94,0.15);"
-    : "";
-
-  return L.divIcon({
-    className: "active-user-div-icon",
-    html: `<div style="width:${highlighted ? 30 : 22}px;height:${highlighted ? 30 : 22}px;border-radius:999px;background:${color};border:3px solid white;${disconnectedRing}animation:${pulse ? "pulse 1.2s ease-in-out infinite" : "none"};"></div>`,
-    iconSize: highlighted ? [30, 30] : [22, 22],
-    iconAnchor: highlighted ? [15, 15] : [11, 11]
-  });
+  return { color: getStatusColor(session.status), highlighted };
 }
 
 function KeepCentered({ center }: { center: [number, number] }) {
   const map = useMap();
-  map.setView(center, map.getZoom(), { animate: true });
+  useEffect(() => {
+    map.setView(center, map.getZoom(), { animate: true });
+  }, [center, map]);
   return null;
 }
 
 export default function ActiveUsersMap(props: Props) {
+  const pathname = usePathname();
+  const [isMounted, setIsMounted] = useState(false);
+  const [leafletIcons, setLeafletIcons] = useState<{ create: (color: string, highlighted: boolean, disconnected: boolean) => DivIcon } | null>(null);
+
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadLeaflet = async () => {
+      const leafletModule = await import("leaflet");
+      const leaflet = leafletModule.default ?? leafletModule;
+
+      if (!cancelled) {
+        setLeafletIcons({
+          create: (color: string, highlighted: boolean, disconnected: boolean) => {
+            const pulse = highlighted ? "pulse" : "";
+            const disconnectedRing = disconnected
+              ? "box-shadow:0 0 0 6px rgba(244,63,94,0.28),0 0 0 12px rgba(244,63,94,0.15);"
+              : "";
+
+            return leaflet.divIcon({
+              className: "active-user-div-icon",
+              html: `<div style="width:${highlighted ? 30 : 22}px;height:${highlighted ? 30 : 22}px;border-radius:999px;background:${color};border:3px solid white;${disconnectedRing}animation:${pulse ? "pulse 1.2s ease-in-out infinite" : "none"};"></div>`,
+              iconSize: highlighted ? [30, 30] : [22, 22],
+              iconAnchor: highlighted ? [15, 15] : [11, 11]
+            });
+          }
+        });
+      }
+    };
+
+    void loadLeaflet();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const markers = useMemo(() => {
     return props.sessions.filter((session) => Boolean(session.location?.latitude) && Boolean(session.location?.longitude));
   }, [props.sessions]);
@@ -74,9 +107,19 @@ export default function ActiveUsersMap(props: Props) {
       ? [markers[0].location.latitude, markers[0].location.longitude]
       : defaultCenter;
 
+  if (!isMounted) {
+    return <div className="h-full w-full bg-slate-100" />;
+  }
+
   return (
     <div className="h-full w-full">
-      <MapContainer center={center} zoom={12} scrollWheelZoom className="h-full w-full">
+      <MapContainer
+        key={`${pathname || "active-users"}-active-users-map-mounted`}
+        center={center}
+        zoom={12}
+        scrollWheelZoom
+        className="h-full w-full"
+      >
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -85,7 +128,8 @@ export default function ActiveUsersMap(props: Props) {
         {markers.map((session) => {
           if (!session.location) return null;
           const highlighted = session.userId === props.highlightedUserId;
-          const icon = buildMarkerIcon(session, highlighted);
+          const markerTheme = buildMarkerIcon(session, highlighted);
+          const icon = leafletIcons?.create(markerTheme.color, markerTheme.highlighted, session.isDisconnected);
           const employeeName = session.user
             ? `${session.user.firstName ?? ""} ${session.user.lastName ?? ""}`.trim()
             : session.userId;

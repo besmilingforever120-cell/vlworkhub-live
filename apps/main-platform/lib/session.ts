@@ -16,13 +16,22 @@ type PlatformAppAccess = {
 };
 
 export async function getPlatformSession() {
-  const cookieHeader = cookies().toString();
-  const response = await fetch(`${platformLinks.api}/auth/me`, {
-    headers: { cookie: cookieHeader },
-    cache: "no-store"
-  }).catch(() => null);
+  const cookieStore = await cookies();
 
-  if (!response?.ok) {
+  const cookieHeader = cookieStore
+    .getAll()
+    .map(c => `${c.name}=${c.value}`)
+    .join('; ');
+
+  const response = await fetch(`${platformLinks.api}/auth/me`, {
+    headers: {
+      cookie: cookieHeader,
+    },
+    credentials: "include",
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
     return null;
   }
 
@@ -31,7 +40,11 @@ export async function getPlatformSession() {
 }
 
 export async function getPlatformAppAccess() {
-  const cookieHeader = cookies().toString();
+  const cookieStore = await cookies();
+  const cookieHeader = cookieStore
+    .getAll()
+    .map(c => `${c.name}=${c.value}`)
+    .join('; ');
   const response = await fetch(`${platformLinks.api}/api/apps/my-access`, {
     headers: { cookie: cookieHeader },
     cache: "no-store"

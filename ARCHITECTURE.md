@@ -174,7 +174,7 @@ services/api
 
 Runs on:
 
-http://localhost:8080
+http://192.168.1.156:8080
 
 Main endpoints:
 
@@ -205,7 +205,7 @@ UR Safe
 localhost:3003
 
 API
-localhost:8080
+192.168.1.156:8080
 
 ---
 

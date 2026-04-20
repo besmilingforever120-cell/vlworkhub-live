@@ -565,7 +565,7 @@ From [services/api/src/config/env.ts](C:/vlworkhub/services/api/src/config/env.t
 Frontend middleware defaults:
 
 - `NEXT_PUBLIC_ROOT_URL` default: `http://localhost:3000`
-- `NEXT_PUBLIC_API_URL` default: `http://localhost:8080`
+- `NEXT_PUBLIC_API_URL` default: `http://192.168.1.156:8080`
 
 ### Install dependencies
 
@@ -619,7 +619,7 @@ npm run start -w @vlworkhub/api
 
 Default API URL:
 
-- `http://localhost:8080`
+- `http://192.168.1.156:8080`
 
 ### Database verification
 

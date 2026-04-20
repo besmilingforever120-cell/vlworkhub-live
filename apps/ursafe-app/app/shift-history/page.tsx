@@ -1,8 +1,4 @@
-import dynamic from "next/dynamic";
-
-const ShiftHistoryClient = dynamic(() => import("../../components/shift-history-client"), {
-  ssr: false
-});
+import ShiftHistoryClient from "../../components/shift-history-client";
 
 export default function Page() {
   return <ShiftHistoryClient />;

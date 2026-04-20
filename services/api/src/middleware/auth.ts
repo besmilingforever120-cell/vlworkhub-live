@@ -8,7 +8,7 @@ export interface AuthenticatedRequest extends Request {
 
 export function requireAuth(req: AuthenticatedRequest, res: Response, next: NextFunction) {
   const bearer = req.headers.authorization?.replace("Bearer ", "");
-  const token = bearer || req.cookies[getCookieName()];
+  const token = bearer || req.cookies[getCookieName()] || req.cookies.token;
 
   if (!token) {
     return res.status(401).json({ message: "Missing session token" });

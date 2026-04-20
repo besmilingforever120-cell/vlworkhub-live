@@ -16,17 +16,25 @@ import { startOnboardingExpiryTaskScheduler } from "./controllers/hr-documents-c
 
 const app = express();
 
-function isDynamicDevOriginAllowed(origin: string) {
-  return /^http:\/\/localhost(?::\d+)?$/i.test(origin) || /^http:\/\/192\.168\.\d{1,3}\.\d{1,3}(?::\d+)?$/i.test(origin);
-}
+const extraAllowedOrigins = [
+  "http://localhost:3000",
+  "http://localhost:3001",
+  "http://localhost:3002",
+  "http://localhost:3003",
+  "http://192.168.1.156:3000",
+  "http://192.168.1.156:3001",
+  "http://192.168.1.156:3002",
+  "http://192.168.1.156:3003"
+];
+
+const allowedOrigins = Array.from(new Set([...env.allowedOrigins, ...extraAllowedOrigins]));
 
 app.use(
   cors({
     origin(origin, callback) {
-      if (!origin || env.allowedOrigins.includes(origin) || isDynamicDevOriginAllowed(origin)) {
+      if (!origin || allowedOrigins.includes(origin)) {
         return callback(null, true);
       }
-
       return callback(new Error(`Origin ${origin} is not allowed by CORS`));
     },
     credentials: true

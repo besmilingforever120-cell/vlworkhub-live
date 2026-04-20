@@ -22,7 +22,6 @@ import {
   getCompletionUsersByAssignment,
   getTrainingAssignmentStatusForViewer,
   getCurrentPlatformUser,
-  getQuizUrl,
   getVisibleDepartmentNames,
   isAssignmentTargetedToUser,
   isAssignmentVisible,

@@ -1,9 +1,5 @@
-import dynamic from "next/dynamic";
-
-const TripsClient = dynamic(() => import("../../components/mileage-client"), {
-	ssr: false
-});
+import MileageClient from "../../components/mileage-client";
 
 export default function TripsPage() {
-	return <TripsClient />;
+	return <MileageClient />;
 }

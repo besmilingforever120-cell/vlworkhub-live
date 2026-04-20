@@ -3,6 +3,7 @@ import type { NextRequest } from "next/server";
 
 const apiUrl = process.env.NEXT_PUBLIC_API_URL || "";
 const appKey = "URSAFE";
+const allowFrontendOnlyMode = process.env.URSAFE_FRONTEND_ONLY_MODE === "true";
 
 async function getSession(request: NextRequest) {
   if (!apiUrl) return null;
@@ -31,7 +32,7 @@ export async function middleware(request: NextRequest) {
 
   if (pathname === "/login") {
     const session = await getSession(request);
-    if (session?.user) {
+    if (session !== "UNAVAILABLE" && session?.user) {
       return NextResponse.redirect(new URL("/dashboard", request.url));
     }
     return NextResponse.next();
@@ -41,14 +42,18 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Frontend-only mode: allow all URSafe pages when API is intentionally unavailable.
-  if (!apiUrl) {
+  // Optional explicit dev override for offline UI checks.
+  if (allowFrontendOnlyMode) {
     return NextResponse.next();
+  }
+
+  if (!apiUrl) {
+    return NextResponse.redirect(new URL("/login", request.url));
   }
 
   const session = await getSession(request);
   if (session === "UNAVAILABLE") {
-    return NextResponse.next();
+    return NextResponse.redirect(new URL("/login", request.url));
   }
 
   if (!session?.user) {
@@ -57,7 +62,7 @@ export async function middleware(request: NextRequest) {
 
   const access = await getAccess(request);
   if (access === "UNAVAILABLE") {
-    return NextResponse.next();
+    return NextResponse.redirect(new URL("/access-denied", request.url));
   }
 
   if (!access.some((item) => item.enabled && String(item.app || "").toUpperCase() === appKey)) {

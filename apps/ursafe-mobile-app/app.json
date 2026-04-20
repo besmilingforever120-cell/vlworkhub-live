@@ -1,0 +1,30 @@
+{
+  "expo": {
+    "name": "URSafe Mobile",
+    "slug": "ursafe-mobile-app",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "platforms": ["ios", "android"],
+    "assetBundlePatterns": ["**/*"],
+    "android": {
+      "package": "ca.vlworkhub.ursafemobile",
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION",
+        "FOREGROUND_SERVICE"
+      ]
+    },
+    "ios": {
+      "bundleIdentifier": "ca.vlworkhub.ursafemobile",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "URSafe needs location while tracking active sessions and trips.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "URSafe uses location in the background during active shift tracking."
+      }
+    },
+    "extra": {
+      "apiUrl": ""
+    }
+  }
+}

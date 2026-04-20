@@ -40,6 +40,7 @@ export function LoginForm() {
     setLoading(false);
 
     if (!response.ok) {
+      console.error("Login failed");
       try {
         const data = await response.json();
         setError(data.message || "Authentication failed. Check credentials and API configuration.");
@@ -49,7 +50,7 @@ export function LoginForm() {
       return;
     }
 
-    router.push("/dashboard");
+    router.push("/");
     router.refresh();
   }
 

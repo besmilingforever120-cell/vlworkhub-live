@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo } from "react";
-import L from "leaflet";
+import { useEffect, useMemo, useState } from "react";
+import { usePathname } from "next/navigation";
+import type { DivIcon } from "leaflet";
 import { MapContainer, Marker, Polyline, TileLayer, Tooltip } from "react-leaflet";
 import type { UrsafeLocation } from "@vlworkhub/types";
 import "leaflet/dist/leaflet.css";
@@ -22,20 +23,46 @@ function toPosition(point: UrsafeLocation | null | undefined): [number, number] 
   return [latitude, longitude];
 }
 
-function dotIcon(color: string) {
-  return L.divIcon({
-    className: "trip-route-dot",
-    html: `<span style="display:block;width:16px;height:16px;border-radius:999px;background:${color};border:2px solid #ffffff;box-shadow:0 2px 8px rgba(15,23,42,0.35);"></span>`,
-    iconSize: [16, 16],
-    iconAnchor: [8, 8]
-  });
-}
-
-const startIcon = dotIcon("#16a34a");
-const waypointIcon = dotIcon("#2563eb");
-const endIcon = dotIcon("#dc2626");
-
 export default function TripRouteMap(props: Props) {
+  const pathname = usePathname();
+  const [isMounted, setIsMounted] = useState(false);
+  const [icons, setIcons] = useState<{ start: DivIcon; waypoint: DivIcon; end: DivIcon } | null>(null);
+
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadLeaflet = async () => {
+      const leafletModule = await import("leaflet");
+      const leaflet = leafletModule.default ?? leafletModule;
+
+      const dotIcon = (color: string) => {
+        return leaflet.divIcon({
+          className: "trip-route-dot",
+          html: `<span style="display:block;width:16px;height:16px;border-radius:999px;background:${color};border:2px solid #ffffff;box-shadow:0 2px 8px rgba(15,23,42,0.35);"></span>`,
+          iconSize: [16, 16],
+          iconAnchor: [8, 8]
+        });
+      };
+
+      if (!cancelled) {
+        setIcons({
+          start: dotIcon("#16a34a"),
+          waypoint: dotIcon("#2563eb"),
+          end: dotIcon("#dc2626")
+        });
+      }
+    };
+
+    void loadLeaflet();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const points = useMemo(() => {
     const routePoints = props.route
       .map((point) => ({ point, position: toPosition(point) }))
@@ -71,16 +98,26 @@ export default function TripRouteMap(props: Props) {
   const end = points[points.length - 1];
   const middle = points.slice(1, -1);
 
+  if (!isMounted) {
+    return <div className="h-[300px] rounded-lg border border-gray-200 bg-slate-100" />;
+  }
+
   return (
     <div className="h-[300px] overflow-hidden rounded-lg border border-gray-200">
-      <MapContainer center={center} zoom={13} scrollWheelZoom className="h-full w-full">
+      <MapContainer
+        key={`${pathname || "trip-route"}-trip-route-map`}
+        center={center}
+        zoom={13}
+        scrollWheelZoom
+        className="h-full w-full"
+      >
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
         {positions.length > 1 ? <Polyline positions={positions} pathOptions={{ color: "#2563eb", weight: 5, opacity: 0.85 }} /> : null}
 
-        <Marker position={start.position} icon={startIcon}>
+        <Marker position={start.position} icon={icons?.start}>
           <Tooltip>
             <div className="text-xs">
               <div className="font-semibold">Start</div>
@@ -90,7 +127,7 @@ export default function TripRouteMap(props: Props) {
         </Marker>
 
         {middle.map((entry, index) => (
-          <Marker key={`waypoint-${index}-${entry.position[0]}-${entry.position[1]}`} position={entry.position} icon={waypointIcon}>
+          <Marker key={`waypoint-${index}-${entry.position[0]}-${entry.position[1]}`} position={entry.position} icon={icons?.waypoint}>
             <Tooltip>
               <div className="text-xs">
                 <div className="font-semibold">Waypoint {index + 1}</div>
@@ -101,7 +138,7 @@ export default function TripRouteMap(props: Props) {
         ))}
 
         {points.length > 1 ? (
-          <Marker position={end.position} icon={endIcon}>
+          <Marker position={end.position} icon={icons?.end}>
             <Tooltip>
               <div className="text-xs">
                 <div className="font-semibold">End</div>

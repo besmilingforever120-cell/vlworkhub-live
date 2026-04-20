@@ -2,6 +2,7 @@ import { Router } from "express";
 import { requireAuth } from "../middleware/auth";
 import {
   clearActiveSession,
+  clearActiveSessionById,
   createCheckIn,
   createEmergency,
   createShift,
@@ -17,6 +18,7 @@ import {
   listUsers,
   resolveEmergency,
   saveSettings,
+  upsertActiveSession,
   updateShift,
   updateTrip
 } from "../controllers/ursafe-controller";
@@ -35,10 +37,16 @@ ursafeRouter.post("/shifts", createShift);
 ursafeRouter.put("/shifts/:id", updateShift);
 ursafeRouter.get("/check-ins", listCheckIns);
 ursafeRouter.post("/check-ins", createCheckIn);
+ursafeRouter.get("/checkins", listCheckIns);
+ursafeRouter.post("/checkins", createCheckIn);
 ursafeRouter.get("/emergencies", listEmergencies);
 ursafeRouter.post("/emergencies", createEmergency);
 ursafeRouter.put("/emergencies/:id", resolveEmergency);
 ursafeRouter.get("/active-sessions", listActiveSessions);
+ursafeRouter.post("/active-sessions", upsertActiveSession);
 ursafeRouter.delete("/active-sessions/user/:userId", clearActiveSession);
+ursafeRouter.get("/sessions", listActiveSessions);
+ursafeRouter.post("/sessions", upsertActiveSession);
+ursafeRouter.delete("/sessions/:id", clearActiveSessionById);
 ursafeRouter.get("/settings", getSettings);
 ursafeRouter.post("/settings", saveSettings);

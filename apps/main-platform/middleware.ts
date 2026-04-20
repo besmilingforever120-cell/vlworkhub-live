@@ -1,15 +1,12 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-const apiUrl = process.env.NEXT_PUBLIC_API_URL || "";
+const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://192.168.1.156:8080";
 
 async function getSession(request: NextRequest) {
-  if (!apiUrl) {
-    return null;
-  }
   const cookie = request.headers.get("cookie") || "";
   const response = await fetch(`${apiUrl}/auth/me`, {
-    headers: { cookie },
+    headers: { cookie: cookie },
     cache: "no-store"
   }).catch(() => null);
 

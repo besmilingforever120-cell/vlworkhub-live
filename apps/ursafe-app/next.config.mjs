@@ -7,6 +7,7 @@ const allowedDevOrigins = (
 	.filter(Boolean);
 
 export default {
+	reactStrictMode: false,
 	experimental: { typedRoutes: true },
 	allowedDevOrigins
 };
