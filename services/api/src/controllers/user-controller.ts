@@ -8,12 +8,29 @@ type AppAccess = "HR" | "CARE" | "URSAFE";
 
 type AppAccessInput = { app: AppAccess; enabled: boolean };
 
+let ensureDepartmentsSchemaPromise: Promise<void> | null = null;
+
 function hashPassword(password: string) {
   return crypto.createHash("sha256").update(password).digest("hex");
 }
 
 function isSuperAdmin(req: AuthenticatedRequest) {
   return req.user?.platform_role === "SUPER_ADMIN" || req.user?.role === "SUPER_ADMIN";
+}
+
+function ensureDepartmentsSchema() {
+  if (!ensureDepartmentsSchemaPromise) {
+    ensureDepartmentsSchemaPromise = (async () => {
+      await pool.query(`ALTER TABLE departments ADD COLUMN IF NOT EXISTS department_type TEXT`);
+      await pool.query(`UPDATE departments SET department_type = 'Program' WHERE department_type IS NULL`);
+      await pool.query(`ALTER TABLE departments ALTER COLUMN department_type SET DEFAULT 'Program'`);
+    })().catch((error) => {
+      ensureDepartmentsSchemaPromise = null;
+      throw error;
+    });
+  }
+
+  return ensureDepartmentsSchemaPromise;
 }
 
 export async function listUsers(req: AuthenticatedRequest, res: Response) {
@@ -42,6 +59,8 @@ export async function listUsers(req: AuthenticatedRequest, res: Response) {
 
 export async function listAccessibleDepartments(req: AuthenticatedRequest, res: Response) {
   try {
+    await ensureDepartmentsSchema();
+
     const result = await pool.query(
       `SELECT
          d.id,
@@ -305,6 +324,8 @@ export async function listDepartments(req: AuthenticatedRequest, res: Response) 
       return res.status(403).json({ message: "Access denied" });
     }
 
+    await ensureDepartmentsSchema();
+
     const result = await pool.query(
       `SELECT
          d.id,
@@ -336,6 +357,8 @@ export async function createDepartment(req: AuthenticatedRequest, res: Response)
       return res.status(403).json({ message: "Access denied" });
     }
 
+    await ensureDepartmentsSchema();
+
     const { name, address, departmentType = "Program", managerId = null } = req.body as { name: string; address?: string; departmentType?: string; managerId?: string | null };
 
     if (!name) {
@@ -365,6 +388,8 @@ export async function updateDepartment(req: AuthenticatedRequest, res: Response)
     if (!isSuperAdmin(req)) {
       return res.status(403).json({ message: "Access denied" });
     }
+
+    await ensureDepartmentsSchema();
 
     const departmentId = String(req.params.id || "");
     const { name, address, departmentType = "Program", managerId = null } = req.body as { name: string; address?: string; departmentType?: string; managerId?: string | null };

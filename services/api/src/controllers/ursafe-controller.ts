@@ -778,7 +778,7 @@ export async function upsertActiveSession(req: AuthenticatedRequest, res: Respon
         device_name: device,
         started_at: startedAt,
         last_seen_at: lastSeenAt,
-        location: location || null,
+        location: location ? JSON.stringify(location) : null,
         notes
       };
       const row = existing

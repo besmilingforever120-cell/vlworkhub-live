@@ -12,6 +12,7 @@ import { notificationRouter } from "./routes/notification-routes";
 import { adminUserRouter, userRouter } from "./routes/user-routes";
 import { ursafeRouter } from "./routes/ursafe-routes";
 import { hrRouter } from "./routes/hr-routes";
+import { adminRouter } from "./routes/admin-routes";
 import { startOnboardingExpiryTaskScheduler } from "./controllers/hr-documents-controller";
 
 const app = express();
@@ -50,6 +51,7 @@ app.use("/resources", resourceRouter);
 app.use("/notifications", notificationRouter);
 app.use("/api", userRouter);
 app.use("/api/admin", adminUserRouter);
+app.use("/admin", adminRouter);
 app.use("/hr", hrRouter);
 app.use("/api/hr", hrRouter);
 app.use("/ursafe", ursafeRouter);

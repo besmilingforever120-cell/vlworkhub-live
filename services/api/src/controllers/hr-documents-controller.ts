@@ -1161,7 +1161,7 @@ async function getDocumentRows(organizationId: string) {
      LEFT JOIN document_signatures ds ON ds.document_id = d.id AND ds.organization_id = d.organization_id
      LEFT JOIN users su ON su.id = ds.user_id
      WHERE d.organization_id = $1
-     GROUP BY d.id, dep.name
+    GROUP BY d.id, d.organization_id, d.file_name, d.title, d.file_url, d.category, d.category_other, d.department_id, dep.name, d.description, d.due_date, d.requires_signature, d.status, d.sensitive, d.allow_download, d.created_by, d.created_at
      ORDER BY d.created_at DESC, d.id DESC`,
     [organizationId]
   );
@@ -1225,6 +1225,11 @@ function canViewDocument(row: DocumentRecord, context: Awaited<ReturnType<typeof
       return true;
     }
 
+    // Visible if any assigned user is one of the manager's direct reports
+    if (assignment.effectiveUserIds.some((id) => context.visibleUserIds.includes(id))) {
+      return true;
+    }
+
     return assignment.departmentNames.some((departmentName) => context.visibleDepartmentNames.includes(departmentName));
   }
 
@@ -1245,6 +1250,17 @@ function canCurrentUserOpenSignaturePanel(row: DocumentRecord, context: Awaited<
   const assignment = resolveEffectiveAssignees(row, organizationUsers);
   if (context.role === "admin") {
     return true;
+  }
+  if (context.role === "manager") {
+    if (assignment.effectiveUserIds.includes(context.userId)) {
+      return true;
+    }
+
+    if (Boolean(row.sensitive)) {
+      return false;
+    }
+
+    return assignment.effectiveUserIds.some((userId) => context.visibleUserIds.includes(userId));
   }
   if (Boolean(row.sensitive)) {
     return assignment.directUserIds.includes(context.userId);

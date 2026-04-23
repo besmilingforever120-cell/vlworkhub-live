@@ -18,7 +18,8 @@
     "lint": "npm run lint -ws --if-present"
   },
   "devDependencies": {
-    "concurrently": "^9.2.1"
+    "concurrently": "^9.2.1",
+    "typescript": "^5.7.2"
   },
   "dependencies": {
     "pdfjs-dist": "^4.2.67",

@@ -1,0 +1,10 @@
+.git
+node_modules
+**/node_modules
+**/.next
+**/dist
+**/.turbo
+**/coverage
+**/*.pid
+apps/*/legacy-*/node_modules
+services/api/uploads

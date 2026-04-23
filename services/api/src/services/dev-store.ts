@@ -29,6 +29,7 @@ type StoreKey =
   | "ursafe_shifts"
   | "ursafe_check_ins"
   | "ursafe_emergencies"
+  | "ursafe_active_sessions"
   | "ursafe_settings";
 
 const DEV_ORG_ID = "11111111-1111-1111-1111-111111111111";
@@ -130,6 +131,7 @@ let devStore: Record<StoreKey, StoreItem[]> = {
   ursafe_emergencies: [
     { id: 1, organization_id: DEV_ORG_ID, user_id: URSAFE_EMPLOYEE_ID, shift_id: 1, type: "sos", location: '{"latitude":49.2480,"longitude":-122.9870,"timestamp":"2026-03-12T20:06:00.000Z","address":"Client home"}', timestamp: "2026-03-12T20:06:00.000Z", resolved: false, resolved_by: null, resolved_at: null, notes: "Employee requested immediate supervisor support" }
   ],
+  ursafe_active_sessions: [],
   ursafe_settings: [
     { id: 1, organization_id: DEV_ORG_ID, rate_per_km: 0.68, smtp_email: "", smtp_password: "", logo_data: null }
   ]
