@@ -8,3 +8,6 @@ coverage
 npm-debug.log*
 .DS_Store
 *.tsbuildinfo
+
+# User-uploaded files
+services/api/uploads/
