@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import type { Request, Response } from "express";
 import type { QueryResultRow } from "pg";
-import { clearCookie, signAuthToken } from "@vlworkhub/auth";
+import { signAuthToken } from "@vlworkhub/auth";
 import { env } from "../config/env";
 import { pool } from "../config/db";
 import type { AuthenticatedRequest } from "../middleware/auth";
@@ -133,13 +133,15 @@ export async function login(req: Request, res: Response) {
 
 export async function logout(_: Request, res: Response) {
   try {
-    res.clearCookie("token", {
+    const cookieOptions = {
       httpOnly: true,
-      sameSite: "lax",
+      sameSite: "lax" as const,
       secure: env.nodeEnv === "production",
       path: "/"
-    });
-    res.setHeader("Set-Cookie", clearCookie(env.cookieDomain));
+    };
+    // Clear both possible cookie names (token and vlwh_session)
+    res.clearCookie("token", cookieOptions);
+    res.clearCookie("vlwh_session", cookieOptions);
     return res.json({ success: true });
   } catch (error) {
     console.error("API error in POST /auth/logout", error);

@@ -4,8 +4,10 @@ import {
   ensureEmailSettingsTable,
   getStoredEmailSettings,
   saveStoredEmailSettings,
-  sendConfiguredTestEmail
+  sendConfiguredTestEmail,
+  getSmtpTransporter
 } from "../services/email-settings-service";
+import { pool } from "../config/db";
 
 function requireSuperAdmin(req: AuthenticatedRequest, res: Response): boolean {
   const role = req.user?.platform_role ?? req.user?.role;
@@ -83,4 +85,52 @@ export async function sendTestEmail(req: AuthenticatedRequest, res: Response) {
     const message = err instanceof Error ? err.message : String(err);
     return res.status(502).json({ error: `Failed to send test email: ${message}` });
   }
+}
+
+// ---------------------------------------------------------------------------
+// GET /admin/diagnose-notifications  (admin only, debug tool)
+// ---------------------------------------------------------------------------
+export async function diagnoseNotifications(req: AuthenticatedRequest, res: Response) {
+  const organizationId = String(req.user?.organization_id || "");
+  const report: Record<string, unknown> = { organizationId };
+
+  // 1. SMTP transporter
+  try {
+    const transporter = await getSmtpTransporter();
+    report.smtpTransporter = transporter ? "ok" : "null — no email_settings row or unknown provider";
+  } catch (e) {
+    report.smtpTransporter = `error: ${e instanceof Error ? e.message : String(e)}`;
+  }
+
+  // 2. Email settings row
+  try {
+    const row = await getStoredEmailSettings();
+    report.emailSettings = row ? { email: row.email, provider: row.provider } : null;
+  } catch (e) {
+    report.emailSettings = `error: ${e instanceof Error ? e.message : String(e)}`;
+  }
+
+  // 3. Active users with emails in this org
+  try {
+    const result = await pool.query(
+      `SELECT id, email, status FROM users WHERE organization_id = $1 AND email IS NOT NULL AND email <> '' LIMIT 20`,
+      [organizationId]
+    );
+    report.usersWithEmail = result.rows.map((r) => ({ id: r.id, email: r.email, status: r.status }));
+  } catch (e) {
+    report.usersWithEmail = `error: ${e instanceof Error ? e.message : String(e)}`;
+  }
+
+  // 4. Active-only filter
+  try {
+    const result = await pool.query(
+      `SELECT COUNT(*) AS cnt FROM users WHERE organization_id = $1 AND status = 'active' AND email IS NOT NULL AND email <> ''`,
+      [organizationId]
+    );
+    report.activeUsersWithEmail = Number(result.rows[0]?.cnt ?? 0);
+  } catch (e) {
+    report.activeUsersWithEmail = `error: ${e instanceof Error ? e.message : String(e)}`;
+  }
+
+  return res.json(report);
 }

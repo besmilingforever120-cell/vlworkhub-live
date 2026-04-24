@@ -1,21 +1,9 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { platformLinks } from "@vlworkhub/config";
-
 export function LogoutButton() {
-  const router = useRouter();
-
   async function handleLogout() {
-    try {
-      await fetch(`${platformLinks.api}/auth/logout`, {
-        method: "POST",
-        credentials: "include"
-      });
-    } finally {
-      router.push("/login");
-      router.refresh();
-    }
+    await fetch("/api/logout", { method: "POST" }).catch(() => null);
+    window.location.href = "/login";
   }
 
   return (

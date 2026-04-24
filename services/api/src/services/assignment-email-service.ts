@@ -190,12 +190,19 @@ function buildEmailBody(params: AssignmentEmailParams): { subject: string; text:
 export async function sendAssignmentNotifications(params: AssignmentEmailParams): Promise<void> {
   try {
     const transporter = await getSmtpTransporter();
-    if (!transporter) return; // SMTP not configured
+    if (!transporter) {
+      console.log("[AssignmentEmail] No SMTP transporter configured, skipping.");
+      return;
+    }
 
     const senderEmail = await getSenderEmail(params.organizationId);
-    if (!senderEmail) return;
+    if (!senderEmail) {
+      console.log("[AssignmentEmail] No sender email configured, skipping.");
+      return;
+    }
 
     const emails = await resolveEmails(params);
+    console.log(`[AssignmentEmail] Resolved ${emails.length} recipient(s) for "${params.title}" (${params.type}):`, emails);
     if (!emails.length) return;
 
     const { subject, text } = buildEmailBody(params);
@@ -203,6 +210,7 @@ export async function sendAssignmentNotifications(params: AssignmentEmailParams)
     for (const to of emails) {
       try {
         await transporter.sendMail({ from: senderEmail, to, subject, text });
+        console.log(`[AssignmentEmail] Sent to ${to}`);
       } catch (sendErr) {
         console.warn(`[AssignmentEmail] Failed to send to ${to}:`, sendErr);
       }
