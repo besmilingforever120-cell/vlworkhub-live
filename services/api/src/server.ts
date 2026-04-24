@@ -17,6 +17,8 @@ import { startOnboardingExpiryTaskScheduler } from "./controllers/hr-documents-c
 
 const app = express();
 
+app.set("trust proxy", env.trustProxyHops);
+
 const extraAllowedOrigins = [
   "http://localhost:3000",
   "http://localhost:3001",

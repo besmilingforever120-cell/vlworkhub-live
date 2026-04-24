@@ -111,6 +111,15 @@ function resolveJwtSecret(nodeEnv: string) {
 
 const nodeEnv = (process.env.NODE_ENV || "development").trim().toLowerCase();
 
+function parsePositiveInt(value: string | undefined, fallback: number) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return fallback;
+  }
+
+  return Math.floor(parsed);
+}
+
 export const env = {
   nodeEnv,
   host: process.env.API_HOST || "0.0.0.0",
@@ -123,5 +132,8 @@ export const env = {
     .split(",")
     .map((value) => value.trim())
     .filter(Boolean),
-  databaseUrl: process.env.DATABASE_URL
+  databaseUrl: process.env.DATABASE_URL,
+  trustProxyHops: parsePositiveInt(process.env.TRUST_PROXY_HOPS, 0),
+  authRateLimitWindowMinutes: parsePositiveInt(process.env.AUTH_RATE_LIMIT_WINDOW_MINUTES, 15),
+  authRateLimitMaxAttempts: parsePositiveInt(process.env.AUTH_RATE_LIMIT_MAX_ATTEMPTS, 10)
 };
