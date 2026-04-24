@@ -365,9 +365,9 @@ ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name;
 
 INSERT INTO users (id, organization_id, name, email, password_hash, first_name, last_name, enabled, status, role)
 VALUES
-  ('22222222-2222-2222-2222-222222222222', '11111111-1111-1111-1111-111111111111', 'Platform Admin', 'admin@vlworkhub.ca', 'a109e36947ad56de1dca1cc49f0ef8ac9ad9a7b1aa0df41fb3c4cb73c1ff01ea', 'Platform', 'Admin', TRUE, 'active', 'super_admin'),
-  ('33333333-3333-3333-3333-333333333333', '11111111-1111-1111-1111-111111111111', 'Casey Morgan', 'manager@vlworkhub.ca', 'a109e36947ad56de1dca1cc49f0ef8ac9ad9a7b1aa0df41fb3c4cb73c1ff01ea', 'Casey', 'Morgan', TRUE, 'active', 'user'),
-  ('44444444-4444-4444-4444-444444444444', '11111111-1111-1111-1111-111111111111', 'Jordan Lee', 'employee@vlworkhub.ca', 'a109e36947ad56de1dca1cc49f0ef8ac9ad9a7b1aa0df41fb3c4cb73c1ff01ea', 'Jordan', 'Lee', TRUE, 'active', 'user')
+  ('22222222-2222-2222-2222-222222222222', '11111111-1111-1111-1111-111111111111', 'Platform Admin', 'admin@vlworkhub.ca', '$2b$12$SMomhTA.EZEoShAcBNI2y.racMazlNVxYp3zkSi1K6KbXAOWBbvei', 'Platform', 'Admin', TRUE, 'active', 'super_admin'),
+  ('33333333-3333-3333-3333-333333333333', '11111111-1111-1111-1111-111111111111', 'Casey Morgan', 'manager@vlworkhub.ca', '$2b$12$SMomhTA.EZEoShAcBNI2y.racMazlNVxYp3zkSi1K6KbXAOWBbvei', 'Casey', 'Morgan', TRUE, 'active', 'user'),
+  ('44444444-4444-4444-4444-444444444444', '11111111-1111-1111-1111-111111111111', 'Jordan Lee', 'employee@vlworkhub.ca', '$2b$12$SMomhTA.EZEoShAcBNI2y.racMazlNVxYp3zkSi1K6KbXAOWBbvei', 'Jordan', 'Lee', TRUE, 'active', 'user')
 ON CONFLICT (email) DO UPDATE
 SET organization_id = EXCLUDED.organization_id,
     password_hash = EXCLUDED.password_hash,

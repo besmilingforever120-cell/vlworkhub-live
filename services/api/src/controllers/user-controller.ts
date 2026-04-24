@@ -1,6 +1,6 @@
-import crypto from "node:crypto";
 import type { Response } from "express";
 import { pool } from "../config/db";
+import { hashPassword } from "../lib/passwords";
 import type { AuthenticatedRequest } from "../middleware/auth";
 
 type PlatformRole = "SUPER_ADMIN" | "ADMIN" | "USER";
@@ -9,10 +9,6 @@ type AppAccess = "HR" | "CARE" | "URSAFE";
 type AppAccessInput = { app: AppAccess; enabled: boolean };
 
 let ensureDepartmentsSchemaPromise: Promise<void> | null = null;
-
-function hashPassword(password: string) {
-  return crypto.createHash("sha256").update(password).digest("hex");
-}
 
 function isSuperAdmin(req: AuthenticatedRequest) {
   return req.user?.platform_role === "SUPER_ADMIN" || req.user?.role === "SUPER_ADMIN";
@@ -169,11 +165,12 @@ export async function createAdminUser(req: AuthenticatedRequest, res: Response) 
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
+    const passwordHash = await hashPassword(password);
     const result = await client.query(
       `INSERT INTO users (organization_id, department_id, email, password_hash, first_name, last_name, status, role)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
        RETURNING id`,
-      [req.user?.organization_id, departmentId, email.trim().toLowerCase(), hashPassword(password), firstName, lastName || firstName, enabled ? "active" : "inactive", role]
+      [req.user?.organization_id, departmentId, email.trim().toLowerCase(), passwordHash, firstName, lastName || firstName, enabled ? "active" : "inactive", role]
     );
 
     for (const item of apps.filter((entry) => entry.enabled)) {
@@ -224,6 +221,7 @@ export async function updateAdminUser(req: AuthenticatedRequest, res: Response) 
     await client.query("BEGIN");
 
     if (password) {
+      const passwordHash = await hashPassword(password);
       await client.query(
         `UPDATE users
          SET department_id = $1,
@@ -234,7 +232,7 @@ export async function updateAdminUser(req: AuthenticatedRequest, res: Response) 
              status = $6,
              role = $7
          WHERE id = $8`,
-        [departmentId, email.trim().toLowerCase(), hashPassword(password), firstName, lastName || firstName, enabled ? "active" : "inactive", role, userId]
+        [departmentId, email.trim().toLowerCase(), passwordHash, firstName, lastName || firstName, enabled ? "active" : "inactive", role, userId]
       );
     } else {
       await client.query(

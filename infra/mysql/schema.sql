@@ -226,5 +226,5 @@ CREATE TABLE IF NOT EXISTS safety_checklists (
 );
 
 INSERT INTO users (organization_id, full_name, email, password_hash, role)
-VALUES (1, 'Platform Admin', 'admin@vlworkhub.ca', 'a109e36947ad56de1dca1cc49f0ef8ac9ad9a7b1aa0df41fb3c4cb73c1ff01ea', 'Admin')
+VALUES (1, 'Platform Admin', 'admin@vlworkhub.ca', '$2b$12$SMomhTA.EZEoShAcBNI2y.racMazlNVxYp3zkSi1K6KbXAOWBbvei', 'Admin')
 ON DUPLICATE KEY UPDATE full_name = VALUES(full_name);

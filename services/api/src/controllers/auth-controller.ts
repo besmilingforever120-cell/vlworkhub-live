@@ -1,9 +1,9 @@
-import crypto from "node:crypto";
 import type { Request, Response } from "express";
 import type { QueryResultRow } from "pg";
 import { buildCookie, clearCookie, signAuthToken } from "@vlworkhub/auth";
 import { env } from "../config/env";
 import { pool } from "../config/db";
+import { migrateLegacyPasswordHashOnLogin, verifyPassword } from "../lib/passwords";
 import type { AuthenticatedRequest } from "../middleware/auth";
 
 type UserRole = "Admin" | "Manager" | "Employee" | "HR" | "IT";
@@ -31,14 +31,6 @@ type UserRecord = QueryResultRow & {
   status: string | null;
   role: PlatformRole | null;
 };
-
-function hashPassword(password: string) {
-  return crypto.createHash("sha256").update(password).digest("hex");
-}
-
-function passwordMatches(password: string, storedPasswordHash: string) {
-  return storedPasswordHash === hashPassword(password);
-}
 
 function buildLegacyClearCookie(name: string, domain?: string) {
   const parts = [
@@ -128,9 +120,16 @@ export async function login(req: Request, res: Response) {
 
     const user = await findUserByEmail(email.trim());
 
-    if (!user || user.status !== "active" || !passwordMatches(password, user.password_hash)) {
+    if (!user || user.status !== "active") {
       return res.status(401).json({ message: "Invalid credentials" });
     }
+
+    const passwordMatches = await verifyPassword(password, user.password_hash);
+    if (!passwordMatches) {
+      return res.status(401).json({ message: "Invalid credentials" });
+    }
+
+    await migrateLegacyPasswordHashOnLogin(user.id, password, user.password_hash);
 
     const sessionUser = await toSessionUser(user);
     const token = signAuthToken(
