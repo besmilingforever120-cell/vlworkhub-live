@@ -96,6 +96,11 @@ function buildDisplayName(user: UserRecord) {
   return `${String(user.first_name || "").trim()} ${String(user.last_name || "").trim()}`.trim() || user.email;
 }
 
+type LoginResult = {
+  user: SessionUser;
+  token: string;
+};
+
 async function toSessionUser(user: UserRecord): Promise<SessionUser> {
   const platformRole = user.role || "USER";
   return {
@@ -110,6 +115,38 @@ async function toSessionUser(user: UserRecord): Promise<SessionUser> {
   };
 }
 
+async function authenticate(email: string, password: string): Promise<LoginResult | null> {
+  const user = await findUserByEmail(email.trim());
+
+  if (!user || user.status !== "active") {
+    return null;
+  }
+
+  const passwordMatches = await verifyPassword(password, user.password_hash);
+  if (!passwordMatches) {
+    return null;
+  }
+
+  await migrateLegacyPasswordHashOnLogin(user.id, password, user.password_hash);
+
+  const sessionUser = await toSessionUser(user);
+  const token = signAuthToken(
+    {
+      user_id: sessionUser.id,
+      organization_id: sessionUser.organizationId,
+      role: sessionUser.role,
+      roles: sessionUser.roles,
+      apps: sessionUser.apps,
+      email: sessionUser.email,
+      full_name: sessionUser.fullName,
+      platform_role: sessionUser.platformRole
+    },
+    env.jwtSecret
+  );
+
+  return { user: sessionUser, token };
+}
+
 export async function login(req: Request, res: Response) {
   try {
     const { email, password } = req.body as { email: string; password: string };
@@ -118,39 +155,36 @@ export async function login(req: Request, res: Response) {
       return res.status(400).json({ message: "Email and password are required" });
     }
 
-    const user = await findUserByEmail(email.trim());
-
-    if (!user || user.status !== "active") {
+    const loginResult = await authenticate(email, password);
+    if (!loginResult) {
       return res.status(401).json({ message: "Invalid credentials" });
     }
-
-    const passwordMatches = await verifyPassword(password, user.password_hash);
-    if (!passwordMatches) {
-      return res.status(401).json({ message: "Invalid credentials" });
-    }
-
-    await migrateLegacyPasswordHashOnLogin(user.id, password, user.password_hash);
-
-    const sessionUser = await toSessionUser(user);
-    const token = signAuthToken(
-      {
-        user_id: sessionUser.id,
-        organization_id: sessionUser.organizationId,
-        role: sessionUser.role,
-        roles: sessionUser.roles,
-        apps: sessionUser.apps,
-        email: sessionUser.email,
-        full_name: sessionUser.fullName,
-        platform_role: sessionUser.platformRole
-      },
-      env.jwtSecret
-    );
 
     appendSessionCleanupHeaders(res);
-    res.append("Set-Cookie", buildCookie(token, env.cookieDomain));
-    return res.json({ token, user: sessionUser });
+    res.append("Set-Cookie", buildCookie(loginResult.token, env.cookieDomain));
+    return res.json({ user: loginResult.user });
   } catch (error) {
     console.error("API error in POST /auth/login", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+}
+
+export async function mobileLogin(req: Request, res: Response) {
+  try {
+    const { email, password } = req.body as { email: string; password: string };
+
+    if (!email || !password) {
+      return res.status(400).json({ message: "Email and password are required" });
+    }
+
+    const loginResult = await authenticate(email, password);
+    if (!loginResult) {
+      return res.status(401).json({ message: "Invalid credentials" });
+    }
+
+    return res.json({ token: loginResult.token, user: loginResult.user });
+  } catch (error) {
+    console.error("API error in POST /auth/mobile-login", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 }

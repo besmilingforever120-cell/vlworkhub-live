@@ -197,7 +197,7 @@ export function AuthProvider(props: { children: React.ReactNode }) {
   }, [token, updatePresence, user]);
 
   const signIn = async (email: string, password: string) => {
-    const login = await apiRequest<{ token: string; user: SessionUser }>("/auth/login", {
+    const login = await apiRequest<{ token: string; user: SessionUser }>("/auth/mobile-login", {
       method: "POST",
       body: JSON.stringify({ email, password })
     });
