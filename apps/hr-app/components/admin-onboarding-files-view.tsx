@@ -31,17 +31,14 @@ function formatDate(value: string | null | undefined) {
   if (!value) return "-";
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return value;
-  return parsed.toLocaleDateString();
+  return parsed.toLocaleDateString(undefined, { timeZone: "UTC" });
 }
 
 function isExpired(value: string | null | undefined) {
   if (!value) return false;
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return false;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  parsed.setHours(0, 0, 0, 0);
-  return parsed < today;
+  const dateStr = String(value).slice(0, 10);
+  const today = new Date().toLocaleDateString("en-CA"); // YYYY-MM-DD in local time
+  return dateStr < today;
 }
 
 export function AdminOnboardingFilesView() {

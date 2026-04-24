@@ -540,7 +540,7 @@ export function OnboardingWorkspace() {
                     <td>
                       {editingFileId === String(file.id) ? (
                         <input type="date" value={editingExpiryDate} onChange={(event) => setEditingExpiryDate(event.target.value)} />
-                      ) : (file.expiry_date ? new Date(file.expiry_date).toLocaleDateString() : "-")}
+                      ) : (file.expiry_date ? new Date(file.expiry_date).toLocaleDateString(undefined, { timeZone: "UTC" }) : "-")}
                     </td>
                     <td>
                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>

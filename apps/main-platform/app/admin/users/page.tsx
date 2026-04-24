@@ -24,7 +24,8 @@ export default async function AdminUsersPage() {
             <p className="mt-3 max-w-3xl text-slate-300">Create users, update account status, and manage access to Care, HR, and URSafe.</p>
           </div>
           <div className="flex gap-3">
-            <Link href="/admin/email-settings" className="rounded-2xl border border-cyan-400/30 px-5 py-3 text-sm font-medium text-cyan-300">Email Settings</Link>
+            {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+            <Link href={"/admin/email-settings" as any} className="rounded-2xl border border-cyan-400/30 px-5 py-3 text-sm font-medium text-cyan-300">Email Settings</Link>
             <Link href="/dashboard" className="rounded-2xl border border-white/10 px-5 py-3 text-sm font-medium text-white">Back to Dashboard</Link>
           </div>
         </div>

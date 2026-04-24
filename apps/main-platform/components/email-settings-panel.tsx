@@ -128,8 +128,8 @@ export function EmailSettingsPanel() {
             required
             className="w-full rounded-xl border border-white/10 bg-white/10 px-4 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-cyan-400"
           >
-            <option value="gmail">Gmail (smtp.gmail.com : 587)</option>
-            <option value="outlook">Outlook / Microsoft 365 (smtp.office365.com : 587)</option>
+            <option value="gmail" className="bg-slate-900 text-white">Gmail (smtp.gmail.com : 587)</option>
+            <option value="outlook" className="bg-slate-900 text-white">Outlook / Microsoft 365 (smtp.office365.com : 587)</option>
           </select>
         </div>
 
