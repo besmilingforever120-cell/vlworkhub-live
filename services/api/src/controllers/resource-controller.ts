@@ -17,6 +17,7 @@ import {
   isHrProtectedResource,
   logHrPermissionFailure
 } from "../lib/hr-permissions";
+import { sendAssignmentNotifications } from "../services/assignment-email-service";
 
 const tableOrgColumnCache = new Map<string, boolean>();
 let tasksArchivedColumnPromise: Promise<boolean> | null = null;
@@ -1015,6 +1016,69 @@ export async function createResource(req: AuthenticatedRequest, res: Response) {
       },
       () => createDevResource(resourceName as never, organizationId, valueMap).id
     );
+
+    // ─── Assignment notifications (best-effort, non-blocking) ──────────────
+    void (async () => {
+      try {
+        const body = req.body as Record<string, unknown>;
+
+        if (isTaskAssignmentResource(resourceName)) {
+          const payload = normalizeTaskAssignmentPayload(body);
+          const taskRow = await pool.query(
+            "SELECT title FROM tasks WHERE id = $1 LIMIT 1",
+            [payload.taskId]
+          );
+          const taskTitle = String(taskRow.rows[0]?.title || "Task");
+          await sendAssignmentNotifications({
+            organizationId,
+            type: "task",
+            title: taskTitle,
+            userId: payload.userId,
+            allStaff: payload.department === "All Staff",
+            departmentName: payload.department && payload.department !== "All Staff" ? payload.department : null,
+          });
+        } else if (isSurveyAssignmentResource(resourceName)) {
+          const payload = normalizeSurveyAssignmentPayload(body);
+          await sendAssignmentNotifications({
+            organizationId,
+            type: "survey",
+            title: payload.title || "Survey",
+            userId: payload.userId,
+            departmentId: payload.departmentId,
+            allStaff: payload.allStaff,
+            dueDate: payload.dueDate,
+          });
+        } else if (resourceName === "training_assignments") {
+          const assigneeName = String(body.assignee_name ?? "");
+          const tokens = assigneeName.split(",").map((t) => t.trim()).filter(Boolean);
+          const isAllStaff = tokens.includes("All Staff");
+          const deptToken = tokens.find((t) => t.startsWith("Department: "));
+          const deptName = deptToken ? deptToken.slice("Department: ".length).trim() : null;
+          const nameTokens = tokens.filter((t) => t !== "All Staff" && !t.startsWith("Department: "));
+          await sendAssignmentNotifications({
+            organizationId,
+            type: "training",
+            title: String(body.title ?? "Training"),
+            allStaff: isAllStaff,
+            departmentName: deptName,
+            assigneeNames: nameTokens,
+            dueDate: String(body.due_date ?? "") || null,
+          });
+        } else if (resourceName === "announcements") {
+          const audience = String(body.audience ?? "");
+          await sendAssignmentNotifications({
+            organizationId,
+            type: "announcement",
+            title: String(body.title ?? "Announcement"),
+            allStaff: audience === "All Staff",
+            departmentName: audience && audience !== "All Staff" ? audience : null,
+          });
+        }
+      } catch (notifErr) {
+        console.warn("[AssignmentEmail] Notification dispatch error:", notifErr);
+      }
+    })();
+    // ───────────────────────────────────────────────────────────────────────
 
     return res.status(201).json({ id });
   } catch (error) {

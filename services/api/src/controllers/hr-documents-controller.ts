@@ -4,6 +4,7 @@ import path from "node:path";
 import { pool } from "../config/db";
 import type { AuthenticatedRequest } from "../middleware/auth";
 import { getHrPermissionContext } from "../lib/hr-permissions";
+import { sendAssignmentNotifications } from "../services/assignment-email-service";
 
 type DocumentRecord = Record<string, string | number | boolean | string[] | null>;
 
@@ -1967,6 +1968,17 @@ export async function createHrDocument(req: AuthenticatedRequest, res: Response)
 
     await pool.query(`UPDATE documents SET file_url = $3 WHERE organization_id = $1 AND id = $2`, [organizationId, documentId, finalFileUrl]);
     await replaceDocumentAssignments(organizationId, documentId, userIds, departmentIds, allStaff);
+
+    // Send assignment notifications (best-effort, non-blocking)
+    void sendAssignmentNotifications({
+      organizationId,
+      type: "document",
+      title: fileName,
+      userIds,
+      departmentIds,
+      allStaff,
+      dueDate,
+    });
 
     return res.status(201).json({ id: documentId });
   } catch (error) {
