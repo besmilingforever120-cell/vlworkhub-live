@@ -65,7 +65,7 @@ function formatKilometers(value: number) {
 }
 
 async function signOut() {
-  const response = await fetch(`${platformLinks.api}/auth/logout`, {
+  const response = await fetch(`/api/logout`, {
     method: "POST",
     credentials: "include"
   }).catch(() => null);

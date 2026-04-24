@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import type { Request, Response } from "express";
 import type { QueryResultRow } from "pg";
-import { signAuthToken } from "@vlworkhub/auth";
+import { buildCookie, clearCookie, signAuthToken } from "@vlworkhub/auth";
 import { env } from "../config/env";
 import { pool } from "../config/db";
 import type { AuthenticatedRequest } from "../middleware/auth";
@@ -38,6 +38,35 @@ function hashPassword(password: string) {
 
 function passwordMatches(password: string, storedPasswordHash: string) {
   return storedPasswordHash === hashPassword(password);
+}
+
+function buildLegacyClearCookie(name: string, domain?: string) {
+  const parts = [
+    `${name}=`,
+    "Path=/",
+    "HttpOnly",
+    "Expires=Thu, 01 Jan 1970 00:00:00 GMT",
+    "SameSite=Lax",
+    env.nodeEnv === "production" ? "Secure" : ""
+  ].filter(Boolean);
+
+  if (domain) {
+    parts.push(`Domain=${domain}`);
+  }
+
+  return parts.join("; ");
+}
+
+function appendSessionCleanupHeaders(res: Response) {
+  const headers = [clearCookie(), buildLegacyClearCookie("token")];
+
+  if (env.cookieDomain) {
+    headers.push(clearCookie(env.cookieDomain), buildLegacyClearCookie("token", env.cookieDomain));
+  }
+
+  for (const header of headers) {
+    res.append("Set-Cookie", header);
+  }
 }
 
 async function findUserByEmail(email: string) {
@@ -118,12 +147,8 @@ export async function login(req: Request, res: Response) {
       env.jwtSecret
     );
 
-    res.cookie("token", token, {
-      httpOnly: true,
-      sameSite: "lax",
-      secure: env.nodeEnv === "production",
-      path: "/"
-    });
+    appendSessionCleanupHeaders(res);
+    res.append("Set-Cookie", buildCookie(token, env.cookieDomain));
     return res.json({ token, user: sessionUser });
   } catch (error) {
     console.error("API error in POST /auth/login", error);
@@ -133,15 +158,7 @@ export async function login(req: Request, res: Response) {
 
 export async function logout(_: Request, res: Response) {
   try {
-    const cookieOptions = {
-      httpOnly: true,
-      sameSite: "lax" as const,
-      secure: env.nodeEnv === "production",
-      path: "/"
-    };
-    // Clear both possible cookie names (token and vlwh_session)
-    res.clearCookie("token", cookieOptions);
-    res.clearCookie("vlwh_session", cookieOptions);
+    appendSessionCleanupHeaders(res);
     return res.json({ success: true });
   } catch (error) {
     console.error("API error in POST /auth/logout", error);

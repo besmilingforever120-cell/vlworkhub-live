@@ -110,7 +110,7 @@ const buildLocationFromSession = (session?: UrsafeActiveSession): UrsafeLocation
 };
 
 const signOut = async () => {
-  const response = await fetch(`${platformLinks.api}/auth/logout`, {
+  const response = await fetch(`/api/logout`, {
     method: "POST",
     credentials: "include"
   }).catch(() => null);

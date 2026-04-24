@@ -22,7 +22,6 @@ function clearCookieHeader(name: string, domain?: string) {
 }
 
 export async function POST(request: Request) {
-  // Forward the session cookie to the API so it can do any server-side cleanup
   const cookieHeader = request.headers.get("cookie") || "";
   await fetch(`${apiUrl}/auth/logout`, {
     method: "POST",

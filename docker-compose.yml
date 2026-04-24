@@ -21,6 +21,8 @@ services:
     container_name: vlworkhub-api
     restart: always
     environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      JWT_SECRET: ${JWT_SECRET:-}
       DATABASE_URL: postgres://postgres:postgres@vlworkhub-postgres:5432/vlworkhub
     ports:
       - "8080:8080"

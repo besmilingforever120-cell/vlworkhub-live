@@ -125,7 +125,25 @@ export async function getUserNotifications(userId: string, organizationId: strin
     const [tasks, trainingAssignments, surveyAssignments, signatures] = await Promise.all([
       pool.query(`SELECT id, title, assigned_to, due_date, status, created_at FROM tasks WHERE organization_id = $1`, [organizationId]),
       pool.query(`SELECT id, title, assignee_name, due_date, status, created_at FROM training_assignments WHERE organization_id = $1`, [organizationId]),
-      pool.query(`SELECT id, title, assignee_name, due_date, status, created_at FROM survey_assignments WHERE organization_id = $1`, [organizationId]),
+      pool.query(
+        `SELECT
+           sa.id,
+           sa.title,
+           sa.due_date,
+           sa.status,
+           sa.created_at,
+           CASE
+             WHEN COALESCE(sa.all_staff, false) THEN 'All Staff'
+             WHEN sa.department_id IS NOT NULL THEN 'Department: ' || COALESCE(d.name, '')
+             ELSE COALESCE(NULLIF(TRIM(u.first_name || ' ' || u.last_name), ''), NULLIF(sa.user_id::text, ''))
+           END AS assignee_name
+         FROM survey_assignments sa
+         LEFT JOIN users u ON u.id = sa.user_id
+         LEFT JOIN departments d ON d.id = sa.department_id
+         INNER JOIN surveys s ON s.id = sa.survey_id AND s.organization_id = sa.organization_id
+         WHERE sa.organization_id = $1`,
+        [organizationId]
+      ),
       pool.query(
         `SELECT ds.id, ds.signer_name, ds.status, ds.created_at, d.title AS document_title
          FROM document_signatures ds
