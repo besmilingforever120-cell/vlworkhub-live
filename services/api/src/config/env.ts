@@ -128,7 +128,7 @@ export const env = {
   jwtSecret: resolveJwtSecret(nodeEnv),
   cookieDomain: process.env.COOKIE_DOMAIN || undefined,
   allowedOrigins: (process.env.ALLOWED_ORIGINS ||
-    "http://localhost:3000,http://localhost:3001,http://localhost:3002,http://localhost:3003")
+    "http://localhost:3000,http://localhost:3001,http://localhost:3002,http://localhost:3003,http://192.168.1.47:3000,http://192.168.1.47:3001,http://192.168.1.47:3002,http://192.168.1.47:3003")
     .split(",")
     .map((value) => value.trim())
     .filter(Boolean),
