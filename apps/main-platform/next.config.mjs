@@ -7,7 +7,7 @@ const nextConfig = {
   experimental: {
     typedRoutes: true
   },
-  allowedDevOrigins: ["192.168.1.156", ...envAllowedOrigins]
+  allowedDevOrigins: ["192.168.1.47", ...envAllowedOrigins]
 };
 
 export default nextConfig;

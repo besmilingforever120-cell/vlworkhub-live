@@ -24,10 +24,10 @@ const extraAllowedOrigins = [
   "http://localhost:3001",
   "http://localhost:3002",
   "http://localhost:3003",
-  "http://192.168.1.156:3000",
-  "http://192.168.1.156:3001",
-  "http://192.168.1.156:3002",
-  "http://192.168.1.156:3003"
+  "http://192.168.1.47:3000",
+  "http://192.168.1.47:3001",
+  "http://192.168.1.47:3002",
+  "http://192.168.1.47:3003"
 ];
 
 const allowedOrigins = Array.from(new Set([...env.allowedOrigins, ...extraAllowedOrigins]));
