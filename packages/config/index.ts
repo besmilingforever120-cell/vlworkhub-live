@@ -15,7 +15,7 @@ export const platformLinks = {
     process.env.NEXT_PUBLIC_URSAFE_APP_URL ||
     process.env.NEXT_PUBLIC_URSAFE_URL ||
     "http://ursafe.vlworkhub.ca",
-  api: process.env.API_INTERNAL_URL || process.env.NEXT_PUBLIC_API_URL || "http://192.168.1.47:8080"
+  api: process.env.API_INTERNAL_URL || process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080"
 };
 
 export const appCards = [

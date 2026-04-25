@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
 const rootUrl = process.env.NEXT_PUBLIC_ROOT_URL || "http://localhost:3000";
-const apiUrl = process.env.NEXT_PUBLIC_API_URL || "";
+const apiUrl = process.env.API_INTERNAL_URL || process.env.NEXT_PUBLIC_API_URL || "";
 const appKey = "CARE";
 
 async function getSession(request: NextRequest) {

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://192.168.1.47:8080";
+const apiUrl = process.env.API_INTERNAL_URL || process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
 
 async function getSession(request: NextRequest) {
   const cookie = request.headers.get("cookie") || "";

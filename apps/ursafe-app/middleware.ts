@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-const apiUrl = process.env.NEXT_PUBLIC_API_URL || "";
+const apiUrl = process.env.API_INTERNAL_URL || process.env.NEXT_PUBLIC_API_URL || "";
 const appKey = "URSAFE";
 const allowFrontendOnlyMode = process.env.URSAFE_FRONTEND_ONLY_MODE === "true";
 
