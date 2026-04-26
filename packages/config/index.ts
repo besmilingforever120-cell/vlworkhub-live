@@ -1,20 +1,29 @@
+const isProduction = process.env.NODE_ENV === "production";
+
+const defaultLinks = {
+  root: isProduction ? "http://www.vlworkhub.ca" : "http://192.168.1.47:3000",
+  care: isProduction ? "http://care.vlworkhub.ca" : "http://192.168.1.47:3001",
+  hr: isProduction ? "http://hr.vlworkhub.ca" : "http://192.168.1.47:3002",
+  ursafe: isProduction ? "http://ursafe.vlworkhub.ca" : "http://192.168.1.47:3003"
+};
+
 export const platformLinks = {
   root:
     process.env.NEXT_PUBLIC_MAIN_APP_URL ||
     process.env.NEXT_PUBLIC_ROOT_URL ||
-    "http://www.vlworkhub.ca",
+    defaultLinks.root,
   care:
     process.env.NEXT_PUBLIC_CARE_APP_URL ||
     process.env.NEXT_PUBLIC_CARE_URL ||
-    "http://care.vlworkhub.ca",
+    defaultLinks.care,
   hr:
     process.env.NEXT_PUBLIC_HR_APP_URL ||
     process.env.NEXT_PUBLIC_HR_URL ||
-    "http://hr.vlworkhub.ca",
+    defaultLinks.hr,
   ursafe:
     process.env.NEXT_PUBLIC_URSAFE_APP_URL ||
     process.env.NEXT_PUBLIC_URSAFE_URL ||
-    "http://ursafe.vlworkhub.ca",
+    defaultLinks.ursafe,
   api: process.env.API_INTERNAL_URL || process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080"
 };
 
