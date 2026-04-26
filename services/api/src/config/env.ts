@@ -120,6 +120,13 @@ function parsePositiveInt(value: string | undefined, fallback: number) {
   return Math.floor(parsed);
 }
 
+function parseAllowedOrigins(value: string | undefined) {
+  return (value || "")
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+}
+
 export const env = {
   nodeEnv,
   host: process.env.API_HOST || "0.0.0.0",
@@ -127,11 +134,7 @@ export const env = {
   apiBaseUrl: process.env.API_BASE_URL || process.env.NEXT_PUBLIC_API_URL || "",
   jwtSecret: resolveJwtSecret(nodeEnv),
   cookieDomain: process.env.COOKIE_DOMAIN || undefined,
-  allowedOrigins: (process.env.ALLOWED_ORIGINS ||
-    "http://localhost:3000,http://localhost:3001,http://localhost:3002,http://localhost:3003,http://192.168.1.47:3000,http://192.168.1.47:3001,http://192.168.1.47:3002,http://192.168.1.47:3003")
-    .split(",")
-    .map((value) => value.trim())
-    .filter(Boolean),
+  allowedOrigins: parseAllowedOrigins(process.env.ALLOWED_ORIGINS),
   databaseUrl: process.env.DATABASE_URL,
   trustProxyHops: parsePositiveInt(process.env.TRUST_PROXY_HOPS, 0),
   authRateLimitWindowMinutes: parsePositiveInt(process.env.AUTH_RATE_LIMIT_WINDOW_MINUTES, 15),

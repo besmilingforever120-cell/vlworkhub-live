@@ -19,27 +19,17 @@ const app = express();
 
 app.set("trust proxy", env.trustProxyHops);
 
-const extraAllowedOrigins = [
-  "http://localhost:3000",
-  "http://localhost:3001",
-  "http://localhost:3002",
-  "http://localhost:3003",
-  "http://192.168.1.47:3000",
-  "http://192.168.1.47:3001",
-  "http://192.168.1.47:3002",
-  "http://192.168.1.47:3003"
-];
-
-const allowedOrigins = Array.from(new Set([...env.allowedOrigins, ...extraAllowedOrigins]));
+const allowedOrigins = new Set(env.allowedOrigins);
 
 app.use(
   cors({
     origin(origin, callback) {
-      if (!origin || allowedOrigins.includes(origin)) {
+      if (!origin || allowedOrigins.has(origin)) {
         return callback(null, true);
       }
       return callback(new Error(`Origin ${origin} is not allowed by CORS`));
     },
+    methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     credentials: true
   })
 );
