@@ -73,23 +73,23 @@ async function start() {
     await verifyDatabaseConnection();
     console.log("PostgreSQL connection verified.");
     startOnboardingExpiryTaskScheduler();
+
+    const server = app.listen(env.port, env.host, () => {
+      console.log(`VLWorkHub API running on http://${env.host}:${env.port}`);
+    });
+
+    server.on("error", (error: NodeJS.ErrnoException) => {
+      if (error.code === "EADDRINUSE") {
+        console.error(`Port ${env.port} is already in use.`);
+      } else {
+        console.error("VLWorkHub API failed to start.", error);
+      }
+      process.exit(1);
+    });
   } catch (error) {
-    console.error("Failed to connect to PostgreSQL.", error);
+    console.error("Failed to start API:", error);
     process.exit(1);
   }
-
-  const server = app.listen(env.port, env.host, () => {
-    console.log(`VLWorkHub API running on http://${env.host}:${env.port}`);
-  });
-
-  server.on("error", (error: NodeJS.ErrnoException) => {
-    if (error.code === "EADDRINUSE") {
-      console.error(`Port ${env.port} is already in use. The API could not start.`);
-    } else {
-      console.error("VLWorkHub API failed to start.", error);
-    }
-    process.exit(1);
-  });
 }
 
 void start();
