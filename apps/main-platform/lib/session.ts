@@ -29,9 +29,9 @@ export async function getPlatformSession() {
     },
     credentials: "include",
     cache: "no-store",
-  });
+  }).catch(() => null);
 
-  if (!response.ok) {
+  if (!response?.ok) {
     return null;
   }
 

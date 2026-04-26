@@ -8,6 +8,6 @@ const allowedDevOrigins = (
 
 export default {
 	reactStrictMode: false,
-	experimental: { typedRoutes: true },
+	typedRoutes: true,
 	allowedDevOrigins
 };

@@ -4,7 +4,6 @@ const envAllowedOrigins = (process.env.NEXT_ALLOWED_DEV_ORIGINS || "")
   .filter(Boolean);
 
 export default {
-  experimental: { typedRoutes: true },
-  swcMinify: false,
+  typedRoutes: true,
   allowedDevOrigins: ["192.168.1.47", ...envAllowedOrigins]
 };
