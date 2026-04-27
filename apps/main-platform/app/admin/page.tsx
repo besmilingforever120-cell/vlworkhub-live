@@ -8,6 +8,10 @@ export default async function AdminIndexPage() {
     redirect("/login");
   }
 
+  if (user.mustChangePassword) {
+    redirect("/change-password");
+  }
+
   if (user.platformRole !== "SUPER_ADMIN") {
     redirect("/dashboard");
   }

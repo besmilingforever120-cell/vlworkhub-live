@@ -11,6 +11,7 @@ export interface SessionUser {
   roles: UserRole[];
   apps: AppAccess[];
   platformRole: PlatformRole;
+  mustChangePassword?: boolean;
 }
 
 export interface AuthPayload {

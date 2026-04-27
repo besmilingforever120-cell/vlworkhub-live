@@ -10,7 +10,7 @@ async function getSession(request: NextRequest) {
   const response = await fetch(`${apiUrl}/auth/me`, { headers: { cookie }, cache: "no-store" }).catch(() => null);
   if (!response) return { status: "FETCH_ERROR" as const, user: null };
   if (!response.ok) return { status: response.status, user: null };
-  const data = await (response.json() as Promise<{ user: { id?: string } }>);
+  const data = await (response.json() as Promise<{ user: { id?: string; mustChangePassword?: boolean } }>);
   return { status: response.status, user: data.user || null };
 }
 
@@ -55,6 +55,12 @@ export async function middleware(request: NextRequest) {
     const redirectTarget = new URL("/login", rootUrl).toString();
     console.warn("[HR middleware] redirect", { reason: "session-missing", redirectTo: redirectTarget });
     return NextResponse.redirect(new URL("/login", rootUrl));
+  }
+
+  if (session.user.mustChangePassword) {
+    const redirectTarget = new URL("/change-password", rootUrl).toString();
+    console.warn("[HR middleware] redirect", { reason: "must-change-password", redirectTo: redirectTarget });
+    return NextResponse.redirect(new URL("/change-password", rootUrl));
   }
 
   const access = await getAccess(request);

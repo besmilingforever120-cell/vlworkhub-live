@@ -11,7 +11,7 @@ async function getSession(request: NextRequest) {
   const response = await fetch(`${apiUrl}/auth/me`, { headers: { cookie }, cache: "no-store" }).catch(() => "UNAVAILABLE" as const);
   if (response === "UNAVAILABLE") return { status: "FETCH_ERROR" as const, user: null };
   if (!response?.ok) return { status: response.status, user: null };
-  const data = await (response.json() as Promise<{ user: { id?: string } }>);
+  const data = await (response.json() as Promise<{ user: { id?: string; mustChangePassword?: boolean } }>);
   return { status: response.status, user: data.user || null };
 }
 
@@ -31,6 +31,13 @@ export async function middleware(request: NextRequest) {
   const cookieHeaderExists = Boolean(request.headers.get("cookie"));
   const authMeUrl = apiUrl ? `${apiUrl}/auth/me` : "";
   const myAccessUrl = apiUrl ? `${apiUrl}/api/apps/my-access` : "";
+  const hostHeader = request.headers.get("x-forwarded-host") || request.headers.get("host") || request.nextUrl.host;
+  const protoHeader = request.headers.get("x-forwarded-proto") || request.nextUrl.protocol.replace(":", "");
+  const hostname = hostHeader.split(":")[0];
+  const isProductionHost = /(^|\.)vlworkhub\.ca$/i.test(hostname);
+  const rootUrl = isProductionHost
+    ? process.env.NEXT_PUBLIC_MAIN_APP_URL || process.env.NEXT_PUBLIC_ROOT_URL || "http://www.vlworkhub.ca"
+    : `${protoHeader}://${hostname}:3000`;
 
   console.info("[URSafe middleware] request", {
     requestUrl,
@@ -75,6 +82,12 @@ export async function middleware(request: NextRequest) {
     const redirectTarget = new URL("/login", request.url).toString();
     console.warn("[URSafe middleware] redirect", { reason: "session-missing", redirectTo: redirectTarget });
     return NextResponse.redirect(new URL("/login", request.url));
+  }
+
+  if (session.user.mustChangePassword) {
+    const redirectTarget = new URL("/change-password", rootUrl).toString();
+    console.warn("[URSafe middleware] redirect", { reason: "must-change-password", redirectTo: redirectTarget });
+    return NextResponse.redirect(new URL("/change-password", rootUrl));
   }
 
   const access = await getAccess(request);

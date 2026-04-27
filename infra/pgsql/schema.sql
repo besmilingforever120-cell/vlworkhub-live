@@ -654,6 +654,18 @@ BEGIN
   END IF;
 END $$;
 
+ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN NOT NULL DEFAULT FALSE;
+
+CREATE TABLE IF NOT EXISTS user_password_history (
+  id BIGSERIAL PRIMARY KEY,
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  password_hash TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_password_history_user_created
+  ON user_password_history (user_id, created_at DESC);
+
 
 CREATE TABLE IF NOT EXISTS task_assignments (
   id BIGSERIAL PRIMARY KEY,

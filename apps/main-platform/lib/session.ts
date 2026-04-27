@@ -8,6 +8,7 @@ type PlatformSessionUser = {
   role: "SUPER_ADMIN" | "ADMIN" | "USER";
   platformRole: "SUPER_ADMIN" | "ADMIN" | "USER";
   apps: Array<"HR" | "CARE" | "URSAFE">;
+  mustChangePassword?: boolean;
 };
 
 type PlatformAppAccess = {

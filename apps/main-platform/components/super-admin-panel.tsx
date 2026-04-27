@@ -97,7 +97,7 @@ export function SuperAdminPanel() {
       const payload = {
         name: form.name,
         email: form.email,
-        password: form.password,
+        ...(form.id && form.password ? { password: form.password } : {}),
         enabled: form.enabled,
         role: form.role,
         departmentId: form.departmentId || null,
@@ -195,7 +195,13 @@ export function SuperAdminPanel() {
             <div className="mt-8 grid gap-4 md:grid-cols-2">
               <label className="text-sm text-slate-300">Full name<input value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white" /></label>
               <label className="text-sm text-slate-300">Email<input value={form.email} onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))} className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white" /></label>
-              <label className="text-sm text-slate-300">Password<input type="password" value={form.password} onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))} className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white" placeholder={form.id ? "Leave blank to keep current password" : "Set password"} /></label>
+              {form.id ? (
+                <label className="text-sm text-slate-300">Reset password<input type="password" value={form.password} onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))} className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white" placeholder="Leave blank to keep current password" /></label>
+              ) : (
+                <div className="rounded-2xl border border-cyan-400/30 bg-cyan-400/10 px-4 py-3 text-sm text-cyan-100">
+                  A strong temporary password will be generated automatically and sent by email. The user will be required to change it at first login.
+                </div>
+              )}
               <label className="text-sm text-slate-300">Platform role<select value={form.role} onChange={(event) => setForm((current) => ({ ...current, role: event.target.value as FormState["role"] }))} className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white"><option value="USER">USER</option><option value="ADMIN">ADMIN</option><option value="SUPER_ADMIN">SUPER_ADMIN</option></select></label>
               <label className="text-sm text-slate-300 md:col-span-2">Department<select value={form.departmentId} onChange={(event) => setForm((current) => ({ ...current, departmentId: event.target.value }))} className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white"><option value="">Unassigned</option>{departments.map((department) => <option key={department.id} value={department.id}>{department.name}</option>)}</select></label>
               <label className="inline-flex items-center gap-3 text-sm text-slate-300 md:col-span-2"><input type="checkbox" checked={form.enabled} onChange={(event) => setForm((current) => ({ ...current, enabled: event.target.checked }))} />Active account</label>

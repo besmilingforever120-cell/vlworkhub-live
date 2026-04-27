@@ -50,7 +50,14 @@ export function LoginForm() {
       return;
     }
 
-    router.push("/");
+    let payload: { mustChangePassword?: boolean } = {};
+    try {
+      payload = (await response.json()) as { mustChangePassword?: boolean };
+    } catch {
+      payload = {};
+    }
+
+    router.push(payload.mustChangePassword ? "/change-password" : "/");
     router.refresh();
   }
 

@@ -13,6 +13,10 @@ export default async function DashboardPage() {
     redirect("/login");
   }
 
+  if (user.mustChangePassword) {
+    redirect("/change-password");
+  }
+
   const enabledApps = new Set((access || []).filter((item) => item.enabled).map((item) => item.app));
   const visibleApps = appCards.filter((app) => enabledApps.has(app.appKey));
   const dashboardCards = user.platformRole === "SUPER_ADMIN"

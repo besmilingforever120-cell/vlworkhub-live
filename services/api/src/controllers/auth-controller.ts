@@ -3,7 +3,8 @@ import type { QueryResultRow } from "pg";
 import { buildCookie, clearCookie, signAuthToken } from "@vlworkhub/auth";
 import { env } from "../config/env";
 import { pool } from "../config/db";
-import { migrateLegacyPasswordHashOnLogin, verifyPassword } from "../lib/passwords";
+import { hashPassword, migrateLegacyPasswordHashOnLogin, verifyPassword } from "../lib/passwords";
+import { validatePasswordPolicy } from "../lib/password-policy";
 import type { AuthenticatedRequest } from "../middleware/auth";
 
 type UserRole = "Admin" | "Manager" | "Employee" | "HR" | "IT";
@@ -19,6 +20,7 @@ type SessionUser = {
   roles: UserRole[];
   apps: AppAccess[];
   platformRole: PlatformRole;
+  mustChangePassword: boolean;
 };
 
 type UserRecord = QueryResultRow & {
@@ -30,7 +32,36 @@ type UserRecord = QueryResultRow & {
   last_name: string | null;
   status: string | null;
   role: PlatformRole | null;
+  must_change_password: boolean;
 };
+
+const PASSWORD_HISTORY_COUNT = 5;
+let ensureSecuritySchemaPromise: Promise<void> | null = null;
+
+function ensureSecuritySchema() {
+  if (!ensureSecuritySchemaPromise) {
+    ensureSecuritySchemaPromise = (async () => {
+      await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN NOT NULL DEFAULT FALSE`);
+      await pool.query(
+        `CREATE TABLE IF NOT EXISTS user_password_history (
+          id BIGSERIAL PRIMARY KEY,
+          user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          password_hash TEXT NOT NULL,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )`
+      );
+      await pool.query(
+        `CREATE INDEX IF NOT EXISTS idx_user_password_history_user_created
+         ON user_password_history (user_id, created_at DESC)`
+      );
+    })().catch((error) => {
+      ensureSecuritySchemaPromise = null;
+      throw error;
+    });
+  }
+
+  return ensureSecuritySchemaPromise;
+}
 
 function buildLegacyClearCookie(name: string, domain?: string) {
   const parts = [
@@ -79,6 +110,8 @@ function appendSessionCleanupHeaders(res: Response, domain?: string) {
 }
 
 async function findUserByEmail(email: string) {
+  await ensureSecuritySchema();
+
   const result = await pool.query<UserRecord>(
     `SELECT
        u.id,
@@ -88,7 +121,8 @@ async function findUserByEmail(email: string) {
        u.first_name,
        u.last_name,
        u.status,
-       COALESCE(u.role, 'USER') AS role
+       COALESCE(u.role, 'USER') AS role,
+       COALESCE(u.must_change_password, FALSE) AS must_change_password
      FROM users u
      WHERE u.email = $1`,
     [email]
@@ -128,8 +162,21 @@ async function toSessionUser(user: UserRecord): Promise<SessionUser> {
     role: platformRole,
     roles: ["Employee"],
     apps: await findUserApps(user.id),
-    platformRole
+    platformRole,
+    mustChangePassword: Boolean(user.must_change_password)
   };
+}
+
+async function getMustChangePassword(userId: string) {
+  await ensureSecuritySchema();
+  const result = await pool.query<{ must_change_password: boolean }>(
+    `SELECT COALESCE(must_change_password, FALSE) AS must_change_password
+     FROM users
+     WHERE id = $1`,
+    [userId]
+  );
+
+  return Boolean(result.rows[0]?.must_change_password);
 }
 
 async function authenticate(email: string, password: string): Promise<LoginResult | null> {
@@ -180,7 +227,7 @@ export async function login(req: Request, res: Response) {
     const cookieDomain = resolveCookieDomain(req);
     appendSessionCleanupHeaders(res, cookieDomain);
     res.append("Set-Cookie", buildCookie(loginResult.token, cookieDomain));
-    return res.json({ user: loginResult.user });
+    return res.json({ user: loginResult.user, mustChangePassword: loginResult.user.mustChangePassword });
   } catch (error) {
     console.error("API error in POST /auth/login", error);
     return res.status(500).json({ error: "Internal server error" });
@@ -200,7 +247,7 @@ export async function mobileLogin(req: Request, res: Response) {
       return res.status(401).json({ message: "Invalid credentials" });
     }
 
-    return res.json({ token: loginResult.token, user: loginResult.user });
+    return res.json({ token: loginResult.token, user: loginResult.user, mustChangePassword: loginResult.user.mustChangePassword });
   } catch (error) {
     console.error("API error in POST /auth/mobile-login", error);
     return res.status(500).json({ error: "Internal server error" });
@@ -219,22 +266,110 @@ export async function logout(_: Request, res: Response) {
 
 export async function me(req: AuthenticatedRequest, res: Response) {
   try {
+    const userId = String(req.user?.user_id || "");
+    const mustChangePassword = userId ? await getMustChangePassword(userId) : false;
     const roles = req.user?.roles || ["Employee"];
     const platformRole = req.user?.platform_role || req.user?.role || "USER";
     return res.json({
       user: {
-        id: req.user?.user_id,
+        id: userId,
         fullName: req.user?.full_name,
         email: req.user?.email,
         organizationId: req.user?.organization_id,
         role: platformRole,
         roles,
         apps: req.user?.apps || [],
-        platformRole
+        platformRole,
+        mustChangePassword
       }
     });
   } catch (error) {
     console.error("API error in GET /auth/me", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+}
+
+export async function changePassword(req: AuthenticatedRequest, res: Response) {
+  try {
+    await ensureSecuritySchema();
+
+    const userId = String(req.user?.user_id || "");
+    const { currentPassword, newPassword } = req.body as { currentPassword: string; newPassword: string };
+
+    if (!userId) {
+      return res.status(401).json({ message: "Missing session token" });
+    }
+
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ message: "Current password and new password are required" });
+    }
+
+    const policy = validatePasswordPolicy(newPassword);
+    if (!policy.valid) {
+      return res.status(400).json({ message: policy.message });
+    }
+
+    const userResult = await pool.query<{ id: string; password_hash: string; status: string }>(
+      `SELECT id, password_hash, status
+       FROM users
+       WHERE id = $1`,
+      [userId]
+    );
+
+    if (userResult.rowCount === 0 || userResult.rows[0].status !== "active") {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    const user = userResult.rows[0];
+    const currentPasswordValid = await verifyPassword(currentPassword, user.password_hash);
+    if (!currentPasswordValid) {
+      return res.status(401).json({ message: "Current password is incorrect" });
+    }
+
+    const recentHistory = await pool.query<{ password_hash: string }>(
+      `SELECT password_hash
+       FROM user_password_history
+       WHERE user_id = $1
+       ORDER BY created_at DESC
+       LIMIT $2`,
+      [userId, Math.max(PASSWORD_HISTORY_COUNT - 1, 1)]
+    );
+
+    const disallowedHashes = [user.password_hash, ...recentHistory.rows.map((item) => item.password_hash)];
+    for (const hash of disallowedHashes) {
+      if (await verifyPassword(newPassword, hash)) {
+        return res.status(400).json({ message: "New password cannot reuse the last 5 passwords" });
+      }
+    }
+
+    const nextPasswordHash = await hashPassword(newPassword);
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query(
+        `INSERT INTO user_password_history (user_id, password_hash)
+         VALUES ($1, $2)`,
+        [userId, user.password_hash]
+      );
+      await client.query(
+        `UPDATE users
+         SET password_hash = $1,
+             must_change_password = FALSE
+         WHERE id = $2`,
+        [nextPasswordHash, userId]
+      );
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => undefined);
+      throw error;
+    } finally {
+      client.release();
+    }
+
+    return res.json({ success: true });
+  } catch (error) {
+    console.error("API error in POST /auth/change-password", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 }

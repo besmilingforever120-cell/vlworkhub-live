@@ -1,7 +1,9 @@
 import type { Response } from "express";
 import { pool } from "../config/db";
 import { hashPassword } from "../lib/passwords";
+import { generateTemporaryPassword } from "../lib/password-policy";
 import type { AuthenticatedRequest } from "../middleware/auth";
+import { getSmtpTransporter, getStoredEmailSettings } from "../services/email-settings-service";
 
 type PlatformRole = "SUPER_ADMIN" | "ADMIN" | "USER";
 type AppAccess = "HR" | "CARE" | "URSAFE";
@@ -9,6 +11,7 @@ type AppAccess = "HR" | "CARE" | "URSAFE";
 type AppAccessInput = { app: AppAccess; enabled: boolean };
 
 let ensureDepartmentsSchemaPromise: Promise<void> | null = null;
+let ensureUserSecuritySchemaPromise: Promise<void> | null = null;
 
 function isSuperAdmin(req: AuthenticatedRequest) {
   return req.user?.platform_role === "SUPER_ADMIN" || req.user?.role === "SUPER_ADMIN";
@@ -27,6 +30,70 @@ function ensureDepartmentsSchema() {
   }
 
   return ensureDepartmentsSchemaPromise;
+}
+
+function ensureUserSecuritySchema() {
+  if (!ensureUserSecuritySchemaPromise) {
+    ensureUserSecuritySchemaPromise = (async () => {
+      await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN NOT NULL DEFAULT FALSE`);
+      await pool.query(
+        `CREATE TABLE IF NOT EXISTS user_password_history (
+          id BIGSERIAL PRIMARY KEY,
+          user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          password_hash TEXT NOT NULL,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )`
+      );
+      await pool.query(
+        `CREATE INDEX IF NOT EXISTS idx_user_password_history_user_created
+         ON user_password_history (user_id, created_at DESC)`
+      );
+    })().catch((error) => {
+      ensureUserSecuritySchemaPromise = null;
+      throw error;
+    });
+  }
+
+  return ensureUserSecuritySchemaPromise;
+}
+
+function resolveLoginUrl() {
+  return (
+    process.env.NEXT_PUBLIC_MAIN_APP_URL ||
+    process.env.NEXT_PUBLIC_ROOT_URL ||
+    "http://192.168.1.47:3000"
+  );
+}
+
+async function sendWelcomeOnboardingEmail(params: {
+  recipientEmail: string;
+  fullName: string;
+  temporaryPassword: string;
+}) {
+  const transporter = await getSmtpTransporter();
+  const settings = await getStoredEmailSettings();
+
+  if (!transporter || !settings?.email) {
+    throw new Error("SMTP settings are not configured for onboarding emails");
+  }
+
+  const loginUrl = resolveLoginUrl().replace(/\/$/, "");
+  const text = [
+    `Welcome to VLWorkHub, ${params.fullName}.`,
+    "",
+    `Login URL: ${loginUrl}/login`,
+    `Username: ${params.recipientEmail}`,
+    `Temporary password: ${params.temporaryPassword}`,
+    "",
+    "For security, you must change your password immediately after first login."
+  ].join("\n");
+
+  await transporter.sendMail({
+    from: String(settings.email),
+    to: params.recipientEmail,
+    subject: "Welcome to VLWorkHub - Temporary Login Credentials",
+    text
+  });
 }
 
 export async function listUsers(req: AuthenticatedRequest, res: Response) {
@@ -144,19 +211,20 @@ export async function createAdminUser(req: AuthenticatedRequest, res: Response) 
     return res.status(403).json({ message: "Access denied" });
   }
 
-  const { name, email, password, enabled = true, role = "USER", apps = [], departmentId = null } = req.body as {
+  const { name, email, enabled = true, role = "USER", apps = [], departmentId = null } = req.body as {
     name: string;
     email: string;
-    password: string;
     enabled?: boolean;
     role?: PlatformRole;
     apps?: AppAccessInput[];
     departmentId?: string | null;
   };
 
-  if (!name || !email || !password) {
-    return res.status(400).json({ message: "Name, email, and password are required" });
+  if (!name || !email) {
+    return res.status(400).json({ message: "Name and email are required" });
   }
+
+  await ensureUserSecuritySchema();
 
   const parts = name.trim().split(/\s+/);
   const firstName = parts.shift() || name.trim();
@@ -165,10 +233,11 @@ export async function createAdminUser(req: AuthenticatedRequest, res: Response) 
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    const passwordHash = await hashPassword(password);
+    const temporaryPassword = generateTemporaryPassword();
+    const passwordHash = await hashPassword(temporaryPassword);
     const result = await client.query(
-      `INSERT INTO users (organization_id, department_id, email, password_hash, first_name, last_name, status, role)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      `INSERT INTO users (organization_id, department_id, email, password_hash, first_name, last_name, status, role, must_change_password)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, TRUE)
        RETURNING id`,
       [req.user?.organization_id, departmentId, email.trim().toLowerCase(), passwordHash, firstName, lastName || firstName, enabled ? "active" : "inactive", role]
     );
@@ -180,6 +249,12 @@ export async function createAdminUser(req: AuthenticatedRequest, res: Response) 
         [result.rows[0].id, item.app]
       );
     }
+
+    await sendWelcomeOnboardingEmail({
+      recipientEmail: email.trim().toLowerCase(),
+      fullName: `${firstName} ${lastName}`.trim() || firstName,
+      temporaryPassword
+    });
 
     await client.query("COMMIT");
     return res.status(201).json({ id: result.rows[0].id });
@@ -212,6 +287,8 @@ export async function updateAdminUser(req: AuthenticatedRequest, res: Response) 
     return res.status(400).json({ message: "User id, name, and email are required" });
   }
 
+  await ensureUserSecuritySchema();
+
   const parts = name.trim().split(/\s+/);
   const firstName = parts.shift() || name.trim();
   const lastName = parts.join(" ");
@@ -221,6 +298,22 @@ export async function updateAdminUser(req: AuthenticatedRequest, res: Response) 
     await client.query("BEGIN");
 
     if (password) {
+      const existing = await client.query<{ password_hash: string }>(
+        `SELECT password_hash
+         FROM users
+         WHERE id = $1
+         LIMIT 1`,
+        [userId]
+      );
+
+      if ((existing.rowCount ?? 0) > 0) {
+        await client.query(
+          `INSERT INTO user_password_history (user_id, password_hash)
+           VALUES ($1, $2)`,
+          [userId, existing.rows[0].password_hash]
+        );
+      }
+
       const passwordHash = await hashPassword(password);
       await client.query(
         `UPDATE users

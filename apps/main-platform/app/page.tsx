@@ -3,5 +3,9 @@ import { getPlatformSession } from "../lib/session";
 
 export default async function HomePage() {
   const user = await getPlatformSession();
-  redirect(user ? "/dashboard" : "/login");
+  if (!user) {
+    redirect("/login");
+  }
+
+  redirect(user.mustChangePassword ? "/change-password" : "/dashboard");
 }
