@@ -7,7 +7,7 @@
     "services/*"
   ],
   "scripts": {
-    "dev": "concurrently -n api,main,care,hr,ursafe -c cyan,green,yellow,magenta,blue \"npm run dev:api:serve\" \"npm run dev:main\" \"npm run dev:care\" \"npm run dev:hr\" \"npm run dev:ursafe\"",
+    "dev": "concurrently -n main,care,hr,ursafe -c green,yellow,magenta,blue \"npm run dev:main\" \"npm run dev:care\" \"npm run dev:hr\" \"npm run dev:ursafe\"",
     "dev:main": "npm run dev -w @vlworkhub/main-platform",
     "dev:care": "npm run dev -w @vlworkhub/care-app",
     "dev:hr": "npm run dev -w @vlworkhub/hr-app",
