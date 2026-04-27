@@ -10,7 +10,26 @@ export const SMTP_CONFIG: Record<EmailProvider, { host: string; port: number; se
   outlook: { host: "smtp.office365.com", port: 587, secure: false }
 };
 
-const ENCRYPTION_KEY = crypto.createHash("sha256").update(`${env.jwtSecret}:email-settings`).digest();
+function resolveEncryptionSecret() {
+  const explicitSecret = String(process.env.EMAIL_SETTINGS_ENCRYPTION_KEY || "").trim();
+  if (explicitSecret) {
+    return explicitSecret;
+  }
+
+  const configuredJwtSecret = String(process.env.JWT_SECRET || "").trim();
+  if (configuredJwtSecret) {
+    return configuredJwtSecret;
+  }
+
+  // Keep development settings decryptable across restarts even when JWT_SECRET is ephemeral.
+  if (env.nodeEnv !== "production") {
+    return "vlworkhub-dev-email-settings-key";
+  }
+
+  throw new Error("EMAIL_SETTINGS_ENCRYPTION_KEY or JWT_SECRET must be configured");
+}
+
+const ENCRYPTION_KEY = crypto.createHash("sha256").update(`${resolveEncryptionSecret()}:email-settings`).digest();
 const IV_LENGTH = 16;
 
 function encryptPassword(plain: string): string {
@@ -22,6 +41,10 @@ function encryptPassword(plain: string): string {
 
 function decryptPassword(stored: string): string {
   const [ivHex, encHex] = stored.split(":");
+  if (!ivHex || !encHex || !/^[a-f0-9]+$/i.test(ivHex) || !/^[a-f0-9]+$/i.test(encHex)) {
+    throw new Error("Stored SMTP password is unreadable");
+  }
+
   const iv = Buffer.from(ivHex, "hex");
   const encrypted = Buffer.from(encHex, "hex");
   const decipher = crypto.createDecipheriv("aes-256-cbc", ENCRYPTION_KEY, iv);
@@ -60,9 +83,17 @@ export async function saveStoredEmailSettings(input: { email: string; password?:
     if (existing.rowCount === 0) {
       throw new Error("Password is required for the first save");
     }
-    encryptedPassword = String(existing.rows[0].password);
+
+    const existingPassword = String(existing.rows[0].password || "");
+    try {
+      decryptPassword(existingPassword);
+    } catch {
+      throw new Error("Stored SMTP password cannot be decrypted. Enter the SMTP password again and save.");
+    }
+
+    encryptedPassword = existingPassword;
   } else {
-    encryptedPassword = encryptPassword(input.password);
+    encryptedPassword = encryptPassword(input.password.trim());
   }
 
   await pool.query(
@@ -74,7 +105,7 @@ export async function saveStoredEmailSettings(input: { email: string; password?:
        password = EXCLUDED.password,
        provider = EXCLUDED.provider,
        updated_at = NOW()`,
-    [input.email, encryptedPassword, input.provider]
+    [input.email.trim(), encryptedPassword, input.provider]
   );
 }
 
