@@ -49,11 +49,28 @@ function buildLegacyClearCookie(name: string, domain?: string) {
   return parts.join("; ");
 }
 
-function appendSessionCleanupHeaders(res: Response) {
+function resolveCookieDomain(req: Request) {
+  if (env.cookieDomain) {
+    return env.cookieDomain;
+  }
+
+  if (env.nodeEnv !== "production") {
+    return undefined;
+  }
+
+  const requestHost = String(req.headers.host || "").split(":")[0].toLowerCase();
+  if (requestHost === "vlworkhub.ca" || requestHost.endsWith(".vlworkhub.ca")) {
+    return ".vlworkhub.ca";
+  }
+
+  return undefined;
+}
+
+function appendSessionCleanupHeaders(res: Response, domain?: string) {
   const headers = [clearCookie(), buildLegacyClearCookie("token")];
 
-  if (env.cookieDomain) {
-    headers.push(clearCookie(env.cookieDomain), buildLegacyClearCookie("token", env.cookieDomain));
+  if (domain) {
+    headers.push(clearCookie(domain), buildLegacyClearCookie("token", domain));
   }
 
   for (const header of headers) {
@@ -160,8 +177,9 @@ export async function login(req: Request, res: Response) {
       return res.status(401).json({ message: "Invalid credentials" });
     }
 
-    appendSessionCleanupHeaders(res);
-    res.append("Set-Cookie", buildCookie(loginResult.token, env.cookieDomain));
+    const cookieDomain = resolveCookieDomain(req);
+    appendSessionCleanupHeaders(res, cookieDomain);
+    res.append("Set-Cookie", buildCookie(loginResult.token, cookieDomain));
     return res.json({ user: loginResult.user });
   } catch (error) {
     console.error("API error in POST /auth/login", error);
@@ -191,7 +209,7 @@ export async function mobileLogin(req: Request, res: Response) {
 
 export async function logout(_: Request, res: Response) {
   try {
-    appendSessionCleanupHeaders(res);
+    appendSessionCleanupHeaders(res, env.cookieDomain);
     return res.json({ success: true });
   } catch (error) {
     console.error("API error in POST /auth/logout", error);
