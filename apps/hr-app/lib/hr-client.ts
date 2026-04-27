@@ -54,6 +54,7 @@ export type HrAssignment = {
   user_id: string;
   hr_role: "ADMIN" | "MANAGER" | "EMPLOYEE";
   manager_id: string | null;
+  department_id?: string | null;
   created_at?: string;
   updated_at?: string;
 };

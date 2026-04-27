@@ -35,5 +35,22 @@ services:
     depends_on:
       - postgres
 
+  hr-app:
+    build:
+      context: .
+      dockerfile: apps/hr-app/Dockerfile
+    container_name: vlworkhub-hr-app
+    restart: always
+    environment:
+      NODE_ENV: production
+      API_INTERNAL_URL: http://api:8080
+      NEXT_PUBLIC_API_URL: http://192.168.1.47:8080
+      NEXT_PUBLIC_MAIN_APP_URL: http://192.168.1.47:3000
+      NEXT_PUBLIC_ROOT_URL: http://192.168.1.47:3000
+    ports:
+      - "3002:3002"
+    depends_on:
+      - api
+
 volumes:
   vlworkhub_pg_data:
