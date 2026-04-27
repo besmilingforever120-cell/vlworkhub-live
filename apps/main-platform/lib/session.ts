@@ -47,6 +47,7 @@ export async function getPlatformAppAccess() {
     .join('; ');
   const response = await fetch(`${platformLinks.api}/api/apps/my-access`, {
     headers: { cookie: cookieHeader },
+    credentials: "include",
     cache: "no-store"
   }).catch(() => null);
 

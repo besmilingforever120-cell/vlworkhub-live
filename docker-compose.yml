@@ -24,6 +24,8 @@ services:
       NODE_ENV: ${NODE_ENV:-development}
       JWT_SECRET: ${JWT_SECRET:-}
       DATABASE_URL: postgres://postgres:postgres@vlworkhub-postgres:5432/vlworkhub
+      ALLOWED_ORIGINS: http://localhost:3000,http://localhost:3001,http://localhost:3002,http://localhost:3003,http://192.168.1.47:3000,http://192.168.1.47:3001,http://192.168.1.47:3002,http://192.168.1.47:3003
+      TRUST_PROXY_HOPS: 1
     ports:
       - "8080:8080"
     volumes:
