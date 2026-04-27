@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-const rootUrl = process.env.NEXT_PUBLIC_ROOT_URL || "http://localhost:3000";
+const rootUrl = process.env.NEXT_PUBLIC_MAIN_APP_URL || process.env.NEXT_PUBLIC_ROOT_URL || (process.env.NODE_ENV === "production" ? "http://www.vlworkhub.ca" : "http://192.168.1.47:3000");
 const apiUrl = process.env.API_INTERNAL_URL || process.env.NEXT_PUBLIC_API_URL || "";
 const appKey = "CARE";
 

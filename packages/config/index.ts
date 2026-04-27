@@ -1,4 +1,11 @@
-const isProduction = process.env.NODE_ENV === "production";
+type EnvMap = Record<string, string | undefined>;
+
+const env: EnvMap =
+  typeof globalThis !== "undefined" && "process" in globalThis
+    ? ((globalThis as { process?: { env?: EnvMap } }).process?.env ?? {})
+    : {};
+
+const isProduction = env.NODE_ENV === "production";
 
 const defaultLinks = {
   root: isProduction ? "http://www.vlworkhub.ca" : "http://192.168.1.47:3000",
@@ -9,24 +16,24 @@ const defaultLinks = {
 
 export const platformLinks = {
   root:
-    process.env.NEXT_PUBLIC_MAIN_APP_URL ||
-    process.env.NEXT_PUBLIC_ROOT_URL ||
-    defaultLinks.root,
+    isProduction
+      ? env.NEXT_PUBLIC_MAIN_APP_URL || env.NEXT_PUBLIC_ROOT_URL || defaultLinks.root
+      : defaultLinks.root,
   care:
-    process.env.NEXT_PUBLIC_CARE_APP_URL ||
-    process.env.NEXT_PUBLIC_CARE_URL ||
-    defaultLinks.care,
+    isProduction
+      ? env.NEXT_PUBLIC_CARE_APP_URL || env.NEXT_PUBLIC_CARE_URL || defaultLinks.care
+      : defaultLinks.care,
   hr:
-    process.env.NEXT_PUBLIC_HR_APP_URL ||
-    process.env.NEXT_PUBLIC_HR_URL ||
-    defaultLinks.hr,
+    isProduction
+      ? env.NEXT_PUBLIC_HR_APP_URL || env.NEXT_PUBLIC_HR_URL || defaultLinks.hr
+      : defaultLinks.hr,
   ursafe:
-    process.env.NEXT_PUBLIC_URSAFE_APP_URL ||
-    process.env.NEXT_PUBLIC_URSAFE_URL ||
-    defaultLinks.ursafe,
-  api: process.env.API_INTERNAL_URL ||
+    isProduction
+      ? env.NEXT_PUBLIC_URSAFE_APP_URL || env.NEXT_PUBLIC_URSAFE_URL || defaultLinks.ursafe
+      : defaultLinks.ursafe,
+  api: env.API_INTERNAL_URL ||
     (isProduction
-      ? process.env.NEXT_PUBLIC_API_URL || "https://api.vlworkhub.ca"
+      ? env.NEXT_PUBLIC_API_URL || "https://api.vlworkhub.ca"
       : "http://127.0.0.1:8080")
 };
 
