@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-const rootUrl = process.env.NEXT_PUBLIC_MAIN_APP_URL || process.env.NEXT_PUBLIC_ROOT_URL || (process.env.NODE_ENV === "production" ? "http://www.vlworkhub.ca" : "http://192.168.1.47:3000");
 const apiUrl = process.env.API_INTERNAL_URL || process.env.NEXT_PUBLIC_API_URL || "";
 const appKey = "HR";
 
@@ -23,6 +22,14 @@ async function getAccess(request: NextRequest) {
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  const hostHeader = request.headers.get("x-forwarded-host") || request.headers.get("host") || request.nextUrl.host;
+  const protoHeader = request.headers.get("x-forwarded-proto") || request.nextUrl.protocol.replace(":", "");
+  const hostname = hostHeader.split(":")[0];
+  const isProductionHost = /(^|\.)vlworkhub\.ca$/i.test(hostname);
+  const rootUrl = isProductionHost
+    ? process.env.NEXT_PUBLIC_MAIN_APP_URL || process.env.NEXT_PUBLIC_ROOT_URL || "http://www.vlworkhub.ca"
+    : `${protoHeader}://${hostname}:3000`;
+
   if (pathname.startsWith("/_next") || pathname === "/favicon.ico" || pathname === "/access-denied") {
     return NextResponse.next();
   }
