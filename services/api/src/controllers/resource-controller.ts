@@ -122,6 +122,44 @@ function normalizeSurveyCompletionPayload(body: Record<string, unknown>, session
   };
 }
 
+function parseTaskAssignedTo(value: string) {
+  const tokens = String(value || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+  const allStaff = tokens.includes("All Staff");
+  const departmentNames = tokens
+    .filter((token) => token.startsWith("Department:"))
+    .map((token) => token.slice("Department:".length).trim())
+    .filter(Boolean);
+  const assigneeNames = tokens
+    .filter((token) => token !== "All Staff" && !token.startsWith("Department:"))
+    .filter(Boolean);
+
+  return { allStaff, departmentNames, assigneeNames };
+}
+
+function parseTrainingAssigneeTokens(assigneeName: string) {
+  const tokens = String(assigneeName || "")
+    .split(",")
+    .map((token) => token.trim())
+    .filter(Boolean);
+
+  return {
+    allStaff: tokens.includes("All Staff"),
+    departmentNames: tokens
+      .filter((token) => token.startsWith("Department: "))
+      .map((token) => token.slice("Department: ".length).trim())
+      .filter(Boolean),
+    assigneeNames: tokens.filter((token) => token !== "All Staff" && !token.startsWith("Department: "))
+  };
+}
+
+function getAssignedBy(req: AuthenticatedRequest) {
+  return String(req.user?.full_name || req.user?.email || "System");
+}
+
 async function ensureTaskExists(taskId: number, organizationId: string) {
   const result = await pool.query(
     `SELECT id FROM tasks WHERE id = $1 AND organization_id = $2 LIMIT 1`,
@@ -1021,21 +1059,20 @@ export async function createResource(req: AuthenticatedRequest, res: Response) {
     void (async () => {
       try {
         const body = req.body as Record<string, unknown>;
+        const assignedBy = getAssignedBy(req);
 
-        if (isTaskAssignmentResource(resourceName)) {
-          const payload = normalizeTaskAssignmentPayload(body);
-          const taskRow = await pool.query(
-            "SELECT title FROM tasks WHERE id = $1 LIMIT 1",
-            [payload.taskId]
-          );
-          const taskTitle = String(taskRow.rows[0]?.title || "Task");
+        if (resourceName === "tasks") {
+          const taskTitle = String(body.title || "Task");
+          const assignedTo = parseTaskAssignedTo(String(body.assigned_to || ""));
           await sendAssignmentNotifications({
             organizationId,
             type: "task",
             title: taskTitle,
-            userId: payload.userId,
-            allStaff: payload.department === "All Staff",
-            departmentName: payload.department && payload.department !== "All Staff" ? payload.department : null,
+            assigneeNames: assignedTo.assigneeNames,
+            departmentNames: assignedTo.departmentNames,
+            allStaff: assignedTo.allStaff,
+            dueDate: String(body.due_date ?? "") || null,
+            assignedBy
           });
         } else if (isSurveyAssignmentResource(resourceName)) {
           const payload = normalizeSurveyAssignmentPayload(body);
@@ -1047,31 +1084,19 @@ export async function createResource(req: AuthenticatedRequest, res: Response) {
             departmentId: payload.departmentId,
             allStaff: payload.allStaff,
             dueDate: payload.dueDate,
+            assignedBy
           });
         } else if (resourceName === "training_assignments") {
-          const assigneeName = String(body.assignee_name ?? "");
-          const tokens = assigneeName.split(",").map((t) => t.trim()).filter(Boolean);
-          const isAllStaff = tokens.includes("All Staff");
-          const deptToken = tokens.find((t) => t.startsWith("Department: "));
-          const deptName = deptToken ? deptToken.slice("Department: ".length).trim() : null;
-          const nameTokens = tokens.filter((t) => t !== "All Staff" && !t.startsWith("Department: "));
+          const parsed = parseTrainingAssigneeTokens(String(body.assignee_name ?? ""));
           await sendAssignmentNotifications({
             organizationId,
             type: "training",
             title: String(body.title ?? "Training"),
-            allStaff: isAllStaff,
-            departmentName: deptName,
-            assigneeNames: nameTokens,
+            allStaff: parsed.allStaff,
+            departmentNames: parsed.departmentNames,
+            assigneeNames: parsed.assigneeNames,
             dueDate: String(body.due_date ?? "") || null,
-          });
-        } else if (resourceName === "announcements") {
-          const audience = String(body.audience ?? "");
-          await sendAssignmentNotifications({
-            organizationId,
-            type: "announcement",
-            title: String(body.title ?? "Announcement"),
-            allStaff: audience === "All Staff",
-            departmentName: audience && audience !== "All Staff" ? audience : null,
+            assignedBy
           });
         }
       } catch (notifErr) {
@@ -1108,6 +1133,11 @@ export async function updateResource(req: AuthenticatedRequest, res: Response) {
 
     const valueMap = Object.fromEntries(resource.fields.map((field) => [field, req.body[field] ?? null]));
     const values = resource.fields.map((field) => req.body[field] ?? null);
+    const assignedBy = getAssignedBy(req);
+    const shouldCheckAssignmentChange = ["tasks", "training_assignments", "survey_assignments"].includes(resourceName);
+    const previousRecord = shouldCheckAssignmentChange
+      ? await withFallback(resourceName, async () => selectExistingRecord(resource.table, recordId, organizationId), () => null)
+      : null;
 
     await withFallback(
       resourceName,
@@ -1129,6 +1159,69 @@ export async function updateResource(req: AuthenticatedRequest, res: Response) {
       },
       () => Boolean(updateDevResource(resourceName as never, organizationId, recordId, valueMap))
     );
+
+    // Notification on target change only (avoid duplicate emails on simple edits)
+    void (async () => {
+      try {
+        const body = req.body as Record<string, unknown>;
+
+        if (resourceName === "tasks") {
+          const previousAssignedTo = String(previousRecord?.assigned_to || "").trim();
+          const nextAssignedTo = String(body.assigned_to || "").trim();
+          if (nextAssignedTo && previousAssignedTo !== nextAssignedTo) {
+            const parsed = parseTaskAssignedTo(nextAssignedTo);
+            await sendAssignmentNotifications({
+              organizationId,
+              type: "task",
+              title: String(body.title || previousRecord?.title || "Task"),
+              assigneeNames: parsed.assigneeNames,
+              departmentNames: parsed.departmentNames,
+              allStaff: parsed.allStaff,
+              dueDate: String(body.due_date ?? previousRecord?.due_date ?? "") || null,
+              assignedBy
+            });
+          }
+        } else if (resourceName === "training_assignments") {
+          const previousAssignee = String(previousRecord?.assignee_name || "").trim();
+          const nextAssignee = String(body.assignee_name || "").trim();
+          if (nextAssignee && previousAssignee !== nextAssignee) {
+            const parsed = parseTrainingAssigneeTokens(nextAssignee);
+            await sendAssignmentNotifications({
+              organizationId,
+              type: "training",
+              title: String(body.title || previousRecord?.title || "Training"),
+              allStaff: parsed.allStaff,
+              departmentNames: parsed.departmentNames,
+              assigneeNames: parsed.assigneeNames,
+              dueDate: String(body.due_date ?? previousRecord?.due_date ?? "") || null,
+              assignedBy
+            });
+          }
+        } else if (isSurveyAssignmentResource(resourceName)) {
+          const previousAllStaff = String(previousRecord?.all_staff ?? "false").toLowerCase() === "true";
+          const nextPayload = normalizeSurveyAssignmentPayload(body);
+          const changed =
+            previousAllStaff !== nextPayload.allStaff ||
+            String(previousRecord?.user_id || "") !== String(nextPayload.userId || "") ||
+            String(previousRecord?.department_id || "") !== String(nextPayload.departmentId || "");
+
+          if (changed) {
+            await sendAssignmentNotifications({
+              organizationId,
+              type: "survey",
+              title: nextPayload.title || String(previousRecord?.title || "Survey"),
+              userId: nextPayload.userId,
+              departmentId: nextPayload.departmentId,
+              allStaff: nextPayload.allStaff,
+              dueDate: nextPayload.dueDate,
+              assignedBy
+            });
+          }
+        }
+      } catch (notifErr) {
+        console.warn("[AssignmentEmail] Notification dispatch error:", notifErr);
+      }
+    })();
 
     return res.json({ success: true });
   } catch (error) {

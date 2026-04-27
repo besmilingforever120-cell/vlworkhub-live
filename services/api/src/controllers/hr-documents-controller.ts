@@ -1978,6 +1978,7 @@ export async function createHrDocument(req: AuthenticatedRequest, res: Response)
       departmentIds,
       allStaff,
       dueDate,
+      assignedBy: context.fullName,
     });
 
     return res.status(201).json({ id: documentId });

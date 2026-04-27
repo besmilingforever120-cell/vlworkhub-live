@@ -17,12 +17,15 @@ export type AssignmentEmailParams = {
   type: AssignmentEmailType;
   title: string;
   dueDate?: string | null;
+  assignedBy?: string | null;
+  loginUrl?: string | null;
   // --- resolution strategies (one or more can be supplied) ---
   userId?: string | null;          // single user UUID
   userIds?: string[];              // multiple user UUIDs (documents)
   departmentId?: string | null;    // single department UUID
   departmentIds?: string[];        // multiple department UUIDs (documents)
   departmentName?: string | null;  // department by name (tasks/announcements)
+  departmentNames?: string[];      // departments by name (tasks)
   allStaff?: boolean;              // everyone in the org
   assigneeNames?: string[];        // user full-names (training)
 };
@@ -148,6 +151,12 @@ async function resolveEmails(params: AssignmentEmailParams): Promise<string[]> {
     emails.push(...await getUserEmailsByDepartmentName(org, params.departmentName));
   }
 
+  if (params.departmentNames?.length) {
+    for (const name of params.departmentNames) {
+      emails.push(...await getUserEmailsByDepartmentName(org, name));
+    }
+  }
+
   // Individual names (used by training assignments)
   if (params.assigneeNames?.length) {
     emails.push(...await getUserEmailsByNames(org, params.assigneeNames));
@@ -167,16 +176,24 @@ function buildEmailBody(params: AssignmentEmailParams): { subject: string; text:
     document: "Document",
   }[params.type];
 
-  const dueLine = params.dueDate ? `\nDue date: ${params.dueDate}` : "";
+  const dueLine = params.dueDate ? `Due date: ${params.dueDate}` : null;
+  const assignedByLine = params.assignedBy ? `Assigned by: ${params.assignedBy}` : null;
+  const baseLoginUrl = (params.loginUrl || process.env.NEXT_PUBLIC_MAIN_APP_URL || process.env.NEXT_PUBLIC_ROOT_URL || "http://192.168.1.47:3000").replace(/\/$/, "");
+  const fullLoginUrl = `${baseLoginUrl}/login`;
   const subject = `${label} Assigned: ${params.title}`;
   const text = [
-    `You have been assigned a new ${label.toLowerCase()}:`,
+    "You have a new assignment in VLWorkHub.",
     "",
-    `  ${params.title}`,
+    `Assignment type: ${label}`,
+    `Assignment title: ${params.title}`,
+    assignedByLine,
     dueLine,
     "",
-    "Please log in to VLWorkHub to view it.",
-  ].join("\n");
+    `Login URL: ${fullLoginUrl}`,
+    "Instruction: Log in and complete this assignment as soon as possible.",
+    "",
+    "This is an automated notification from VLWorkHub."
+  ].filter(Boolean).join("\n");
 
   return { subject, text };
 }
