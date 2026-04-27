@@ -34,7 +34,7 @@ export const platformLinks = {
   api: env.API_INTERNAL_URL ||
     (isProduction
       ? env.NEXT_PUBLIC_API_URL || "https://api.vlworkhub.ca"
-      : "http://127.0.0.1:8080")
+      : "http://192.168.1.47:8080")
 };
 
 export const appCards = [
