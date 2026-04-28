@@ -208,6 +208,11 @@ export async function listHrAssignments(req: AuthenticatedRequest, res: Response
 
 export async function createHrAssignment(req: AuthenticatedRequest, res: Response) {
   try {
+    const callerRole = await resolveHrRoleSummary(req);
+    if (callerRole.role !== "admin") {
+      return res.status(403).json({ message: "Forbidden: HR admin or SUPER_ADMIN required" });
+    }
+
     const organizationId = String(req.user?.organization_id || "");
     const { userId, role, managerId, departmentId = null } = req.body as {
       userId?: string;
@@ -250,6 +255,11 @@ export async function createHrAssignment(req: AuthenticatedRequest, res: Respons
 
 export async function updateHrAssignment(req: AuthenticatedRequest, res: Response) {
   try {
+    const callerRole = await resolveHrRoleSummary(req);
+    if (callerRole.role !== "admin") {
+      return res.status(403).json({ message: "Forbidden: HR admin or SUPER_ADMIN required" });
+    }
+
     const organizationId = String(req.user?.organization_id || "");
     const userId = String(req.params.userId || "");
     const { role, managerId, departmentId = null } = req.body as {
