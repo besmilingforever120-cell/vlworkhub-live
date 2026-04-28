@@ -75,7 +75,7 @@ async function buildSignedPdf(
 
   try {
     if (!document.file_url) throw new Error("Missing original document URL");
-    const response = await fetch(document.file_url);
+    const response = await fetch(document.file_url, { credentials: "include" });
     const bytes = await response.arrayBuffer();
     pdfDoc = await PDFDocument.load(bytes);
   } catch {
@@ -177,7 +177,7 @@ export function DocumentDetailView({ documentId }: Props) {
         const pdfjs = (await import("pdfjs-dist/build/pdf.mjs" as string)) as any;
         pdfjs.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).toString();
 
-        const loadingTask = pdfjs.getDocument(documentUrl);
+        const loadingTask = pdfjs.getDocument({ url: documentUrl, withCredentials: true });
         const pdf = await loadingTask.promise;
         const renderPage = async (pageNumber: number) => {
           const page = await pdf.getPage(pageNumber);
