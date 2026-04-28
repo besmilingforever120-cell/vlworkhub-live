@@ -35,7 +35,7 @@ app.use(
 );
 app.use(express.json({ limit: "25mb" }));
 app.use(cookieParser());
-app.use("/uploads", express.static(path.resolve(__dirname, "../../uploads")));
+app.use("/uploads", express.static(path.resolve(__dirname, "../uploads")));
 
 app.get("/health", (_, res) => res.json({ status: "ok" }));
 app.use("/auth", authRouter);

@@ -31,7 +31,7 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      - ./services/api/uploads:/app/services/uploads
+      - ./services/api/uploads:/app/services/api/uploads
     depends_on:
       - postgres
 
