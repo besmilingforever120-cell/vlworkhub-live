@@ -58,11 +58,6 @@ export const resourceMap = {
   },
   mileage: { table: "mileage", fields: ["trip_date", "employee_name", "vehicle_id", "distance_km"] },
   vehicles: { table: "vehicles", fields: ["name", "plate_number", "status", "assigned_location"] },
-  users: { table: "users", fields: ["email", "password_hash", "first_name", "last_name", "status", "role", "organization_id"] },
-  organizations: { table: "organizations", fields: ["name"] },
-  user_roles: { table: "user_roles", fields: ["user_id", "role"] },
-  user_app_access: { table: "user_app_access", fields: ["user_id", "app"] },
-  hr_user_roles: { table: "hr_user_roles", fields: ["user_id", "role", "department_id"] },
   emergency_contacts: { table: "emergency_contacts", fields: ["full_name", "relation", "phone", "employee_name"] },
   safety_checklists: { table: "safety_checklists", fields: ["title", "location", "completed_by", "status"] }
 } as const;
