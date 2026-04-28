@@ -183,6 +183,23 @@ function extractUploadsRelativePath(fileUrl: string | null | undefined) {
   }
 }
 
+function resolveSafeUploadsPath(relativePath: string) {
+  const normalized = String(relativePath || "").trim();
+  if (!normalized || normalized.includes("\0")) {
+    return null;
+  }
+
+  const uploadsRoot = path.resolve(getUploadsRoot());
+  const resolvedPath = path.resolve(uploadsRoot, normalized);
+  const relativeToRoot = path.relative(uploadsRoot, resolvedPath);
+
+  if (!relativeToRoot || relativeToRoot.startsWith("..") || path.isAbsolute(relativeToRoot)) {
+    return null;
+  }
+
+  return resolvedPath;
+}
+
 function sanitizePathSegment(value: string) {
   const normalized = String(value || "")
     .normalize("NFKD")
@@ -2374,7 +2391,10 @@ export async function downloadHrDocument(req: AuthenticatedRequest, res: Respons
     const relativePath = extractUploadsRelativePath(normalizedFileUrl);
 
     if (relativePath) {
-      const filePath = path.join(getUploadsRoot(), relativePath);
+      const filePath = resolveSafeUploadsPath(relativePath);
+      if (!filePath) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
       return res.download(filePath, String(access.row.file_name || `document-${documentId}.pdf`));
     }
 
