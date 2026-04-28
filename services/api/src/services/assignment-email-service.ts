@@ -8,6 +8,7 @@
  */
 
 import { pool } from "../config/db";
+import { env } from "../config/env";
 import { getSmtpTransporter } from "./email-settings-service";
 
 export type AssignmentEmailType = "task" | "survey" | "training" | "announcement" | "document";
@@ -178,7 +179,7 @@ function buildEmailBody(params: AssignmentEmailParams): { subject: string; text:
 
   const dueLine = params.dueDate ? `Due date: ${params.dueDate}` : null;
   const assignedByLine = params.assignedBy ? `Assigned by: ${params.assignedBy}` : null;
-  const baseLoginUrl = (params.loginUrl || process.env.NEXT_PUBLIC_MAIN_APP_URL || process.env.NEXT_PUBLIC_ROOT_URL || "").replace(/\/$/, "");
+  const baseLoginUrl = (params.loginUrl || env.mainPlatformUrl).replace(/\/$/, "");
   const fullLoginUrl = `${baseLoginUrl}/login`;
   const subject = `${label} Assigned: ${params.title}`;
   const text = [

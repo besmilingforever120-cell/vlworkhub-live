@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { headers } from "next/headers";
 import { appCards } from "@vlworkhub/config";
 import { ApplicationCard } from "@vlworkhub/ui";
 import { LogoutButton } from "../../components/logout-button";
@@ -22,21 +21,6 @@ export default async function DashboardPage() {
   const dashboardCards = user.platformRole === "SUPER_ADMIN"
     ? [...visibleApps, { appKey: "ADMIN", name: "Admin", description: "Create users, update status, and assign app access.", href: "/admin" }]
     : visibleApps;
-  const headerStore = await headers();
-  const hostHeader = headerStore.get("x-forwarded-host") || headerStore.get("host") || "";
-  const protoHeader = headerStore.get("x-forwarded-proto") || "http";
-  const hostname = hostHeader.split(":")[0];
-  const isProductionHost = /(^|\.)vlworkhub\.ca$/i.test(hostname);
-  const appPorts: Record<string, number> = {
-    CARE: 3001,
-    HR: 3002,
-    URSAFE: 3003
-  };
-  const resolvedCards = dashboardCards.map((app) =>
-    appPorts[app.appKey] && !isProductionHost && hostname
-      ? { ...app, href: `${protoHeader}://${hostname}:${appPorts[app.appKey]}` }
-      : app
-  );
 
   return (
     <main className="mx-auto max-w-7xl px-6 py-16">
@@ -52,7 +36,7 @@ export default async function DashboardPage() {
         </div>
       </div>
       <div className="mt-8 grid gap-6 md:grid-cols-4">
-        {resolvedCards.map((app) => (
+        {dashboardCards.map((app) => (
           <ApplicationCard key={app.href} app={app} />
         ))}
       </div>

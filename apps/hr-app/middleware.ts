@@ -1,7 +1,21 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-const apiUrl = process.env.API_INTERNAL_URL || process.env.NEXT_PUBLIC_API_URL || "";
+function requireUrl(name: string, aliases: string[] = []) {
+  const candidates = [name, ...aliases];
+  for (const candidate of candidates) {
+    const value = String(process.env[candidate] || "").trim().replace(/\/+$/, "");
+    if (value) return value;
+  }
+
+  throw new Error(
+    `[HR middleware] Missing required URL environment variable: ${name}.` +
+    (aliases.length ? ` Accepted aliases: ${aliases.join(", ")}` : "")
+  );
+}
+
+const apiUrl = requireUrl("API_INTERNAL_URL", ["API_BASE_URL", "NEXT_PUBLIC_API_URL"]);
+const rootUrl = requireUrl("MAIN_PLATFORM_URL", ["NEXT_PUBLIC_MAIN_APP_URL", "NEXT_PUBLIC_ROOT_URL"]);
 const appKey = "HR";
 
 async function getSession(request: NextRequest) {
@@ -30,13 +44,6 @@ export async function middleware(request: NextRequest) {
   const cookieHeaderExists = Boolean(request.headers.get("cookie"));
   const authMeUrl = apiUrl ? `${apiUrl}/auth/me` : "";
   const myAccessUrl = apiUrl ? `${apiUrl}/api/apps/my-access` : "";
-  const hostHeader = request.headers.get("x-forwarded-host") || request.headers.get("host") || request.nextUrl.host;
-  const protoHeader = request.headers.get("x-forwarded-proto") || request.nextUrl.protocol.replace(":", "");
-  const hostname = hostHeader.split(":")[0];
-  const isProductionHost = /(^|\.)vlworkhub\.ca$/i.test(hostname);
-  const rootUrl = isProductionHost
-    ? process.env.NEXT_PUBLIC_MAIN_APP_URL || process.env.NEXT_PUBLIC_ROOT_URL || ""
-    : `${protoHeader}://${hostname}:3000`;
 
   console.info("[HR middleware] request", {
     requestUrl,

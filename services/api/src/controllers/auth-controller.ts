@@ -80,18 +80,13 @@ function buildLegacyClearCookie(name: string, domain?: string) {
   return parts.join("; ");
 }
 
-function resolveCookieDomain(req: Request) {
+function resolveCookieDomain(_: Request) {
   if (env.cookieDomain) {
     return env.cookieDomain;
   }
 
   if (env.nodeEnv !== "production") {
     return undefined;
-  }
-
-  const requestHost = String(req.headers.host || "").split(":")[0].toLowerCase();
-  if (requestHost === "vlworkhub.ca" || requestHost.endsWith(".vlworkhub.ca")) {
-    return ".vlworkhub.ca";
   }
 
   return undefined;

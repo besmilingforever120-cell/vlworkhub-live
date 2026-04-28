@@ -58,7 +58,9 @@ export function UrsafeSidebar() {
     return SIDEBAR_ITEMS.filter((item) => !item.superAdminOnly || superAdmin);
   }, [user]);
 
-  const mainAppUrl = process.env.NEXT_PUBLIC_MAIN_APP_URL;
+  const mainAppUrl = (process.env.MAIN_PLATFORM_URL || process.env.NEXT_PUBLIC_MAIN_APP_URL || process.env.NEXT_PUBLIC_ROOT_URL || "")
+    .trim()
+    .replace(/\/+$/, "");
 
   const handleBackToPlatform = () => {
     if (!mainAppUrl) {
@@ -128,7 +130,7 @@ export function UrsafeSidebar() {
           onClick={handleBackToPlatform}
           disabled={!mainAppUrl}
           className="mb-3 inline-flex w-full items-center justify-center rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-60"
-          title={mainAppUrl ? "Return to main platform" : "Set NEXT_PUBLIC_MAIN_APP_URL to enable"}
+          title={mainAppUrl ? "Return to main platform" : "Set MAIN_PLATFORM_URL to enable"}
         >
           Back to VLWorkHub
         </button>

@@ -19,7 +19,7 @@ const app = express();
 
 app.set("trust proxy", env.trustProxyHops);
 
-const allowedOrigins = new Set(env.allowedOrigins);
+const allowedOrigins = new Set([...env.allowedOrigins, ...env.derivedAllowedOrigins]);
 
 app.use(
   cors({

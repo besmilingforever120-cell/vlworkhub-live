@@ -23,6 +23,10 @@ services:
     environment:
       NODE_ENV: ${NODE_ENV:-development}
       API_BASE_URL: ${API_BASE_URL}
+      MAIN_PLATFORM_URL: ${MAIN_PLATFORM_URL}
+      HR_APP_URL: ${HR_APP_URL}
+      CARE_APP_URL: ${CARE_APP_URL}
+      URSAFE_APP_URL: ${URSAFE_APP_URL}
       JWT_SECRET: ${JWT_SECRET:-}
       EMAIL_SETTINGS_ENCRYPTION_KEY: ${EMAIL_SETTINGS_ENCRYPTION_KEY}
       DATABASE_URL: postgres://postgres:postgres@vlworkhub-postgres:5432/vlworkhub
@@ -39,14 +43,34 @@ services:
     build:
       context: .
       dockerfile: apps/main-platform/Dockerfile
+      args:
+        MAIN_PLATFORM_URL: ${MAIN_PLATFORM_URL}
+        HR_APP_URL: ${HR_APP_URL}
+        CARE_APP_URL: ${CARE_APP_URL}
+        URSAFE_APP_URL: ${URSAFE_APP_URL}
+        API_BASE_URL: ${API_BASE_URL}
+        NEXT_PUBLIC_MAIN_APP_URL: ${MAIN_PLATFORM_URL}
+        NEXT_PUBLIC_ROOT_URL: ${MAIN_PLATFORM_URL}
+        NEXT_PUBLIC_HR_APP_URL: ${HR_APP_URL}
+        NEXT_PUBLIC_CARE_APP_URL: ${CARE_APP_URL}
+        NEXT_PUBLIC_URSAFE_APP_URL: ${URSAFE_APP_URL}
+        NEXT_PUBLIC_API_URL: ${API_BASE_URL}
     container_name: vlworkhub-main-platform
     restart: always
     environment:
       NODE_ENV: production
-      API_INTERNAL_URL: http://api:8080
-      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
-      NEXT_PUBLIC_MAIN_APP_URL: ${NEXT_PUBLIC_MAIN_APP_URL}
-      NEXT_PUBLIC_ROOT_URL: ${NEXT_PUBLIC_ROOT_URL}
+      API_INTERNAL_URL: ${API_INTERNAL_URL}
+      API_BASE_URL: ${API_BASE_URL}
+      MAIN_PLATFORM_URL: ${MAIN_PLATFORM_URL}
+      HR_APP_URL: ${HR_APP_URL}
+      CARE_APP_URL: ${CARE_APP_URL}
+      URSAFE_APP_URL: ${URSAFE_APP_URL}
+      NEXT_PUBLIC_MAIN_APP_URL: ${MAIN_PLATFORM_URL}
+      NEXT_PUBLIC_ROOT_URL: ${MAIN_PLATFORM_URL}
+      NEXT_PUBLIC_HR_APP_URL: ${HR_APP_URL}
+      NEXT_PUBLIC_CARE_APP_URL: ${CARE_APP_URL}
+      NEXT_PUBLIC_URSAFE_APP_URL: ${URSAFE_APP_URL}
+      NEXT_PUBLIC_API_URL: ${API_BASE_URL}
     ports:
       - "3000:3000"
     depends_on:
@@ -57,17 +81,33 @@ services:
       context: .
       dockerfile: apps/hr-app/Dockerfile
       args:
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
-        NEXT_PUBLIC_MAIN_APP_URL: ${NEXT_PUBLIC_MAIN_APP_URL}
-        NEXT_PUBLIC_ROOT_URL: ${NEXT_PUBLIC_ROOT_URL}
+        MAIN_PLATFORM_URL: ${MAIN_PLATFORM_URL}
+        HR_APP_URL: ${HR_APP_URL}
+        CARE_APP_URL: ${CARE_APP_URL}
+        URSAFE_APP_URL: ${URSAFE_APP_URL}
+        API_BASE_URL: ${API_BASE_URL}
+        NEXT_PUBLIC_MAIN_APP_URL: ${MAIN_PLATFORM_URL}
+        NEXT_PUBLIC_ROOT_URL: ${MAIN_PLATFORM_URL}
+        NEXT_PUBLIC_HR_APP_URL: ${HR_APP_URL}
+        NEXT_PUBLIC_CARE_APP_URL: ${CARE_APP_URL}
+        NEXT_PUBLIC_URSAFE_APP_URL: ${URSAFE_APP_URL}
+        NEXT_PUBLIC_API_URL: ${API_BASE_URL}
     container_name: vlworkhub-hr-app
     restart: always
     environment:
       NODE_ENV: production
-      API_INTERNAL_URL: http://api:8080
-      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
-      NEXT_PUBLIC_MAIN_APP_URL: ${NEXT_PUBLIC_MAIN_APP_URL}
-      NEXT_PUBLIC_ROOT_URL: ${NEXT_PUBLIC_ROOT_URL}
+      API_INTERNAL_URL: ${API_INTERNAL_URL}
+      API_BASE_URL: ${API_BASE_URL}
+      MAIN_PLATFORM_URL: ${MAIN_PLATFORM_URL}
+      HR_APP_URL: ${HR_APP_URL}
+      CARE_APP_URL: ${CARE_APP_URL}
+      URSAFE_APP_URL: ${URSAFE_APP_URL}
+      NEXT_PUBLIC_MAIN_APP_URL: ${MAIN_PLATFORM_URL}
+      NEXT_PUBLIC_ROOT_URL: ${MAIN_PLATFORM_URL}
+      NEXT_PUBLIC_HR_APP_URL: ${HR_APP_URL}
+      NEXT_PUBLIC_CARE_APP_URL: ${CARE_APP_URL}
+      NEXT_PUBLIC_URSAFE_APP_URL: ${URSAFE_APP_URL}
+      NEXT_PUBLIC_API_URL: ${API_BASE_URL}
     ports:
       - "3002:3002"
     depends_on:

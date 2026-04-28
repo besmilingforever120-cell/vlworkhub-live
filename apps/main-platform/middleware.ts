@@ -1,7 +1,14 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-const apiUrl = process.env.API_INTERNAL_URL || process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+const apiUrl =
+  String(process.env.API_INTERNAL_URL || process.env.API_BASE_URL || process.env.NEXT_PUBLIC_API_URL || "")
+    .trim()
+    .replace(/\/+$/, "");
+
+if (!apiUrl) {
+  throw new Error("[Main middleware] Missing required URL environment variable: API_INTERNAL_URL.");
+}
 
 async function getSession(request: NextRequest) {
   const cookie = request.headers.get("cookie") || "";

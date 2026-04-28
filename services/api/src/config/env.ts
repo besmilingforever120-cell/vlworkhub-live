@@ -127,14 +127,59 @@ function parseAllowedOrigins(value: string | undefined) {
     .filter(Boolean);
 }
 
+function normalizeUrl(value: string | undefined) {
+  return String(value || "").trim().replace(/\/+$/, "");
+}
+
+function toOrigin(urlValue: string, name: string) {
+  try {
+    return new URL(urlValue).origin;
+  } catch {
+    throw new Error(`[env] ${name} must be a valid absolute URL. Received: ${urlValue}`);
+  }
+}
+
+function requireUrl(name: string, aliases: string[] = []) {
+  const candidates = [name, ...aliases];
+  for (const candidate of candidates) {
+    const value = normalizeUrl(process.env[candidate]);
+    if (value) {
+      return value;
+    }
+  }
+
+  throw new Error(
+    `[env] Missing required URL environment variable: ${name}.` +
+    (aliases.length ? ` Accepted aliases: ${aliases.join(", ")}` : "")
+  );
+}
+
+const apiBaseUrl = requireUrl("API_BASE_URL", ["NEXT_PUBLIC_API_URL"]);
+const mainPlatformUrl = requireUrl("MAIN_PLATFORM_URL", ["NEXT_PUBLIC_MAIN_APP_URL", "NEXT_PUBLIC_ROOT_URL"]);
+const hrAppUrl = requireUrl("HR_APP_URL", ["NEXT_PUBLIC_HR_APP_URL", "NEXT_PUBLIC_HR_URL"]);
+const careAppUrl = requireUrl("CARE_APP_URL", ["NEXT_PUBLIC_CARE_APP_URL", "NEXT_PUBLIC_CARE_URL"]);
+const ursafeAppUrl = requireUrl("URSAFE_APP_URL", ["NEXT_PUBLIC_URSAFE_APP_URL", "NEXT_PUBLIC_URSAFE_URL"]);
+
+const derivedAllowedOrigins = [
+  toOrigin(mainPlatformUrl, "MAIN_PLATFORM_URL"),
+  toOrigin(hrAppUrl, "HR_APP_URL"),
+  toOrigin(careAppUrl, "CARE_APP_URL"),
+  toOrigin(ursafeAppUrl, "URSAFE_APP_URL")
+];
+
 export const env = {
   nodeEnv,
   host: process.env.API_HOST || "0.0.0.0",
   port: Number(process.env.API_PORT || 8080),
-  apiBaseUrl: process.env.API_BASE_URL || process.env.NEXT_PUBLIC_API_URL || "",
+  apiBaseUrl,
+  mainPlatformUrl,
+  hrAppUrl,
+  careAppUrl,
+  ursafeAppUrl,
   jwtSecret: resolveJwtSecret(nodeEnv),
   cookieDomain: process.env.COOKIE_DOMAIN || undefined,
   allowedOrigins: parseAllowedOrigins(process.env.ALLOWED_ORIGINS),
+  derivedAllowedOrigins,
   databaseUrl: process.env.DATABASE_URL,
   trustProxyHops: parsePositiveInt(process.env.TRUST_PROXY_HOPS, 0),
   authRateLimitWindowMinutes: parsePositiveInt(process.env.AUTH_RATE_LIMIT_WINDOW_MINUTES, 15),

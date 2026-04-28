@@ -1,5 +1,6 @@
 import type { Response } from "express";
 import { pool } from "../config/db";
+import { env } from "../config/env";
 import { hashPassword } from "../lib/passwords";
 import { generateTemporaryPassword } from "../lib/password-policy";
 import type { AuthenticatedRequest } from "../middleware/auth";
@@ -58,11 +59,7 @@ function ensureUserSecuritySchema() {
 }
 
 function resolveLoginUrl() {
-  return (
-    process.env.NEXT_PUBLIC_MAIN_APP_URL ||
-    process.env.NEXT_PUBLIC_ROOT_URL ||
-    ""
-  );
+  return env.mainPlatformUrl;
 }
 
 async function sendWelcomeOnboardingEmail(params: {
