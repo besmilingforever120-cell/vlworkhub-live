@@ -232,6 +232,44 @@ export function HrAdminPanel() {
         <div className="legacy-stat-card green"><div className="legacy-stat-icon"><UserCog className="h-5 w-5" /></div><div><p className="legacy-stat-value">{stats.admins}</p><p className="legacy-stat-title">HR Admins</p></div></div>
       </section>
 
+      <section className="legacy-stats-grid" style={{ marginTop: 20 }}>
+        <Link href="/admin/onboarding-files" className="legacy-stat-card blue" style={{ textDecoration: "none", cursor: "pointer" }}>
+          <div className="legacy-stat-icon"><FolderOpen className="h-5 w-5" /></div>
+          <div>
+            <p className="legacy-stat-value">Open</p>
+            <p className="legacy-stat-title">Employees Onboarding Files</p>
+          </div>
+        </Link>
+        <Link href="/admin/signed-files" className="legacy-stat-card blue" style={{ textDecoration: "none", cursor: "pointer" }}>
+          <div className="legacy-stat-icon"><FolderOpen className="h-5 w-5" /></div>
+          <div>
+            <p className="legacy-stat-value">Open</p>
+            <p className="legacy-stat-title">Signed User Folders</p>
+          </div>
+        </Link>
+        <Link href="/admin/archived-trainings" className="legacy-stat-card amber" style={{ textDecoration: "none", cursor: "pointer" }}>
+          <div className="legacy-stat-icon"><Archive className="h-5 w-5" /></div>
+          <div>
+            <p className="legacy-stat-value">Open</p>
+            <p className="legacy-stat-title">Archived Trainings</p>
+          </div>
+        </Link>
+        <Link href="/admin/archived-tasks" className="legacy-stat-card green" style={{ textDecoration: "none", cursor: "pointer" }}>
+          <div className="legacy-stat-icon"><CheckSquare className="h-5 w-5" /></div>
+          <div>
+            <p className="legacy-stat-value">Open</p>
+            <p className="legacy-stat-title">Archived Tasks</p>
+          </div>
+        </Link>
+        <Link href="/admin/archived-surveys" className="legacy-stat-card amber" style={{ textDecoration: "none", cursor: "pointer" }}>
+          <div className="legacy-stat-icon"><ClipboardList className="h-5 w-5" /></div>
+          <div>
+            <p className="legacy-stat-value">Open</p>
+            <p className="legacy-stat-title">Archived Surveys</p>
+          </div>
+        </Link>
+      </section>
+
       <section className="legacy-card">
         <div className="legacy-card-header">
           <div>
@@ -280,44 +318,6 @@ export function HrAdminPanel() {
           </table>
           {!assignments.length ? <p className="mt-4 text-sm text-gray-700">No HR role assignments yet.</p> : null}
         </div>
-      </section>
-
-      <section className="legacy-stats-grid" style={{ marginTop: 20 }}>
-        <Link href="/admin/onboarding-files" className="legacy-stat-card blue" style={{ textDecoration: "none", cursor: "pointer" }}>
-          <div className="legacy-stat-icon"><FolderOpen className="h-5 w-5" /></div>
-          <div>
-            <p className="legacy-stat-value">Open</p>
-            <p className="legacy-stat-title">Employees Onboarding Files</p>
-          </div>
-        </Link>
-        <Link href="/admin/signed-files" className="legacy-stat-card blue" style={{ textDecoration: "none", cursor: "pointer" }}>
-          <div className="legacy-stat-icon"><FolderOpen className="h-5 w-5" /></div>
-          <div>
-            <p className="legacy-stat-value">Open</p>
-            <p className="legacy-stat-title">Signed User Folders</p>
-          </div>
-        </Link>
-        <Link href="/admin/archived-trainings" className="legacy-stat-card amber" style={{ textDecoration: "none", cursor: "pointer" }}>
-          <div className="legacy-stat-icon"><Archive className="h-5 w-5" /></div>
-          <div>
-            <p className="legacy-stat-value">Open</p>
-            <p className="legacy-stat-title">Archived Trainings</p>
-          </div>
-        </Link>
-        <Link href="/admin/archived-tasks" className="legacy-stat-card green" style={{ textDecoration: "none", cursor: "pointer" }}>
-          <div className="legacy-stat-icon"><CheckSquare className="h-5 w-5" /></div>
-          <div>
-            <p className="legacy-stat-value">Open</p>
-            <p className="legacy-stat-title">Archived Tasks</p>
-          </div>
-        </Link>
-        <Link href="/admin/archived-surveys" className="legacy-stat-card amber" style={{ textDecoration: "none", cursor: "pointer" }}>
-          <div className="legacy-stat-icon"><ClipboardList className="h-5 w-5" /></div>
-          <div>
-            <p className="legacy-stat-value">Open</p>
-            <p className="legacy-stat-title">Archived Surveys</p>
-          </div>
-        </Link>
       </section>
 
       {showModal ? (
