@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-const apiUrl = process.env.API_INTERNAL_URL || process.env.NEXT_PUBLIC_API_URL || "http://192.168.1.47:8080";
+const apiUrl = process.env.API_INTERNAL_URL || process.env.NEXT_PUBLIC_API_URL || "";
 const appKey = "HR";
 
 async function getSession(request: NextRequest) {
@@ -35,7 +35,7 @@ export async function middleware(request: NextRequest) {
   const hostname = hostHeader.split(":")[0];
   const isProductionHost = /(^|\.)vlworkhub\.ca$/i.test(hostname);
   const rootUrl = isProductionHost
-    ? process.env.NEXT_PUBLIC_MAIN_APP_URL || process.env.NEXT_PUBLIC_ROOT_URL || "http://www.vlworkhub.ca"
+    ? process.env.NEXT_PUBLIC_MAIN_APP_URL || process.env.NEXT_PUBLIC_ROOT_URL || ""
     : `${protoHeader}://${hostname}:3000`;
 
   console.info("[HR middleware] request", {

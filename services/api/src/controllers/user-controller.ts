@@ -61,7 +61,7 @@ function resolveLoginUrl() {
   return (
     process.env.NEXT_PUBLIC_MAIN_APP_URL ||
     process.env.NEXT_PUBLIC_ROOT_URL ||
-    "http://192.168.1.47:3000"
+    ""
   );
 }
 

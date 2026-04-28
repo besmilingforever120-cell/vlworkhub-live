@@ -4,6 +4,8 @@ dist
 coverage
 .env
 .env.local
+.env.production
+.env.staging
 *.log
 npm-debug.log*
 .DS_Store

@@ -178,7 +178,7 @@ function buildEmailBody(params: AssignmentEmailParams): { subject: string; text:
 
   const dueLine = params.dueDate ? `Due date: ${params.dueDate}` : null;
   const assignedByLine = params.assignedBy ? `Assigned by: ${params.assignedBy}` : null;
-  const baseLoginUrl = (params.loginUrl || process.env.NEXT_PUBLIC_MAIN_APP_URL || process.env.NEXT_PUBLIC_ROOT_URL || "http://192.168.1.47:3000").replace(/\/$/, "");
+  const baseLoginUrl = (params.loginUrl || process.env.NEXT_PUBLIC_MAIN_APP_URL || process.env.NEXT_PUBLIC_ROOT_URL || "").replace(/\/$/, "");
   const fullLoginUrl = `${baseLoginUrl}/login`;
   const subject = `${label} Assigned: ${params.title}`;
   const text = [

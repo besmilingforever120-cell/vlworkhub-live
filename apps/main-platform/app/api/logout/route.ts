@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-const apiUrl = process.env.API_INTERNAL_URL || process.env.NEXT_PUBLIC_API_URL || "http://192.168.1.47:8080";
+const apiUrl = process.env.API_INTERNAL_URL || process.env.NEXT_PUBLIC_API_URL || "";
 const sessionCookieName = "vlwh_session";
 const legacyCookieNames = ["token"];
 
