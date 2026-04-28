@@ -103,7 +103,7 @@ function getSharePointFileUrl(fileName: string) {
 }
 
 function getUploadsRoot() {
-  return path.resolve(__dirname, "../uploads");
+  return path.resolve(__dirname, "../../uploads");
 }
 
 function getSignedUploadsRoot() {
