@@ -171,6 +171,8 @@ export async function listAdminUsers(req: AuthenticatedRequest, res: Response) {
       return res.status(403).json({ message: "Access denied" });
     }
 
+    const organizationId = String(req.user?.organization_id || "");
+
     const result = await pool.query(
       `SELECT
          u.id,
@@ -192,8 +194,10 @@ export async function listAdminUsers(req: AuthenticatedRequest, res: Response) {
          ) AS app_access
        FROM users u
        LEFT JOIN user_app_access uaa ON uaa.user_id = u.id
+       WHERE u.organization_id = $1
        GROUP BY u.id, u.organization_id, u.department_id, u.first_name, u.last_name, u.email, u.status, u.role
-       ORDER BY u.first_name ASC, u.last_name ASC, u.email ASC`
+       ORDER BY u.first_name ASC, u.last_name ASC, u.email ASC`,
+      [organizationId]
     );
 
     return res.json({ items: result.rows });
