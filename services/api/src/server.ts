@@ -4,6 +4,7 @@ import express from "express";
 import path from "node:path";
 import cors from "cors";
 import cookieParser from "cookie-parser";
+import helmet from "helmet";
 import { env } from "./config/env";
 import { verifyDatabaseConnection } from "./config/db";
 import { authRouter } from "./routes/auth-routes";
@@ -33,6 +34,19 @@ app.use(
     },
     methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     credentials: true
+  })
+);
+app.use(
+  helmet({
+    contentSecurityPolicy: false,
+    crossOriginEmbedderPolicy: false,
+    xFrameOptions: {
+      action: "deny"
+    },
+    xContentTypeOptions: true,
+    xDnsPrefetchControl: { allow: false },
+    xXssProtection: true,
+    referrerPolicy: { policy: "strict-origin-when-cross-origin" }
   })
 );
 app.use(express.json({ limit: "25mb" }));
