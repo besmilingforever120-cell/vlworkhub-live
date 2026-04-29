@@ -411,6 +411,8 @@ async function createOnboardingExpiryTask(params: {
     "Action: Retake this document/certification and upload the updated file before expiry."
   ].join("\n");
 
+  let createdTaskId: number | null = null;
+
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
@@ -427,8 +429,29 @@ async function createOnboardingExpiryTask(params: {
     );
 
     if (existingDedup.rowCount && existingDedup.rows[0]?.task_id) {
-      await client.query("COMMIT");
-      return;
+      const existingTaskId = Number(existingDedup.rows[0].task_id);
+      if (existingTaskId) {
+        const existingTask = await client.query(
+          `SELECT id
+           FROM tasks
+           WHERE id = $1 AND organization_id = $2
+           LIMIT 1`,
+          [existingTaskId, params.organizationId]
+        );
+
+        if ((existingTask.rowCount ?? 0) > 0) {
+          await client.query("COMMIT");
+          return;
+        }
+
+        // Stale task reference: clear it so a new task can be created below.
+        await client.query(
+          `UPDATE hr_onboarding_expiry_tasks
+           SET task_id = NULL
+           WHERE id = $1`,
+          [existingDedup.rows[0].id]
+        );
+      }
     }
 
     let dedupRowId = String(existingDedup.rows[0]?.id || "");
@@ -472,6 +495,7 @@ async function createOnboardingExpiryTask(params: {
       await client.query("ROLLBACK");
       return;
     }
+    createdTaskId = taskId;
 
     await insertTaskAssignmentForUser({
       db: client,
@@ -494,6 +518,17 @@ async function createOnboardingExpiryTask(params: {
     throw error;
   } finally {
     client.release();
+  }
+
+  if (createdTaskId) {
+    void sendAssignmentNotifications({
+      organizationId: params.organizationId,
+      type: "task",
+      title: taskTitle,
+      dueDate: expiryDateIso,
+      assignedBy: "Onboarding Expiry Automation",
+      userId: params.userId
+    });
   }
 }
 
