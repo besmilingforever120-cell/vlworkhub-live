@@ -1,10 +1,11 @@
 import type { Request, Response } from "express";
 import type { QueryResultRow } from "pg";
-import { buildCookie, clearCookie, signAuthToken } from "@vlworkhub/auth";
+import { buildCookie, clearCookie, getCookieName, signAuthToken, verifyAuthToken } from "@vlworkhub/auth";
 import { env } from "../config/env";
 import { pool } from "../config/db";
 import { hashPassword, migrateLegacyPasswordHashOnLogin, verifyPassword } from "../lib/passwords";
 import { validatePasswordPolicy } from "../lib/password-policy";
+import { revokeTokenByJti } from "../lib/token-revocation";
 import type { AuthenticatedRequest } from "../middleware/auth";
 
 type UserRole = "Admin" | "Manager" | "Employee" | "HR" | "IT";
@@ -249,8 +250,22 @@ export async function mobileLogin(req: Request, res: Response) {
   }
 }
 
-export async function logout(_: Request, res: Response) {
+export async function logout(req: Request, res: Response) {
   try {
+    const bearer = req.headers.authorization?.replace("Bearer ", "");
+    const token = bearer || req.cookies[getCookieName()];
+
+    if (token) {
+      try {
+        const payload = verifyAuthToken(token, env.jwtSecret);
+        if (payload.jti && payload.exp) {
+          await revokeTokenByJti(payload.jti, payload.exp);
+        }
+      } catch {
+        // Keep logout idempotent even when token is missing/invalid.
+      }
+    }
+
     appendSessionCleanupHeaders(res, env.cookieDomain);
     return res.json({ success: true });
   } catch (error) {

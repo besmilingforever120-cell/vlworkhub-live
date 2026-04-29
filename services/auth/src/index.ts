@@ -1,4 +1,5 @@
 import jwt from "jsonwebtoken";
+import crypto from "node:crypto";
 
 export interface AuthPayload {
   user_id: string;
@@ -11,14 +12,27 @@ export interface AuthPayload {
   platform_role: "SUPER_ADMIN" | "ADMIN" | "USER";
 }
 
+export interface AuthTokenPayload extends AuthPayload {
+  jti: string;
+  iat: number;
+  exp: number;
+}
+
 const TOKEN_NAME = "vlwh_session";
 
 export function signAuthToken(payload: AuthPayload, secret: string) {
-  return jwt.sign(payload, secret, { expiresIn: "12h" });
+  return jwt.sign(
+    {
+      ...payload,
+      jti: crypto.randomUUID()
+    },
+    secret,
+    { expiresIn: "12h" }
+  );
 }
 
 export function verifyAuthToken(token: string, secret: string) {
-  return jwt.verify(token, secret) as AuthPayload;
+  return jwt.verify(token, secret) as AuthTokenPayload;
 }
 
 export function getCookieName() {
