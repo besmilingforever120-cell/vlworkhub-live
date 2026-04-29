@@ -53,7 +53,7 @@ function decryptPassword(stored: string): string {
 
 export async function ensureEmailSettingsTable() {
   await pool.query(`
-    CREATE TABLE IF NOT EXISTS email_settings (
+    CREATE TABLE IF NOT EXISTS public.email_settings (
       id         BIGSERIAL    PRIMARY KEY,
       email      TEXT         NOT NULL,
       password   TEXT         NOT NULL,
@@ -63,20 +63,20 @@ export async function ensureEmailSettingsTable() {
     )
   `);
   await pool.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS email_settings_single_row ON email_settings ((true))
+    CREATE UNIQUE INDEX IF NOT EXISTS email_settings_single_row ON public.email_settings ((true))
   `);
 }
 
 export async function getStoredEmailSettings() {
   await ensureEmailSettingsTable();
-  const result = await pool.query("SELECT id, email, provider, created_at, updated_at FROM email_settings LIMIT 1");
+  const result = await pool.query("SELECT id, email, provider, created_at, updated_at FROM public.email_settings LIMIT 1");
   return result.rows[0] ?? null;
 }
 
 export async function saveStoredEmailSettings(input: { email: string; password?: string; provider: EmailProvider }) {
   await ensureEmailSettingsTable();
 
-  const existing = await pool.query("SELECT password FROM email_settings LIMIT 1");
+  const existing = await pool.query("SELECT password FROM public.email_settings LIMIT 1");
   let encryptedPassword: string;
 
   if (!input.password || input.password.trim() === "") {
@@ -97,7 +97,7 @@ export async function saveStoredEmailSettings(input: { email: string; password?:
   }
 
   await pool.query(
-    `INSERT INTO email_settings (email, password, provider, updated_at)
+    `INSERT INTO public.email_settings (email, password, provider, updated_at)
      VALUES ($1, $2, $3, NOW())
      ON CONFLICT ((true))
      DO UPDATE SET
@@ -111,7 +111,7 @@ export async function saveStoredEmailSettings(input: { email: string; password?:
 
 export async function getSmtpTransporter() {
   await ensureEmailSettingsTable();
-  const result = await pool.query("SELECT * FROM email_settings LIMIT 1");
+  const result = await pool.query("SELECT * FROM public.email_settings LIMIT 1");
   if (result.rowCount === 0) {
     return null;
   }
@@ -136,7 +136,7 @@ export async function getSmtpTransporter() {
 
 export async function sendConfiguredTestEmail() {
   await ensureEmailSettingsTable();
-  const result = await pool.query("SELECT * FROM email_settings LIMIT 1");
+  const result = await pool.query("SELECT * FROM public.email_settings LIMIT 1");
   if (result.rowCount === 0) {
     throw new Error("No SMTP settings configured yet");
   }

@@ -36,7 +36,7 @@ export type AssignmentEmailParams = {
 async function getSenderEmail(organizationId: string): Promise<string | null> {
   // Email settings are org-agnostic (single row) but keep org param for future
   void organizationId;
-  const result = await pool.query("SELECT email FROM email_settings LIMIT 1");
+  const result = await pool.query("SELECT email FROM public.email_settings LIMIT 1");
   return result.rowCount ? String(result.rows[0].email) : null;
 }
 

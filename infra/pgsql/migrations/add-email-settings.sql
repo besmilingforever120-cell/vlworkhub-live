@@ -1,7 +1,7 @@
 -- Migration: add email_settings table
 -- Run once against the vlworkhub database
 
-CREATE TABLE IF NOT EXISTS email_settings (
+CREATE TABLE IF NOT EXISTS public.email_settings (
   id          BIGSERIAL    PRIMARY KEY,
   email       TEXT         NOT NULL,
   -- password is AES-256-CBC encrypted (pgcrypto) before storage
@@ -12,4 +12,4 @@ CREATE TABLE IF NOT EXISTS email_settings (
 );
 
 -- Only one row should ever exist (global SMTP config)
-CREATE UNIQUE INDEX IF NOT EXISTS email_settings_single_row ON email_settings ((true));
+CREATE UNIQUE INDEX IF NOT EXISTS email_settings_single_row ON public.email_settings ((true));
