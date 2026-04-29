@@ -11,20 +11,80 @@ type EmailSettingsState = {
   provider: Provider;
 };
 
+type OrganizationOption = {
+  id: string;
+  name: string;
+};
+
 function emptyForm(): EmailSettingsState {
   return { email: "", password: "", provider: "gmail" };
 }
 
-export function EmailSettingsPanel() {
+async function readApiMessage(response: Response): Promise<string> {
+  const text = await response.text();
+  if (!text) {
+    return "Request failed.";
+  }
+
+  try {
+    const data = JSON.parse(text) as { error?: string; message?: string };
+    return data.error || data.message || text;
+  } catch {
+    return text;
+  }
+}
+
+export function EmailSettingsPanel({ viewerRole, viewerOrganizationId }: { viewerRole: "SUPER_ADMIN" | "IT_ADMIN" | "ADMIN" | "USER"; viewerOrganizationId?: string }) {
   const [form, setForm]         = useState<EmailSettingsState>(emptyForm());
   const [loaded, setLoaded]     = useState(false);
   const [saving, setSaving]     = useState(false);
   const [testing, setTesting]   = useState(false);
   const [notice, setNotice]     = useState<{ type: "success" | "error"; msg: string } | null>(null);
+  const [organizations, setOrganizations] = useState<OrganizationOption[]>([]);
+  const [selectedOrganizationId, setSelectedOrganizationId] = useState(String(viewerOrganizationId || ""));
+  const canChooseOrganization = viewerRole === "SUPER_ADMIN";
+
+  async function loadOrganizations() {
+    const response = await fetch(`${platformLinks.api}/api/admin/organizations`, { credentials: "include" });
+    if (!response.ok) {
+      throw new Error(await readApiMessage(response));
+    }
+
+    const data = await response.json() as { items?: OrganizationOption[] };
+    const items = data.items || [];
+    setOrganizations(items);
+    setSelectedOrganizationId((current) => current || String(viewerOrganizationId || items[0]?.id || ""));
+  }
+
+  function buildSettingsUrl(organizationId: string) {
+    const url = new URL(`${platformLinks.api}/admin/email-settings`);
+    if (canChooseOrganization && organizationId) {
+      url.searchParams.set("organizationId", organizationId);
+    }
+    return url.toString();
+  }
 
   // ─── Load existing settings ───────────────────────────────────────────────
   useEffect(() => {
-    fetch(`${platformLinks.api}/admin/email-settings`, { credentials: "include" })
+    if (canChooseOrganization) {
+      loadOrganizations()
+        .catch((error) => {
+          flash("error", error instanceof Error ? error.message : "Failed to load organizations.");
+          setLoaded(true);
+        });
+      return;
+    }
+
+    setLoaded(true);
+  }, [canChooseOrganization, viewerOrganizationId]);
+
+  useEffect(() => {
+    const effectiveOrganizationId = canChooseOrganization ? selectedOrganizationId : String(viewerOrganizationId || "");
+    if (!effectiveOrganizationId) {
+      return;
+    }
+
+    fetch(buildSettingsUrl(effectiveOrganizationId), { credentials: "include" })
       .then((r) => r.json())
       .then((data) => {
         if (data?.settings) {
@@ -33,11 +93,13 @@ export function EmailSettingsPanel() {
             password: "",           // never pre-filled
             provider: (data.settings.provider as Provider) ?? "gmail"
           });
+        } else {
+          setForm(emptyForm());
         }
         setLoaded(true);
       })
       .catch(() => setLoaded(true));
-  }, []);
+  }, [canChooseOrganization, selectedOrganizationId, viewerOrganizationId]);
 
   function flash(type: "success" | "error", msg: string) {
     setNotice({ type, msg });
@@ -50,15 +112,18 @@ export function EmailSettingsPanel() {
     setSaving(true);
     setNotice(null);
     try {
+      const effectiveOrganizationId = canChooseOrganization ? selectedOrganizationId : String(viewerOrganizationId || "");
       const res = await fetch(`${platformLinks.api}/admin/email-settings`, {
         method:      "POST",
         credentials: "include",
         headers:     { "Content-Type": "application/json" },
-        body:        JSON.stringify(form)
+        body:        JSON.stringify({
+          ...form,
+          ...(canChooseOrganization ? { organizationId: effectiveOrganizationId } : {})
+        })
       });
-      const data = await res.json();
       if (!res.ok) {
-        flash("error", data?.error ?? "Failed to save settings");
+        flash("error", await readApiMessage(res));
       } else {
         flash("success", "SMTP settings saved successfully.");
         setForm((f) => ({ ...f, password: "" })); // clear password field after save
@@ -75,13 +140,15 @@ export function EmailSettingsPanel() {
     setTesting(true);
     setNotice(null);
     try {
+      const effectiveOrganizationId = canChooseOrganization ? selectedOrganizationId : String(viewerOrganizationId || "");
       const res = await fetch(`${platformLinks.api}/admin/test-email`, {
         method:      "POST",
         credentials: "include"
+        ,headers:     { "Content-Type": "application/json" }
+        ,body:        JSON.stringify(canChooseOrganization ? { organizationId: effectiveOrganizationId } : {})
       });
-      const data = await res.json();
       if (!res.ok) {
-        flash("error", data?.error ?? "Test email failed.");
+        flash("error", await readApiMessage(res));
       } else {
         flash("success", "Test email sent! Check your inbox.");
       }
@@ -118,6 +185,23 @@ export function EmailSettingsPanel() {
       {/* Settings form */}
       <form onSubmit={handleSave} className="rounded-[2rem] border border-white/10 bg-white/5 p-8 space-y-6">
         <h2 className="text-lg font-semibold text-white">SMTP Configuration</h2>
+
+        {canChooseOrganization ? (
+          <div className="space-y-1">
+            <label className="block text-sm text-slate-300">Organization</label>
+            <select
+              value={selectedOrganizationId}
+              onChange={(e) => setSelectedOrganizationId(e.target.value)}
+              className="w-full rounded-xl border border-white/10 bg-white/10 px-4 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-cyan-400"
+            >
+              {organizations.map((organization) => (
+                <option key={organization.id} value={organization.id} className="bg-slate-900 text-white">
+                  {organization.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : null}
 
         {/* Provider */}
         <div className="space-y-1">

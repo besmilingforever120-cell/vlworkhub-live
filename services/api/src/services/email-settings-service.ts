@@ -55,6 +55,7 @@ export async function ensureEmailSettingsTable() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS public.email_settings (
       id         BIGSERIAL    PRIMARY KEY,
+      organization_id UUID,
       email      TEXT         NOT NULL,
       password   TEXT         NOT NULL,
       provider   TEXT         NOT NULL CHECK (provider IN ('gmail', 'outlook')),
@@ -62,21 +63,70 @@ export async function ensureEmailSettingsTable() {
       updated_at TIMESTAMPTZ  NOT NULL DEFAULT NOW()
     )
   `);
+  await pool.query(`ALTER TABLE public.email_settings ADD COLUMN IF NOT EXISTS organization_id UUID`);
+  await pool.query(
+    `DO $$
+     BEGIN
+       IF NOT EXISTS (
+         SELECT 1
+         FROM pg_constraint
+         WHERE conname = 'email_settings_organization_id_fkey'
+       ) THEN
+         ALTER TABLE public.email_settings
+         ADD CONSTRAINT email_settings_organization_id_fkey
+         FOREIGN KEY (organization_id)
+         REFERENCES organizations(id)
+         ON DELETE CASCADE;
+       END IF;
+     END
+     $$;`
+  );
+  await pool.query(`DROP INDEX IF EXISTS email_settings_single_row`);
   await pool.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS email_settings_single_row ON public.email_settings ((true))
+    CREATE UNIQUE INDEX IF NOT EXISTS email_settings_org_unique ON public.email_settings (organization_id)
   `);
+
+  // Migrate legacy single-row setup to all organizations if organization_id was not present.
+  await pool.query(
+    `WITH legacy AS (
+       SELECT email, password, provider
+       FROM public.email_settings
+       WHERE organization_id IS NULL
+       ORDER BY id ASC
+       LIMIT 1
+     )
+     INSERT INTO public.email_settings (organization_id, email, password, provider, created_at, updated_at)
+     SELECT o.id, legacy.email, legacy.password, legacy.provider, NOW(), NOW()
+     FROM organizations o
+     CROSS JOIN legacy
+     ON CONFLICT (organization_id) DO NOTHING`
+  );
+
+  await pool.query(`DELETE FROM public.email_settings WHERE organization_id IS NULL`);
 }
 
-export async function getStoredEmailSettings() {
+export async function getStoredEmailSettings(organizationId: string) {
   await ensureEmailSettingsTable();
-  const result = await pool.query("SELECT id, email, provider, created_at, updated_at FROM public.email_settings LIMIT 1");
+  const result = await pool.query(
+    `SELECT id, organization_id, email, provider, created_at, updated_at
+     FROM public.email_settings
+     WHERE organization_id = $1
+     LIMIT 1`,
+    [organizationId]
+  );
   return result.rows[0] ?? null;
 }
 
-export async function saveStoredEmailSettings(input: { email: string; password?: string; provider: EmailProvider }) {
+export async function saveStoredEmailSettings(input: { organizationId: string; email: string; password?: string; provider: EmailProvider }) {
   await ensureEmailSettingsTable();
 
-  const existing = await pool.query("SELECT password FROM public.email_settings LIMIT 1");
+  const existing = await pool.query(
+    `SELECT password
+     FROM public.email_settings
+     WHERE organization_id = $1
+     LIMIT 1`,
+    [input.organizationId]
+  );
   let encryptedPassword: string;
 
   if (!input.password || input.password.trim() === "") {
@@ -97,21 +147,27 @@ export async function saveStoredEmailSettings(input: { email: string; password?:
   }
 
   await pool.query(
-    `INSERT INTO public.email_settings (email, password, provider, updated_at)
-     VALUES ($1, $2, $3, NOW())
-     ON CONFLICT ((true))
+    `INSERT INTO public.email_settings (organization_id, email, password, provider, updated_at)
+     VALUES ($1, $2, $3, $4, NOW())
+     ON CONFLICT (organization_id)
      DO UPDATE SET
        email = EXCLUDED.email,
        password = EXCLUDED.password,
        provider = EXCLUDED.provider,
        updated_at = NOW()`,
-    [input.email.trim(), encryptedPassword, input.provider]
+    [input.organizationId, input.email.trim(), encryptedPassword, input.provider]
   );
 }
 
-export async function getSmtpTransporter() {
+export async function getSmtpTransporter(organizationId: string) {
   await ensureEmailSettingsTable();
-  const result = await pool.query("SELECT * FROM public.email_settings LIMIT 1");
+  const result = await pool.query(
+    `SELECT *
+     FROM public.email_settings
+     WHERE organization_id = $1
+     LIMIT 1`,
+    [organizationId]
+  );
   if (result.rowCount === 0) {
     return null;
   }
@@ -134,15 +190,21 @@ export async function getSmtpTransporter() {
   });
 }
 
-export async function sendConfiguredTestEmail() {
+export async function sendConfiguredTestEmail(organizationId: string) {
   await ensureEmailSettingsTable();
-  const result = await pool.query("SELECT * FROM public.email_settings LIMIT 1");
+  const result = await pool.query(
+    `SELECT *
+     FROM public.email_settings
+     WHERE organization_id = $1
+     LIMIT 1`,
+    [organizationId]
+  );
   if (result.rowCount === 0) {
     throw new Error("No SMTP settings configured yet");
   }
 
   const row = result.rows[0];
-  const transporter = await getSmtpTransporter();
+  const transporter = await getSmtpTransporter(organizationId);
   if (!transporter) {
     throw new Error("Unknown provider stored in settings");
   }

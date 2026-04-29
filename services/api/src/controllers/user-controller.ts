@@ -148,6 +148,76 @@ async function getOrganizationEnabledApps(client: { query: typeof pool.query }, 
     .filter((app): app is AppAccess => ALL_APPS.includes(app as AppAccess));
 }
 
+async function getOrganizationById(client: { query: typeof pool.query }, organizationId: string) {
+  const result = await client.query<{ id: string; name: string }>(
+    `SELECT id, name
+     FROM organizations
+     WHERE id = $1
+     LIMIT 1`,
+    [organizationId]
+  );
+
+  return result.rows[0] ?? null;
+}
+
+async function getExistingUserApps(client: { query: typeof pool.query }, userId: string): Promise<AppAccess[]> {
+  const result = await client.query<{ app: string }>(
+    `SELECT UPPER(app) AS app
+     FROM user_app_access
+     WHERE user_id = $1`,
+    [userId]
+  );
+
+  return result.rows
+    .map((row) => String(row.app || "").toUpperCase())
+    .filter((app): app is AppAccess => ALL_APPS.includes(app as AppAccess));
+}
+
+async function departmentBelongsToOrganization(
+  client: { query: typeof pool.query },
+  departmentId: string | null | undefined,
+  organizationId: string
+) {
+  if (!departmentId) {
+    return true;
+  }
+
+  const result = await client.query<{ id: string }>(
+    `SELECT id
+     FROM departments
+     WHERE id = $1 AND organization_id = $2
+     LIMIT 1`,
+    [departmentId, organizationId]
+  );
+
+  return (result.rowCount ?? 0) > 0;
+}
+
+async function clearInvalidAssignedOrganizations(
+  client: { query: typeof pool.query },
+  userId: string,
+  organizationId: string,
+  keepAssignment: boolean
+) {
+  if (keepAssignment) {
+    await client.query(
+      `UPDATE organizations
+       SET assigned_admin_id = NULL
+       WHERE assigned_admin_id = $1
+         AND id <> $2`,
+      [userId, organizationId]
+    );
+    return;
+  }
+
+  await client.query(
+    `UPDATE organizations
+     SET assigned_admin_id = NULL
+     WHERE assigned_admin_id = $1`,
+    [userId]
+  );
+}
+
 function assertAppsWithinOrganizationEntitlements(requestedApps: AppAccess[], allowedApps: AppAccess[]) {
   const disallowed = requestedApps.filter((app) => !allowedApps.includes(app));
   if (disallowed.length > 0) {
@@ -156,12 +226,14 @@ function assertAppsWithinOrganizationEntitlements(requestedApps: AppAccess[], al
 }
 
 async function sendWelcomeOnboardingEmail(params: {
+  organizationId: string;
+  organizationName: string;
   recipientEmail: string;
   fullName: string;
   temporaryPassword: string;
 }) {
-  const transporter = await getSmtpTransporter();
-  const settings = await getStoredEmailSettings();
+  const transporter = await getSmtpTransporter(params.organizationId);
+  const settings = await getStoredEmailSettings(params.organizationId);
 
   if (!transporter || !settings?.email) {
     throw new Error("SMTP settings are not configured for onboarding emails");
@@ -169,7 +241,7 @@ async function sendWelcomeOnboardingEmail(params: {
 
   const loginUrl = resolveLoginUrl().replace(/\/$/, "");
   const text = [
-    `Welcome to VLWorkHub, ${params.fullName}.`,
+    `Welcome to ${params.organizationName} on VLWorkHub, ${params.fullName}.`,
     "",
     `Login URL: ${loginUrl}/login`,
     `Username: ${params.recipientEmail}`,
@@ -181,7 +253,7 @@ async function sendWelcomeOnboardingEmail(params: {
   await transporter.sendMail({
     from: String(settings.email),
     to: params.recipientEmail,
-    subject: "Welcome to VLWorkHub - Temporary Login Credentials",
+    subject: `Welcome to ${params.organizationName} - Temporary Login Credentials`,
     text
   });
 }
@@ -373,6 +445,17 @@ export async function createAdminUser(req: AuthenticatedRequest, res: Response) 
   try {
     await client.query("BEGIN");
 
+    const organization = await getOrganizationById(client, targetOrganizationId);
+    if (!organization) {
+      await client.query("ROLLBACK").catch(() => undefined);
+      return res.status(400).json({ message: "Selected organization was not found" });
+    }
+
+    if (!(await departmentBelongsToOrganization(client, departmentId, targetOrganizationId))) {
+      await client.query("ROLLBACK").catch(() => undefined);
+      return res.status(400).json({ message: "Selected department does not belong to the chosen organization" });
+    }
+
     const enabledOrgApps = await getOrganizationEnabledApps(client, targetOrganizationId);
     assertAppsWithinOrganizationEntitlements(normalizedApps, enabledOrgApps);
 
@@ -393,13 +476,24 @@ export async function createAdminUser(req: AuthenticatedRequest, res: Response) 
       );
     }
 
-    await sendWelcomeOnboardingEmail({
-      recipientEmail: email.trim().toLowerCase(),
-      fullName: `${firstName} ${lastName}`.trim() || firstName,
-      temporaryPassword
-    });
-
     await client.query("COMMIT");
+
+    try {
+      await sendWelcomeOnboardingEmail({
+        organizationId: targetOrganizationId,
+        organizationName: organization.name,
+        recipientEmail: email.trim().toLowerCase(),
+        fullName: `${firstName} ${lastName}`.trim() || firstName,
+        temporaryPassword
+      });
+    } catch (mailError) {
+      console.warn("Welcome email skipped after user creation", {
+        organizationId: targetOrganizationId,
+        recipientEmail: email.trim().toLowerCase(),
+        error: mailError instanceof Error ? mailError.message : String(mailError)
+      });
+    }
+
     return res.status(201).json({ id: result.rows[0].id });
   } catch (error) {
     await client.query("ROLLBACK").catch(() => undefined);
@@ -416,7 +510,7 @@ export async function updateAdminUser(req: AuthenticatedRequest, res: Response) 
   }
 
   const userId = String(req.params.id || "");
-  const { name, email, password, enabled, role = "USER", apps, departmentId = null } = req.body as {
+  const { name, email, password, enabled, role = "USER", apps, departmentId = null, organizationId } = req.body as {
     name: string;
     email: string;
     password?: string;
@@ -424,6 +518,7 @@ export async function updateAdminUser(req: AuthenticatedRequest, res: Response) 
     role?: PlatformRole;
     apps?: AppAccessInput[];
     departmentId?: string | null;
+    organizationId?: string;
   };
 
   if (!userId || !name || !email) {
@@ -464,17 +559,31 @@ export async function updateAdminUser(req: AuthenticatedRequest, res: Response) 
       return res.status(404).json({ message: "User not found" });
     }
 
-    const targetOrganizationId = String(userRecord.rows[0].organization_id || "");
-    if (!isSuperAdmin(req) && targetOrganizationId !== String(req.user?.organization_id || "")) {
+    const currentOrganizationId = String(userRecord.rows[0].organization_id || "");
+    if (!isSuperAdmin(req) && currentOrganizationId !== String(req.user?.organization_id || "")) {
       await client.query("ROLLBACK").catch(() => undefined);
       return res.status(403).json({ message: "Access denied" });
     }
 
-    const normalizedApps = apps ? normalizeApps(apps) : undefined;
-    const enabledOrgApps = await getOrganizationEnabledApps(client, targetOrganizationId);
-    if (normalizedApps) {
-      assertAppsWithinOrganizationEntitlements(normalizedApps, enabledOrgApps);
+    const nextOrganizationId = isSuperAdmin(req)
+      ? String(organizationId || currentOrganizationId)
+      : currentOrganizationId;
+
+    const organization = await getOrganizationById(client, nextOrganizationId);
+    if (!organization) {
+      await client.query("ROLLBACK").catch(() => undefined);
+      return res.status(400).json({ message: "Selected organization was not found" });
     }
+
+    if (!(await departmentBelongsToOrganization(client, departmentId, nextOrganizationId))) {
+      await client.query("ROLLBACK").catch(() => undefined);
+      return res.status(400).json({ message: "Selected department does not belong to the chosen organization" });
+    }
+
+    const normalizedApps = apps ? normalizeApps(apps) : undefined;
+    const effectiveApps = normalizedApps ?? await getExistingUserApps(client, userId);
+    const enabledOrgApps = await getOrganizationEnabledApps(client, nextOrganizationId);
+    assertAppsWithinOrganizationEntitlements(effectiveApps, enabledOrgApps);
 
     const parts = name.trim().split(/\s+/);
     const firstName = parts.shift() || name.trim();
@@ -500,27 +609,29 @@ export async function updateAdminUser(req: AuthenticatedRequest, res: Response) 
       const passwordHash = await hashPassword(password);
       await client.query(
         `UPDATE users
-         SET department_id = $1,
-             email = $2,
-             password_hash = $3,
-             first_name = $4,
-             last_name = $5,
-             status = $6,
-             role = $7
-         WHERE id = $8 AND organization_id = $9`,
-        [departmentId, email.trim().toLowerCase(), passwordHash, firstName, lastName || firstName, enabled ? "active" : "inactive", normalizedRole, userId, targetOrganizationId]
+         SET organization_id = $1,
+             department_id = $2,
+             email = $3,
+             password_hash = $4,
+             first_name = $5,
+             last_name = $6,
+             status = $7,
+             role = $8
+         WHERE id = $9`,
+        [nextOrganizationId, departmentId, email.trim().toLowerCase(), passwordHash, firstName, lastName || firstName, enabled ? "active" : "inactive", normalizedRole, userId]
       );
     } else {
       await client.query(
         `UPDATE users
-         SET department_id = $1,
-             email = $2,
-             first_name = $3,
-             last_name = $4,
-             status = $5,
-             role = $6
-         WHERE id = $7 AND organization_id = $8`,
-        [departmentId, email.trim().toLowerCase(), firstName, lastName || firstName, enabled ? "active" : "inactive", normalizedRole, userId, targetOrganizationId]
+         SET organization_id = $1,
+             department_id = $2,
+             email = $3,
+             first_name = $4,
+             last_name = $5,
+             status = $6,
+             role = $7
+         WHERE id = $8`,
+        [nextOrganizationId, departmentId, email.trim().toLowerCase(), firstName, lastName || firstName, enabled ? "active" : "inactive", normalizedRole, userId]
       );
     }
 
@@ -534,6 +645,13 @@ export async function updateAdminUser(req: AuthenticatedRequest, res: Response) 
         );
       }
     }
+
+    await clearInvalidAssignedOrganizations(
+      client,
+      userId,
+      nextOrganizationId,
+      normalizedRole === "IT_ADMIN" && Boolean(enabled)
+    );
 
     await client.query("COMMIT");
     return res.json({ success: true });
@@ -622,10 +740,14 @@ export async function listDepartments(req: AuthenticatedRequest, res: Response) 
 
     await ensureDepartmentsSchema();
 
+    const isGlobal = isSuperAdmin(req);
+    const params = isGlobal ? [] : [req.user?.organization_id];
+
     const result = await pool.query(
       `SELECT
          d.id,
          d.organization_id,
+         o.name AS organization_name,
          d.name,
         d.department_type,
          d.address,
@@ -634,10 +756,11 @@ export async function listDepartments(req: AuthenticatedRequest, res: Response) 
          u.email AS manager_email,
          d.created_at
        FROM departments d
+       INNER JOIN organizations o ON o.id = d.organization_id
        LEFT JOIN users u ON u.id = d.manager_id
-       WHERE d.organization_id = $1
+       ${isGlobal ? "" : "WHERE d.organization_id = $1"}
        ORDER BY d.created_at DESC, d.name ASC`,
-      [req.user?.organization_id]
+      params
     );
 
     return res.json({ items: result.rows });
@@ -713,31 +836,16 @@ export async function createOrganization(req: AuthenticatedRequest, res: Respons
     try {
       await client.query("BEGIN");
 
-      let validatedAssignedAdminId: string | null = null;
       if (assignedAdminId) {
-        const owner = await client.query<{ id: string }>(
-          `SELECT id
-           FROM users
-           WHERE id = $1
-             AND status = 'active'
-             AND COALESCE(role, 'USER') = 'IT_ADMIN'
-           LIMIT 1`,
-          [assignedAdminId]
-        );
-
-        if ((owner.rowCount ?? 0) === 0) {
-          await client.query("ROLLBACK").catch(() => undefined);
-          return res.status(400).json({ message: "Assigned To must be an active IT_ADMIN user" });
-        }
-
-        validatedAssignedAdminId = String(owner.rows[0].id);
+        await client.query("ROLLBACK").catch(() => undefined);
+        return res.status(400).json({ message: "Create the organization first, then assign an active IT_ADMIN who belongs to that organization" });
       }
 
       const result = await client.query(
         `INSERT INTO organizations (name, is_active, assigned_admin_id)
          VALUES ($1, TRUE, $2)
          RETURNING id`,
-        [name.trim(), validatedAssignedAdminId]
+        [name.trim(), null]
       );
 
       for (const app of normalizedApps) {
@@ -811,13 +919,14 @@ export async function updateOrganization(req: AuthenticatedRequest, res: Respons
            WHERE id = $1
              AND status = 'active'
              AND COALESCE(role, 'USER') = 'IT_ADMIN'
+             AND organization_id = $2
            LIMIT 1`,
-          [nextAssignedAdminId]
+          [nextAssignedAdminId, organizationId]
         );
 
         if ((owner.rowCount ?? 0) === 0) {
           await client.query("ROLLBACK").catch(() => undefined);
-          return res.status(400).json({ message: "Assigned To must be an active IT_ADMIN user" });
+          return res.status(400).json({ message: "Assigned To must be an active IT_ADMIN user who belongs to this organization" });
         }
       }
 

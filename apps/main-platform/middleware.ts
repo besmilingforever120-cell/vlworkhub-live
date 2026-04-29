@@ -62,7 +62,14 @@ export async function middleware(request: NextRequest) {
       return NextResponse.next();
     }
 
-    if (isItAdmin && (pathname.startsWith("/admin/users") || pathname.startsWith("/admin/departments"))) {
+    if (
+      isItAdmin &&
+      (
+        pathname.startsWith("/admin/users") ||
+        pathname.startsWith("/admin/departments") ||
+        pathname.startsWith("/admin/email-settings")
+      )
+    ) {
       return NextResponse.next();
     }
 

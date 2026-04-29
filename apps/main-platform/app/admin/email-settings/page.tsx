@@ -14,7 +14,7 @@ export default async function EmailSettingsPage() {
     redirect("/change-password");
   }
 
-  if (user.platformRole !== "SUPER_ADMIN") {
+  if (user.platformRole !== "SUPER_ADMIN" && user.platformRole !== "IT_ADMIN") {
     redirect("/dashboard");
   }
 
@@ -38,7 +38,7 @@ export default async function EmailSettingsPage() {
         </div>
       </div>
 
-      <EmailSettingsPanel />
+      <EmailSettingsPanel viewerRole={user.platformRole} viewerOrganizationId={user.organizationId} />
     </main>
   );
 }

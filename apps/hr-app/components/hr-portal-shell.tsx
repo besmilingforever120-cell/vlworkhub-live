@@ -77,7 +77,7 @@ export function HrPortalShell({ children }: { children: React.ReactNode }) {
 
   const visibleNav = useMemo(() => {
     const platformRole = String(user?.platformRole || user?.role || "USER").toUpperCase();
-    return navItems.filter((item) => !item.adminOnly || platformRole === "SUPER_ADMIN" || platformRole === "ADMIN");
+    return navItems.filter((item) => !item.adminOnly || platformRole === "SUPER_ADMIN" || platformRole === "ADMIN" || platformRole === "IT_ADMIN");
   }, [user]);
 
   const breadcrumb = pageTitles[pathname] || "Dashboard";

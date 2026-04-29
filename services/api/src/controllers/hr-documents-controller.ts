@@ -942,7 +942,7 @@ async function ensureOnboardingUploadsSchema() {
 
 function isAdminPlatformUser(req: AuthenticatedRequest) {
   const platformRole = String(req.user?.platform_role || req.user?.role || "USER").toUpperCase();
-  return platformRole === "SUPER_ADMIN" || platformRole === "ADMIN";
+  return platformRole === "SUPER_ADMIN" || platformRole === "ADMIN" || platformRole === "IT_ADMIN";
 }
 
 async function insertOnboardingUploadRecord(params: {

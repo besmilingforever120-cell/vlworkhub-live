@@ -9,7 +9,7 @@
 
 import { pool } from "../config/db";
 import { env } from "../config/env";
-import { getSmtpTransporter } from "./email-settings-service";
+import { getSmtpTransporter, getStoredEmailSettings } from "./email-settings-service";
 
 export type AssignmentEmailType = "task" | "survey" | "training" | "announcement" | "document";
 
@@ -34,10 +34,8 @@ export type AssignmentEmailParams = {
 // ─── DB helpers ──────────────────────────────────────────────────────────────
 
 async function getSenderEmail(organizationId: string): Promise<string | null> {
-  // Email settings are org-agnostic (single row) but keep org param for future
-  void organizationId;
-  const result = await pool.query("SELECT email FROM public.email_settings LIMIT 1");
-  return result.rowCount ? String(result.rows[0].email) : null;
+  const row = await getStoredEmailSettings(organizationId);
+  return row ? String(row.email) : null;
 }
 
 async function getAllStaffEmails(organizationId: string): Promise<string[]> {
@@ -207,7 +205,7 @@ function buildEmailBody(params: AssignmentEmailParams): { subject: string; text:
  */
 export async function sendAssignmentNotifications(params: AssignmentEmailParams): Promise<void> {
   try {
-    const transporter = await getSmtpTransporter();
+    const transporter = await getSmtpTransporter(params.organizationId);
     if (!transporter) {
       console.log("[AssignmentEmail] No SMTP transporter configured, skipping.");
       return;

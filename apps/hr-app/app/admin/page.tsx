@@ -31,7 +31,7 @@ export default async function AdminPage() {
   }
 
   const platformRole = String(user.platformRole || user.role || "USER").toUpperCase();
-  if (platformRole !== "SUPER_ADMIN" && platformRole !== "ADMIN") {
+  if (platformRole !== "SUPER_ADMIN" && platformRole !== "ADMIN" && platformRole !== "IT_ADMIN") {
     redirect("/dashboard");
   }
 

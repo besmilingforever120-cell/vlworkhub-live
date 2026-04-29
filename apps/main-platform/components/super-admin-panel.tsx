@@ -61,7 +61,8 @@ export function SuperAdminPanel({ viewerRole, viewerOrganizationId }: { viewerRo
   const [itAdmins, setItAdmins] = useState<AssignableItAdmin[]>([]);
   const [form, setForm] = useState<FormState>(emptyForm());
   const [organizationForm, setOrganizationForm] = useState<OrganizationForm>(emptyOrganizationForm());
-  const [error, setError] = useState("");
+  const [userError, setUserError] = useState("");
+  const [organizationError, setOrganizationError] = useState("");
   const [saving, setSaving] = useState(false);
   const [savingOrganization, setSavingOrganization] = useState(false);
   const [showModal, setShowModal] = useState(false);
@@ -84,60 +85,93 @@ export function SuperAdminPanel({ viewerRole, viewerOrganizationId }: { viewerRo
     return (organization.apps || []).filter((app): app is (typeof appOptions)[number] => appOptions.includes(app));
   }
 
+  function getVisibleDepartments(organizationId: string) {
+    return departments.filter((department) => department.organization_id === organizationId);
+  }
+
+  function getAssignableItAdminsForOrganization(organizationId: string) {
+    return itAdmins.filter((admin) => admin.organization_id === organizationId);
+  }
+
+  async function readApiMessage(response: Response) {
+    const text = await response.text();
+    if (!text) {
+      return "Request failed.";
+    }
+
+    try {
+      const data = JSON.parse(text) as { error?: string; message?: string };
+      return data.message || data.error || text;
+    } catch {
+      return text;
+    }
+  }
+
   async function loadUsers() {
     const response = await fetch(`${platformLinks.api}/api/admin/users`, { credentials: "include" });
     if (!response.ok) {
-      throw new Error("Failed to load users.");
+      throw new Error(await readApiMessage(response));
     }
     const data = await response.json();
     setUsers(data.items || []);
+    setUserError("");
   }
 
   async function loadDepartments() {
     const response = await fetch(`${platformLinks.api}/api/admin/departments`, { credentials: "include" });
     if (!response.ok) {
-      throw new Error("Failed to load departments.");
+      throw new Error(await readApiMessage(response));
     }
     const data = await response.json();
     setDepartments(data.items || []);
+    setUserError("");
   }
 
   async function loadOrganizations() {
     const response = await fetch(`${platformLinks.api}/api/admin/organizations`, { credentials: "include" });
     if (!response.ok) {
-      throw new Error("Failed to load organizations.");
+      throw new Error(await readApiMessage(response));
     }
     const data = await response.json();
     setOrganizations(data.items || []);
+    setOrganizationError("");
   }
 
   async function loadItAdmins() {
     const response = await fetch(`${platformLinks.api}/api/admin/it-admins`, { credentials: "include" });
     if (!response.ok) {
-      throw new Error("Failed to load IT administrators.");
+      throw new Error(await readApiMessage(response));
     }
     const data = await response.json();
     setItAdmins(data.items || []);
+    setOrganizationError("");
   }
 
   async function loadAll() {
     await Promise.all([
-      loadUsers(),
-      loadDepartments(),
-      canManageOrganizations ? loadOrganizations() : Promise.resolve(),
-      canManageOrganizations ? loadItAdmins() : Promise.resolve()
+      loadUsers().catch((error) => setUserError(error instanceof Error ? error.message : "Failed to load users.")),
+      loadDepartments().catch((error) => setUserError(error instanceof Error ? error.message : "Failed to load departments.")),
+      canManageOrganizations ? loadOrganizations().catch((error) => setOrganizationError(error instanceof Error ? error.message : "Failed to load organizations.")) : Promise.resolve(),
+      canManageOrganizations ? loadItAdmins().catch((error) => setOrganizationError(error instanceof Error ? error.message : "Failed to load IT administrators.")) : Promise.resolve()
     ]);
   }
 
   useEffect(() => {
-    void loadAll().catch((loadError) => setError(loadError instanceof Error ? loadError.message : "Failed to load admin data."));
+    void loadAll();
   }, [canManageOrganizations]);
 
   function openCreate() {
     const base = emptyForm();
+    const organizationId = canManageOrganizations ? (organizations[0]?.id || "") : String(viewerOrganizationId || "");
+    const enabledApps = getEnabledAppsForOrganization(organizationId);
     setForm({
       ...base,
-      organizationId: canManageOrganizations ? (organizations[0]?.id || "") : String(viewerOrganizationId || "")
+      organizationId,
+      apps: {
+        HR: enabledApps.includes("HR"),
+        CARE: enabledApps.includes("CARE"),
+        URSAFE: enabledApps.includes("URSAFE")
+      }
     });
     setShowModal(true);
   }
@@ -188,9 +222,11 @@ export function SuperAdminPanel({ viewerRole, viewerOrganizationId }: { viewerRo
 
   function handleUserOrganizationChange(organizationId: string) {
     const enabledApps = getEnabledAppsForOrganization(organizationId);
+    const visibleDepartments = getVisibleDepartments(organizationId);
     setForm((current) => ({
       ...current,
       organizationId,
+      departmentId: visibleDepartments.some((department) => department.id === current.departmentId) ? current.departmentId : "",
       apps: {
         HR: enabledApps.includes("HR") ? current.apps.HR : false,
         CARE: enabledApps.includes("CARE") ? current.apps.CARE : false,
@@ -201,7 +237,7 @@ export function SuperAdminPanel({ viewerRole, viewerOrganizationId }: { viewerRo
 
   async function saveUser() {
     setSaving(true);
-    setError("");
+    setUserError("");
     try {
       const payload = {
         ...(canManageOrganizations ? { organizationId: form.organizationId || null } : {}),
@@ -224,15 +260,14 @@ export function SuperAdminPanel({ viewerRole, viewerOrganizationId }: { viewerRo
       });
 
       if (!response.ok) {
-        const message = await response.text();
-        throw new Error(message || "Failed to save user.");
+        throw new Error(await readApiMessage(response));
       }
 
       setForm(emptyForm());
       setShowModal(false);
-      await loadUsers();
+      await Promise.all([loadUsers(), canManageOrganizations ? loadOrganizations() : Promise.resolve(), canManageOrganizations ? loadItAdmins() : Promise.resolve()]);
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : "Failed to save user.");
+      setUserError(saveError instanceof Error ? saveError.message : "Failed to save user.");
     } finally {
       setSaving(false);
     }
@@ -240,7 +275,7 @@ export function SuperAdminPanel({ viewerRole, viewerOrganizationId }: { viewerRo
 
   async function saveOrganization() {
     setSavingOrganization(true);
-    setError("");
+    setOrganizationError("");
     try {
       const url = organizationForm.id ? `${platformLinks.api}/api/admin/organizations/${organizationForm.id}` : `${platformLinks.api}/api/admin/organizations`;
       const method = organizationForm.id ? "PUT" : "POST";
@@ -257,15 +292,14 @@ export function SuperAdminPanel({ viewerRole, viewerOrganizationId }: { viewerRo
       });
 
       if (!response.ok) {
-        const message = await response.text();
-        throw new Error(message || "Failed to save organization.");
+        throw new Error(await readApiMessage(response));
       }
 
       setOrganizationForm(emptyOrganizationForm());
       setShowOrganizationModal(false);
-      await loadOrganizations();
+      await Promise.all([loadOrganizations(), loadItAdmins(), loadUsers()]);
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : "Failed to save organization.");
+      setOrganizationError(saveError instanceof Error ? saveError.message : "Failed to save organization.");
     } finally {
       setSavingOrganization(false);
     }
@@ -273,7 +307,7 @@ export function SuperAdminPanel({ viewerRole, viewerOrganizationId }: { viewerRo
 
   async function toggleOrganization(organization: OrganizationRecord, enabled: boolean) {
     setSavingOrganization(true);
-    setError("");
+    setOrganizationError("");
     try {
       const response = await fetch(`${platformLinks.api}/api/admin/organizations/${organization.id}`, {
         method: "PUT",
@@ -287,13 +321,12 @@ export function SuperAdminPanel({ viewerRole, viewerOrganizationId }: { viewerRo
       });
 
       if (!response.ok) {
-        const message = await response.text();
-        throw new Error(message || "Failed to update organization.");
+        throw new Error(await readApiMessage(response));
       }
 
       await Promise.all([loadOrganizations(), loadUsers()]);
     } catch (updateError) {
-      setError(updateError instanceof Error ? updateError.message : "Failed to update organization.");
+      setOrganizationError(updateError instanceof Error ? updateError.message : "Failed to update organization.");
     } finally {
       setSavingOrganization(false);
     }
@@ -311,7 +344,7 @@ export function SuperAdminPanel({ viewerRole, viewerOrganizationId }: { viewerRo
           <button type="button" onClick={openCreateOrganization} className="rounded-2xl bg-cyan-400 px-5 py-3 text-sm font-medium text-slate-950">Create Organization</button>
         </div>
 
-        {error ? <p className="mt-5 text-sm text-rose-300">{error}</p> : null}
+        {organizationError ? <p className="mt-5 text-sm text-rose-300">{organizationError}</p> : null}
 
         <div className="mt-4 rounded-2xl border border-amber-400/20 bg-amber-400/10 px-4 py-3 text-sm text-amber-100">
           Hard delete is intentionally not exposed here because organizations own users and operational data through foreign-key dependencies.
@@ -369,7 +402,7 @@ export function SuperAdminPanel({ viewerRole, viewerOrganizationId }: { viewerRo
           </div>
         </div>
 
-        {error ? <p className="mt-5 text-sm text-rose-300">{error}</p> : null}
+        {userError ? <p className="mt-5 text-sm text-rose-300">{userError}</p> : null}
 
         <div className="mt-6 overflow-x-auto">
           <table className="min-w-full text-left text-sm text-slate-200">
@@ -432,8 +465,8 @@ export function SuperAdminPanel({ viewerRole, viewerOrganizationId }: { viewerRo
               {canManageOrganizations ? (
                 <label className="text-sm text-slate-300">Organization<select value={form.organizationId} onChange={(event) => handleUserOrganizationChange(event.target.value)} className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white"><option value="">Select organization</option>{organizations.map((organization) => <option key={organization.id} value={organization.id}>{organization.name}</option>)}</select></label>
               ) : null}
-              <label className="text-sm text-slate-300">Platform role<select value={form.role} onChange={(event) => setForm((current) => ({ ...current, role: event.target.value as FormState["role"] }))} className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white"><option value="USER">USER</option><option value="ADMIN">ADMIN</option><option value="IT_ADMIN" disabled={!canAssignAdminRoles}>IT_ADMIN</option><option value="SUPER_ADMIN" disabled={!canAssignAdminRoles}>SUPER_ADMIN</option></select></label>
-              <label className="text-sm text-slate-300 md:col-span-2">Department<select value={form.departmentId} onChange={(event) => setForm((current) => ({ ...current, departmentId: event.target.value }))} className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white"><option value="">Unassigned</option>{departments.map((department) => <option key={department.id} value={department.id}>{department.name}</option>)}</select></label>
+              <label className="text-sm text-slate-300">Platform role<select value={form.role} onChange={(event) => setForm((current) => ({ ...current, role: event.target.value as FormState["role"] }))} className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white"><option value="USER">USER</option><option value="ADMIN">ADMIN</option>{canAssignAdminRoles ? <option value="IT_ADMIN">IT_ADMIN</option> : null}{canAssignAdminRoles ? <option value="SUPER_ADMIN">SUPER_ADMIN</option> : null}</select></label>
+                <label className="text-sm text-slate-300 md:col-span-2">Department<select value={form.departmentId} onChange={(event) => setForm((current) => ({ ...current, departmentId: event.target.value }))} className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white"><option value="">Unassigned</option>{getVisibleDepartments(form.organizationId || String(viewerOrganizationId || "")).map((department) => <option key={department.id} value={department.id}>{department.name}</option>)}</select></label>
               <label className="inline-flex items-center gap-3 text-sm text-slate-300 md:col-span-2"><input type="checkbox" checked={form.enabled} onChange={(event) => setForm((current) => ({ ...current, enabled: event.target.checked }))} />Active account</label>
               <div className="md:col-span-2">
                 <p className="text-sm text-slate-300">Assign apps</p>
@@ -469,7 +502,9 @@ export function SuperAdminPanel({ viewerRole, viewerOrganizationId }: { viewerRo
 
             <div className="mt-8 grid gap-4">
               <label className="text-sm text-slate-300">Organization name<input value={organizationForm.name} onChange={(event) => setOrganizationForm((current) => ({ ...current, name: event.target.value }))} className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white" /></label>
-              <label className="text-sm text-slate-300">Assigned To<select value={organizationForm.assignedAdminId} onChange={(event) => setOrganizationForm((current) => ({ ...current, assignedAdminId: event.target.value }))} className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white"><option value="">Unassigned</option>{itAdmins.map((admin) => <option key={admin.id} value={admin.id}>{admin.name} ({admin.email})</option>)}</select></label>
+              <label className="text-sm text-slate-300">Assigned To<select value={organizationForm.assignedAdminId} onChange={(event) => setOrganizationForm((current) => ({ ...current, assignedAdminId: event.target.value }))} disabled={!organizationForm.id} className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white disabled:opacity-60"><option value="">{organizationForm.id ? "Unassigned" : "Save organization first"}</option>{organizationForm.id ? getAssignableItAdminsForOrganization(organizationForm.id).map((admin) => <option key={admin.id} value={admin.id}>{admin.name} ({admin.email})</option>) : null}</select></label>
+              {!organizationForm.id ? <p className="text-xs text-slate-400">Create the organization first, then create or move an active IT_ADMIN into it before assigning ownership.</p> : null}
+              {organizationForm.id && getAssignableItAdminsForOrganization(organizationForm.id).length === 0 ? <p className="text-xs text-slate-400">No active IT_ADMIN currently belongs to this organization. Create or move one first.</p> : null}
               <div>
                 <p className="text-sm text-slate-300">App Access</p>
                 <div className="mt-3 grid gap-3 sm:grid-cols-3">

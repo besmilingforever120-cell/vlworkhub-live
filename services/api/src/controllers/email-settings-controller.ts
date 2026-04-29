@@ -9,23 +9,40 @@ import {
 } from "../services/email-settings-service";
 import { pool } from "../config/db";
 
-function requireSuperAdmin(req: AuthenticatedRequest, res: Response): boolean {
+function requireEmailSettingsAdmin(req: AuthenticatedRequest, res: Response): boolean {
   const role = req.user?.platform_role ?? req.user?.role;
-  if (role !== "SUPER_ADMIN") {
-    res.status(403).json({ error: "Forbidden: SUPER_ADMIN only" });
+  if (role !== "SUPER_ADMIN" && role !== "IT_ADMIN") {
+    res.status(403).json({ error: "Forbidden: SUPER_ADMIN or IT_ADMIN only" });
     return false;
   }
   return true;
+}
+
+function resolveTargetOrganizationId(req: AuthenticatedRequest): string {
+  const callerOrgId = String(req.user?.organization_id || "");
+  const callerRole = String(req.user?.platform_role || req.user?.role || "USER").toUpperCase();
+  const requestedOrgId = String(req.body?.organizationId || req.query?.organizationId || "").trim();
+
+  if (callerRole === "SUPER_ADMIN" && requestedOrgId) {
+    return requestedOrgId;
+  }
+
+  return callerOrgId;
 }
 
 // ---------------------------------------------------------------------------
 // GET /admin/email-settings
 // ---------------------------------------------------------------------------
 export async function getEmailSettings(req: AuthenticatedRequest, res: Response) {
-  if (!requireSuperAdmin(req, res)) return;
+  if (!requireEmailSettingsAdmin(req, res)) return;
+
+  const targetOrganizationId = resolveTargetOrganizationId(req);
+  if (!targetOrganizationId) {
+    return res.status(400).json({ error: "organizationId is required" });
+  }
 
   await ensureEmailSettingsTable();
-  const row = await getStoredEmailSettings();
+  const row = await getStoredEmailSettings(targetOrganizationId);
 
   if (!row) {
     return res.json({ settings: null });
@@ -34,6 +51,7 @@ export async function getEmailSettings(req: AuthenticatedRequest, res: Response)
   return res.json({
     settings: {
       id:         row.id,
+      organization_id: row.organization_id,
       email:      row.email,
       password:   "", // never expose the stored secret
       provider:   row.provider,
@@ -47,7 +65,12 @@ export async function getEmailSettings(req: AuthenticatedRequest, res: Response)
 // POST /admin/email-settings
 // ---------------------------------------------------------------------------
 export async function saveEmailSettings(req: AuthenticatedRequest, res: Response) {
-  if (!requireSuperAdmin(req, res)) return;
+  if (!requireEmailSettingsAdmin(req, res)) return;
+
+  const targetOrganizationId = resolveTargetOrganizationId(req);
+  if (!targetOrganizationId) {
+    return res.status(400).json({ error: "organizationId is required" });
+  }
 
   const { email, password, provider } = req.body as {
     email?: string;
@@ -63,7 +86,7 @@ export async function saveEmailSettings(req: AuthenticatedRequest, res: Response
   }
 
   try {
-    await saveStoredEmailSettings({ email, password, provider: provider as "gmail" | "outlook" });
+    await saveStoredEmailSettings({ organizationId: targetOrganizationId, email, password, provider: provider as "gmail" | "outlook" });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return res.status(400).json({ error: message });
@@ -76,10 +99,15 @@ export async function saveEmailSettings(req: AuthenticatedRequest, res: Response
 // POST /admin/test-email
 // ---------------------------------------------------------------------------
 export async function sendTestEmail(req: AuthenticatedRequest, res: Response) {
-  if (!requireSuperAdmin(req, res)) return;
+  if (!requireEmailSettingsAdmin(req, res)) return;
+
+  const targetOrganizationId = resolveTargetOrganizationId(req);
+  if (!targetOrganizationId) {
+    return res.status(400).json({ error: "organizationId is required" });
+  }
 
   try {
-    await sendConfiguredTestEmail();
+    await sendConfiguredTestEmail(targetOrganizationId);
     return res.json({ success: true });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -91,14 +119,18 @@ export async function sendTestEmail(req: AuthenticatedRequest, res: Response) {
 // GET /admin/diagnose-notifications  (admin only, debug tool)
 // ---------------------------------------------------------------------------
 export async function diagnoseNotifications(req: AuthenticatedRequest, res: Response) {
-  if (!requireSuperAdmin(req, res)) return;
+  if (!requireEmailSettingsAdmin(req, res)) return;
 
-  const organizationId = String(req.user?.organization_id || "");
+  const organizationId = resolveTargetOrganizationId(req);
+  if (!organizationId) {
+    return res.status(400).json({ error: "organizationId is required" });
+  }
+
   const report: Record<string, unknown> = { organizationId };
 
   // 1. SMTP transporter
   try {
-    const transporter = await getSmtpTransporter();
+    const transporter = await getSmtpTransporter(organizationId);
     report.smtpTransporter = transporter ? "ok" : "null — no email_settings row or unknown provider";
   } catch (e) {
     report.smtpTransporter = `error: ${e instanceof Error ? e.message : String(e)}`;
@@ -106,7 +138,7 @@ export async function diagnoseNotifications(req: AuthenticatedRequest, res: Resp
 
   // 2. Email settings row
   try {
-    const row = await getStoredEmailSettings();
+    const row = await getStoredEmailSettings(organizationId);
     report.emailSettings = row ? { email: row.email, provider: row.provider } : null;
   } catch (e) {
     report.emailSettings = `error: ${e instanceof Error ? e.message : String(e)}`;

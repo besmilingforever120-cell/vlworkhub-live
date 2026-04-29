@@ -74,7 +74,7 @@ function hasTaskAudienceMatch(tokens: string[], context: HrPermissionContext) {
 
 export async function getUserHrRole(userId: string, organizationId: string, platformRole?: string): Promise<{ role: HrPermissionRole; managerId: string | null }> {
   const normalizedPlatformRole = String(platformRole || "USER").toUpperCase();
-  if (normalizedPlatformRole === "SUPER_ADMIN" || normalizedPlatformRole === "ADMIN") {
+  if (normalizedPlatformRole === "SUPER_ADMIN" || normalizedPlatformRole === "ADMIN" || normalizedPlatformRole === "IT_ADMIN") {
     return { role: "admin" as const, managerId: null };
   }
 
