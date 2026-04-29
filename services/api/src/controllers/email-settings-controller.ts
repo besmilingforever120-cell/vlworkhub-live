@@ -91,6 +91,8 @@ export async function sendTestEmail(req: AuthenticatedRequest, res: Response) {
 // GET /admin/diagnose-notifications  (admin only, debug tool)
 // ---------------------------------------------------------------------------
 export async function diagnoseNotifications(req: AuthenticatedRequest, res: Response) {
+  if (!requireSuperAdmin(req, res)) return;
+
   const organizationId = String(req.user?.organization_id || "");
   const report: Record<string, unknown> = { organizationId };
 
