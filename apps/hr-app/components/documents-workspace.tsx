@@ -9,6 +9,7 @@ import {
   createHrDocument,
   deleteHrDocument,
   getApiErrorMessage,
+  getFriendlyUploadValidationMessage,
   getCurrentUser,
   getDepartments,
   getHrAssignments,
@@ -171,6 +172,7 @@ export function DocumentsWorkspace() {
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [validationErrors, setValidationErrors] = useState<ValidationState>({});
   const [error, setError] = useState("");
+  const [uploadFormError, setUploadFormError] = useState("");
 
   async function load() {
     setError("");
@@ -317,11 +319,13 @@ export function DocumentsWorkspace() {
     setSelectedFiles([]);
     setEditingDocument(null);
     setValidationErrors({});
+    setUploadFormError("");
   }
 
   function handleFileChange(fileList: FileList | null) {
     setSelectedFiles(fileList ? Array.from(fileList) : []);
     setValidationErrors((current) => ({ ...current, file: undefined }));
+    setUploadFormError("");
   }
 
   function openUserPicker() {
@@ -383,6 +387,7 @@ export function DocumentsWorkspace() {
 
     try {
       setError("");
+      setUploadFormError("");
       if (editingDocument) {
         const selectedFile = selectedFiles[0] || null;
         await updateHrDocument(Number(editingDocument.id), {
@@ -402,7 +407,7 @@ export function DocumentsWorkspace() {
       resetUploadModal();
       await load();
     } catch (submitError) {
-      setError(getApiErrorMessage(submitError));
+      setUploadFormError(getFriendlyUploadValidationMessage(submitError));
     }
   }
 
@@ -527,12 +532,13 @@ export function DocumentsWorkspace() {
               <div className="legacy-form-grid">
                 <div className="legacy-form-group legacy-form-group--full">
                   <label>File Upload</label>
-                  <input ref={fileInputRef} type="file" hidden multiple={!editingDocument} onChange={(event) => handleFileChange(event.target.files)} />
+                  <input ref={fileInputRef} type="file" hidden multiple={!editingDocument} accept=".pdf,.docx,.xlsx,.jpg,.jpeg,.png,.txt" onChange={(event) => handleFileChange(event.target.files)} />
                   <button type="button" className="legacy-dropzone" onClick={() => fileInputRef.current?.click()}>
                     <Upload className="h-5 w-5" />
                     <span>{selectedFiles.length ? (selectedFiles.length === 1 ? selectedFiles[0].name : `${selectedFiles.length} files selected`) : editingDocument ? editingDocument.file_name : "Select one or more files to upload."}</span>
                   </button>
                   {validationErrors.file ? <p className="legacy-field-error">{validationErrors.file}</p> : null}
+                  {uploadFormError ? <p className="legacy-field-error">{uploadFormError}</p> : null}
                 </div>
                 <div className="legacy-form-group"><label>Category</label><select value={form.category} onChange={(event) => setForm((current) => ({ ...current, category: event.target.value }))}>{categoryOptions.map((option) => <option key={option} value={option}>{option}</option>)}</select></div>
                 {form.category === "Other" ? <div className="legacy-form-group"><label>Specify Other</label><input value={form.categoryOther} onChange={(event) => setForm((current) => ({ ...current, categoryOther: event.target.value }))} />{validationErrors.categoryOther ? <p className="legacy-field-error">{validationErrors.categoryOther}</p> : null}</div> : null}

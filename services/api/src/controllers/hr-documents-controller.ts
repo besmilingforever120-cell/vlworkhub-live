@@ -61,6 +61,25 @@ const EXPIRY_SWEEP_ENABLED = String(process.env.HR_ONBOARDING_EXPIRY_SWEEP_ENABL
 let onboardingExpirySweepTimer: NodeJS.Timeout | null = null;
 let onboardingExpirySweepInProgress = false;
 
+const ALLOWED_UPLOAD_MIME_TYPES: Record<string, string[]> = {
+  "application/pdf": [".pdf"],
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [".docx"],
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [".xlsx"],
+  "image/jpeg": [".jpg", ".jpeg"],
+  "image/jpg": [".jpg", ".jpeg"],
+  "image/png": [".png"],
+  "text/plain": [".txt"]
+};
+
+const ALLOWED_UPLOAD_MIME_LIST = Object.keys(ALLOWED_UPLOAD_MIME_TYPES).join(", ");
+
+class UploadValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "UploadValidationError";
+  }
+}
+
 function asString(value: unknown) {
   return String(value ?? "").trim();
 }
@@ -222,9 +241,59 @@ function parseDataUrl(dataUrl: string) {
   }
 
   return {
-    mimeType: match[1],
+    mimeType: String(match[1] || "").toLowerCase(),
     buffer: Buffer.from(match[2], "base64")
   };
+}
+
+function getNormalizedFileExtension(fileName: string) {
+  const normalized = String(fileName || "").trim().toLowerCase();
+  if (!normalized.includes(".")) {
+    return "";
+  }
+
+  return normalized.slice(normalized.lastIndexOf("."));
+}
+
+function assertAllowedUploadMimeType(fileName: string, mimeType: string) {
+  const normalizedMime = String(mimeType || "").trim().toLowerCase();
+  const allowedExtensions = ALLOWED_UPLOAD_MIME_TYPES[normalizedMime];
+  if (!allowedExtensions) {
+    throw new UploadValidationError(
+      `Unsupported file type (${normalizedMime || "unknown"}). Allowed MIME types: ${ALLOWED_UPLOAD_MIME_LIST}`
+    );
+  }
+
+  const extension = getNormalizedFileExtension(fileName);
+  if (!extension) {
+    throw new UploadValidationError(
+      `File extension is required. Allowed extensions for ${normalizedMime}: ${allowedExtensions.join(", ")}`
+    );
+  }
+
+  if (!allowedExtensions.includes(extension)) {
+    throw new UploadValidationError(
+      `File extension ${extension} does not match MIME type ${normalizedMime}. Allowed extensions: ${allowedExtensions.join(", ")}`
+    );
+  }
+}
+
+function assertSignedPdfMimeType(mimeType: string) {
+  const normalizedMime = String(mimeType || "").trim().toLowerCase();
+  if (normalizedMime !== "application/pdf") {
+    throw new UploadValidationError(
+      `Signed document payload must be application/pdf. Received: ${normalizedMime || "unknown"}`
+    );
+  }
+}
+
+function assertAllowedUploadPayload(fileName: string, fileData: string, invalidPayloadMessage: string) {
+  const parsed = parseDataUrl(fileData);
+  if (!parsed) {
+    throw new UploadValidationError(invalidPayloadMessage);
+  }
+
+  assertAllowedUploadMimeType(fileName, parsed.mimeType);
 }
 
 function getFileExtension(fileName: string, mimeType: string) {
@@ -682,10 +751,16 @@ export function startOnboardingExpiryTaskScheduler() {
 }
 
 async function saveOriginalFileLocally(documentId: number, fileName: string, fileData: string | null) {
-  const parsed = fileData ? parseDataUrl(fileData) : null;
-  if (!parsed) {
+  if (!fileData) {
     return null;
   }
+
+  const parsed = parseDataUrl(fileData);
+  if (!parsed) {
+    throw new UploadValidationError("Invalid fileData payload. Expected base64 data URL.");
+  }
+
+  assertAllowedUploadMimeType(fileName, parsed.mimeType);
 
   const uploadsRoot = getOriginalUploadsRoot();
   await fs.mkdir(uploadsRoot, { recursive: true });
@@ -700,10 +775,16 @@ async function saveOriginalFileLocally(documentId: number, fileName: string, fil
 }
 
 async function saveSignedPdfLocally(documentId: number, userId: string, userName: string, signedFileUrl: string | null) {
-  const parsed = signedFileUrl ? parseDataUrl(signedFileUrl) : null;
-  if (!parsed) {
+  if (!signedFileUrl) {
     return null;
   }
+
+  const parsed = parseDataUrl(signedFileUrl);
+  if (!parsed) {
+    throw new UploadValidationError("Invalid signedFileUrl payload. Expected base64 data URL.");
+  }
+
+  assertSignedPdfMimeType(parsed.mimeType);
 
   const folderName = sanitizePathSegment(userName || userId);
   const uploadsRoot = path.join(getSignedUploadsRoot(), folderName);
@@ -725,10 +806,16 @@ async function ensureOnboardingUserFolder(userId: string, userName: string) {
 }
 
 async function saveOnboardingFileLocally(userId: string, userName: string, fileName: string, fileData: string | null, documentType: string, expiryDate?: string | null) {
-  const parsed = fileData ? parseDataUrl(fileData) : null;
-  if (!parsed) {
+  if (!fileData) {
     return null;
   }
+
+  const parsed = parseDataUrl(fileData);
+  if (!parsed) {
+    throw new UploadValidationError("Invalid onboarding fileData payload. Expected base64 data URL.");
+  }
+
+  assertAllowedUploadMimeType(fileName, parsed.mimeType);
 
   const { folderName, folderPath } = await ensureOnboardingUserFolder(userId, userName);
   const timestamp = Date.now();
@@ -1529,6 +1616,10 @@ export async function uploadHrOnboardingFiles(req: AuthenticatedRequest, res: Re
 
     return res.status(201).json({ items: uploaded });
   } catch (error) {
+    if (error instanceof UploadValidationError) {
+      return res.status(400).json({ message: error.message });
+    }
+
     console.error("API error in POST /hr/onboarding/files", error);
     return res.status(500).json({ error: "Internal server error" });
   }
@@ -1980,6 +2071,7 @@ export async function createHrDocument(req: AuthenticatedRequest, res: Response)
 
     const categoryOther = category === "Other" ? asNullableString(body.categoryOther) : null;
     const requestedFileUrl = resolveStoredFileUrl(fileName, asNullableString(body.fileUrl));
+    const fileData = asNullableString(body.fileData);
     const dueDate = asNullableString(body.dueDate);
     const description = asNullableString(body.description);
     const departmentId = asNullableString(body.departmentId);
@@ -1987,6 +2079,11 @@ export async function createHrDocument(req: AuthenticatedRequest, res: Response)
     const sensitive = asBoolean(body.sensitive, false);
     const allowDownload = asBoolean(body.allowDownload, false);
     const status = asNullableString(body.status) || (requiresSignature ? "Pending Signature" : "In Progress");
+
+    // Validate upload payload before creating DB rows to avoid partial persistence on rejection.
+    if (fileData) {
+      assertAllowedUploadPayload(fileName, fileData, "Invalid fileData payload. Expected base64 data URL.");
+    }
 
     const created = await pool.query(
       `INSERT INTO documents (
@@ -2011,7 +2108,7 @@ export async function createHrDocument(req: AuthenticatedRequest, res: Response)
     );
 
     const documentId = Number(created.rows[0].id);
-    const localOriginalFileUrl = await saveOriginalFileLocally(documentId, fileName, asNullableString(body.fileData));
+  const localOriginalFileUrl = await saveOriginalFileLocally(documentId, fileName, fileData);
     const finalFileUrl = localOriginalFileUrl || requestedFileUrl;
     if (!finalFileUrl) {
       await pool.query(`DELETE FROM documents WHERE organization_id = $1 AND id = $2`, [organizationId, documentId]);
@@ -2035,6 +2132,10 @@ export async function createHrDocument(req: AuthenticatedRequest, res: Response)
 
     return res.status(201).json({ id: documentId });
   } catch (error) {
+    if (error instanceof UploadValidationError) {
+      return res.status(400).json({ message: error.message });
+    }
+
     console.error("API error in POST /hr/documents", error);
     return res.status(500).json({ error: "Internal server error" });
   }
@@ -2127,6 +2228,10 @@ export async function updateHrDocument(req: AuthenticatedRequest, res: Response)
 
     return res.json({ success: true });
   } catch (error) {
+    if (error instanceof UploadValidationError) {
+      return res.status(400).json({ message: error.message });
+    }
+
     console.error("API error in PUT /hr/documents/:id", error);
     return res.status(500).json({ error: "Internal server error" });
   }
@@ -2263,6 +2368,10 @@ export async function signHrDocument(req: AuthenticatedRequest, res: Response) {
 
     return res.json({ success: true });
   } catch (error) {
+    if (error instanceof UploadValidationError) {
+      return res.status(400).json({ message: error.message });
+    }
+
     console.error("API error in POST /hr/documents/:id/sign", error);
     return res.status(500).json({ error: "Internal server error" });
   }

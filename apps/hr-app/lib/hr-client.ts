@@ -106,6 +106,31 @@ export function getApiErrorMessage(error: unknown) {
   return "The HR portal request failed.";
 }
 
+export function getFriendlyUploadValidationMessage(error: unknown) {
+  const message = getApiErrorMessage(error);
+  const normalized = message.toLowerCase();
+
+  if (normalized.includes("signed document payload must be application/pdf")) {
+    return "The signed document format is not supported. Please submit the signed document as a PDF.";
+  }
+
+  if (
+    normalized.includes("unsupported file type") ||
+    normalized.includes("file extension is required") ||
+    normalized.includes("file extension") ||
+    normalized.includes("invalid filedata payload") ||
+    normalized.includes("invalid onboarding filedata payload")
+  ) {
+    return "This file type is not supported. Please upload a PDF, Word document, Excel file, JPG, PNG, or TXT file.";
+  }
+
+  if (normalized.includes("invalid signedfileurl payload")) {
+    return "The signed document could not be processed. Please try signing again.";
+  }
+
+  return message;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 8000);

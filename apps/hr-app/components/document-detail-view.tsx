@@ -9,6 +9,7 @@ import type { SessionUser } from "@vlworkhub/types";
 import {
   getApiErrorMessage,
   getCurrentUser,
+  getFriendlyUploadValidationMessage,
   getHrAssignments,
   getHrDocumentDownloadUrl,
   getHrDocuments,
@@ -264,7 +265,7 @@ export function DocumentDetailView({ documentId }: Props) {
       setShowSignaturePad(false);
       router.push("/documents");
     } catch (signError) {
-      setSignatureError(getApiErrorMessage(signError));
+      setSignatureError(getFriendlyUploadValidationMessage(signError));
     }
   }
 

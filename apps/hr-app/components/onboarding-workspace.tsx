@@ -25,6 +25,7 @@ import {
 import type { SessionUser } from "@vlworkhub/types";
 import {
   getApiErrorMessage,
+  getFriendlyUploadValidationMessage,
   getCurrentUser,
   deleteHrOnboardingFile,
   getHrOnboardingFiles,
@@ -131,6 +132,7 @@ export function OnboardingWorkspace() {
   const [onboardingCompleted, setOnboardingCompleted] = useState(false);
   const [selectedUploads, setSelectedUploads] = useState<SelectedUpload[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState("");
   const [uploadedFiles, setUploadedFiles] = useState<HrOnboardingFileRecord[]>([]);
   const [editingFileId, setEditingFileId] = useState<string | null>(null);
   const [editingDocumentType, setEditingDocumentType] = useState("Other");
@@ -219,6 +221,7 @@ export function OnboardingWorkspace() {
     ]);
     setSuccess("");
     setError("");
+    setUploadError("");
   }
 
   function updateSelectedUpload(id: string, updates: Partial<Pick<SelectedUpload, "documentType" | "expiryDate">>) {
@@ -231,7 +234,7 @@ export function OnboardingWorkspace() {
 
   async function submitSelectedUploads() {
     if (!selectedUploads.length) {
-      setError("Select at least one onboarding file to upload.");
+      setUploadError("Select at least one onboarding file to upload.");
       return;
     }
 
@@ -239,6 +242,7 @@ export function OnboardingWorkspace() {
       setUploading(true);
       setError("");
       setSuccess("");
+      setUploadError("");
       await uploadHrOnboardingFiles({
         files: await Promise.all(
           selectedUploads.map(async (item) => ({
@@ -255,7 +259,7 @@ export function OnboardingWorkspace() {
       setUploadedFiles(filesResponse.items || []);
       setSuccess("Onboarding files uploaded successfully.");
     } catch (uploadError) {
-      setError(getApiErrorMessage(uploadError));
+      setUploadError(getFriendlyUploadValidationMessage(uploadError));
     } finally {
       setUploading(false);
     }
@@ -424,14 +428,14 @@ export function OnboardingWorkspace() {
             <div className="legacy-form-section">
               <div className="legacy-form-section__header">
                 <h3>Upload Files</h3>
-                <p>Supported file types: PDF, DOC, DOCX, JPG, JPEG, PNG.</p>
+                <p>Supported file types: PDF, Word document, Excel file, JPG, PNG, and TXT.</p>
               </div>
               <div className="legacy-form-section__body">
                 <label className="legacy-dropzone" style={{ cursor: "pointer" }}>
                   <input
                     type="file"
                     multiple
-                    accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                    accept=".pdf,.docx,.xlsx,.jpg,.jpeg,.png,.txt"
                     hidden
                     onChange={(event) => handleSelectFiles(event.target.files)}
                   />
@@ -471,6 +475,7 @@ export function OnboardingWorkspace() {
                     {uploading ? "Uploading..." : "Upload Selected Files"}
                   </button>
                 </div>
+                {uploadError ? <p className="legacy-field-error" style={{ marginTop: 12 }}>{uploadError}</p> : null}
               </div>
             </div>
           </div>
