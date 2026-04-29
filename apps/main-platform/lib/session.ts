@@ -5,10 +5,11 @@ type PlatformSessionUser = {
   id: string;
   fullName: string;
   email: string;
-  role: "SUPER_ADMIN" | "ADMIN" | "USER";
-  platformRole: "SUPER_ADMIN" | "ADMIN" | "USER";
+  role: "SUPER_ADMIN" | "IT_ADMIN" | "ADMIN" | "USER";
+  platformRole: "SUPER_ADMIN" | "IT_ADMIN" | "ADMIN" | "USER";
   apps: Array<"HR" | "CARE" | "URSAFE">;
   mustChangePassword?: boolean;
+  organizationId?: string;
 };
 
 type PlatformAppAccess = {

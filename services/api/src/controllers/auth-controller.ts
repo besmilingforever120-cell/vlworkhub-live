@@ -10,7 +10,7 @@ import type { AuthenticatedRequest } from "../middleware/auth";
 
 type UserRole = "Admin" | "Manager" | "Employee" | "HR" | "IT";
 type AppAccess = "HR" | "CARE" | "URSAFE";
-type PlatformRole = "SUPER_ADMIN" | "ADMIN" | "USER";
+type PlatformRole = "SUPER_ADMIN" | "IT_ADMIN" | "ADMIN" | "USER";
 
 type SessionUser = {
   id: string;

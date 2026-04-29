@@ -14,7 +14,7 @@ export default async function AdminUsersPage() {
     redirect("/change-password");
   }
 
-  if (user.platformRole !== "SUPER_ADMIN") {
+  if (user.platformRole !== "SUPER_ADMIN" && user.platformRole !== "IT_ADMIN") {
     redirect("/dashboard");
   }
 
@@ -34,7 +34,7 @@ export default async function AdminUsersPage() {
           </div>
         </div>
       </div>
-      <SuperAdminPanel />
+      <SuperAdminPanel viewerRole={user.platformRole} viewerOrganizationId={user.organizationId} />
     </main>
   );
 }

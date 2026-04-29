@@ -7,11 +7,12 @@ import type { AdminUserRecord, DepartmentRecord, OrganizationRecord } from "../l
 
 type FormState = {
   id?: string;
+  organizationId: string;
   name: string;
   email: string;
   password: string;
   enabled: boolean;
-  role: "SUPER_ADMIN" | "ADMIN" | "USER";
+  role: "SUPER_ADMIN" | "IT_ADMIN" | "ADMIN" | "USER";
   departmentId: string;
   apps: Record<"HR" | "CARE" | "URSAFE", boolean>;
 };
@@ -20,10 +21,20 @@ type OrganizationForm = {
   id?: string;
   name: string;
   enabled: boolean;
+  assignedAdminId: string;
+  apps: Record<"HR" | "CARE" | "URSAFE", boolean>;
+};
+
+type AssignableItAdmin = {
+  id: string;
+  organization_id: string;
+  name: string;
+  email: string;
 };
 
 function emptyForm(): FormState {
   return {
+    organizationId: "",
     name: "",
     email: "",
     password: "",
@@ -37,14 +48,17 @@ function emptyForm(): FormState {
 function emptyOrganizationForm(): OrganizationForm {
   return {
     name: "",
-    enabled: true
+    enabled: true,
+    assignedAdminId: "",
+    apps: { HR: true, CARE: true, URSAFE: true }
   };
 }
 
-export function SuperAdminPanel() {
+export function SuperAdminPanel({ viewerRole, viewerOrganizationId }: { viewerRole: "SUPER_ADMIN" | "IT_ADMIN" | "ADMIN" | "USER"; viewerOrganizationId?: string }) {
   const [users, setUsers] = useState<AdminUserRecord[]>([]);
   const [departments, setDepartments] = useState<DepartmentRecord[]>([]);
   const [organizations, setOrganizations] = useState<OrganizationRecord[]>([]);
+  const [itAdmins, setItAdmins] = useState<AssignableItAdmin[]>([]);
   const [form, setForm] = useState<FormState>(emptyForm());
   const [organizationForm, setOrganizationForm] = useState<OrganizationForm>(emptyOrganizationForm());
   const [error, setError] = useState("");
@@ -54,6 +68,21 @@ export function SuperAdminPanel() {
   const [showOrganizationModal, setShowOrganizationModal] = useState(false);
 
   const appOptions = useMemo(() => ["HR", "CARE", "URSAFE"] as const, []);
+  const canManageOrganizations = viewerRole === "SUPER_ADMIN";
+  const canAssignAdminRoles = viewerRole === "SUPER_ADMIN";
+
+  function getOrganizationById(organizationId: string) {
+    return organizations.find((item) => item.id === organizationId);
+  }
+
+  function getEnabledAppsForOrganization(organizationId: string) {
+    const organization = getOrganizationById(organizationId);
+    if (!organization || (organization.apps || []).length === 0) {
+      return [...appOptions];
+    }
+
+    return (organization.apps || []).filter((app): app is (typeof appOptions)[number] => appOptions.includes(app));
+  }
 
   async function loadUsers() {
     const response = await fetch(`${platformLinks.api}/api/admin/users`, { credentials: "include" });
@@ -82,16 +111,34 @@ export function SuperAdminPanel() {
     setOrganizations(data.items || []);
   }
 
+  async function loadItAdmins() {
+    const response = await fetch(`${platformLinks.api}/api/admin/it-admins`, { credentials: "include" });
+    if (!response.ok) {
+      throw new Error("Failed to load IT administrators.");
+    }
+    const data = await response.json();
+    setItAdmins(data.items || []);
+  }
+
   async function loadAll() {
-    await Promise.all([loadUsers(), loadDepartments(), loadOrganizations()]);
+    await Promise.all([
+      loadUsers(),
+      loadDepartments(),
+      canManageOrganizations ? loadOrganizations() : Promise.resolve(),
+      canManageOrganizations ? loadItAdmins() : Promise.resolve()
+    ]);
   }
 
   useEffect(() => {
     void loadAll().catch((loadError) => setError(loadError instanceof Error ? loadError.message : "Failed to load admin data."));
-  }, []);
+  }, [canManageOrganizations]);
 
   function openCreate() {
-    setForm(emptyForm());
+    const base = emptyForm();
+    setForm({
+      ...base,
+      organizationId: canManageOrganizations ? (organizations[0]?.id || "") : String(viewerOrganizationId || "")
+    });
     setShowModal(true);
   }
 
@@ -110,6 +157,7 @@ export function SuperAdminPanel() {
 
     setForm({
       id: user.id,
+      organizationId: user.organization_id,
       name: `${user.first_name || ""} ${user.last_name || ""}`.trim() || user.name,
       email: user.email,
       password: "",
@@ -122,12 +170,33 @@ export function SuperAdminPanel() {
   }
 
   function startEditOrganization(organization: OrganizationRecord) {
+    const appMap = { HR: false, CARE: false, URSAFE: false };
+    const configuredApps = (organization.apps || []).length > 0 ? organization.apps : appOptions;
+    for (const app of configuredApps) {
+      appMap[app] = true;
+    }
+
     setOrganizationForm({
       id: organization.id,
       name: organization.name,
-      enabled: organization.enabled
+      enabled: organization.enabled,
+      assignedAdminId: organization.assigned_admin_id || "",
+      apps: appMap
     });
     setShowOrganizationModal(true);
+  }
+
+  function handleUserOrganizationChange(organizationId: string) {
+    const enabledApps = getEnabledAppsForOrganization(organizationId);
+    setForm((current) => ({
+      ...current,
+      organizationId,
+      apps: {
+        HR: enabledApps.includes("HR") ? current.apps.HR : false,
+        CARE: enabledApps.includes("CARE") ? current.apps.CARE : false,
+        URSAFE: enabledApps.includes("URSAFE") ? current.apps.URSAFE : false
+      }
+    }));
   }
 
   async function saveUser() {
@@ -135,6 +204,7 @@ export function SuperAdminPanel() {
     setError("");
     try {
       const payload = {
+        ...(canManageOrganizations ? { organizationId: form.organizationId || null } : {}),
         name: form.name,
         email: form.email,
         ...(form.id && form.password ? { password: form.password } : {}),
@@ -180,7 +250,9 @@ export function SuperAdminPanel() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: organizationForm.name,
-          enabled: organizationForm.enabled
+          enabled: organizationForm.enabled,
+          assignedAdminId: organizationForm.assignedAdminId || null,
+          apps: appOptions.filter((app) => organizationForm.apps[app])
         })
       });
 
@@ -209,7 +281,8 @@ export function SuperAdminPanel() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: organization.name,
-          enabled
+          enabled,
+          assignedAdminId: organization.assigned_admin_id || null
         })
       });
 
@@ -228,6 +301,7 @@ export function SuperAdminPanel() {
 
   return (
     <div className="space-y-8">
+      {canManageOrganizations ? (
       <section className="rounded-3xl border border-white/10 bg-slate-900/60 p-6">
         <div className="flex items-start justify-between gap-4">
           <div>
@@ -249,6 +323,8 @@ export function SuperAdminPanel() {
               <tr>
                 <th className="px-3 py-3">Organization</th>
                 <th className="px-3 py-3">Status</th>
+                <th className="px-3 py-3">Assigned To</th>
+                <th className="px-3 py-3">Apps</th>
                 <th className="px-3 py-3">Users</th>
                 <th className="px-3 py-3">Departments</th>
                 <th className="px-3 py-3">Created</th>
@@ -260,6 +336,8 @@ export function SuperAdminPanel() {
                 <tr key={organization.id} className="border-t border-white/10">
                   <td className="px-3 py-4 font-medium text-white">{organization.name}</td>
                   <td className="px-3 py-4"><span className={`rounded-full px-3 py-1 text-xs ${organization.enabled ? "bg-emerald-500/15 text-emerald-200" : "bg-rose-500/15 text-rose-200"}`}>{organization.enabled ? "active" : "disabled"}</span></td>
+                  <td className="px-3 py-4 text-slate-300">{organization.assigned_admin_name ? `${organization.assigned_admin_name}${organization.assigned_admin_email ? ` (${organization.assigned_admin_email})` : ""}` : "Unassigned"}</td>
+                  <td className="px-3 py-4"><div className="flex flex-wrap gap-2">{((organization.apps || []).length > 0 ? organization.apps : appOptions).map((app) => (<span key={`${organization.id}-${app}`} className="rounded-full bg-white/10 px-3 py-1 text-xs text-white">{app}</span>))}</div></td>
                   <td className="px-3 py-4 text-slate-300">{organization.user_count}</td>
                   <td className="px-3 py-4 text-slate-300">{organization.department_count}</td>
                   <td className="px-3 py-4 text-slate-400">{organization.created_at ? new Date(organization.created_at).toLocaleDateString() : "-"}</td>
@@ -277,6 +355,7 @@ export function SuperAdminPanel() {
           </table>
         </div>
       </section>
+      ) : null}
 
       <section className="rounded-3xl border border-white/10 bg-slate-900/60 p-6">
         <div className="flex items-start justify-between gap-4">
@@ -350,7 +429,10 @@ export function SuperAdminPanel() {
                   A strong temporary password will be generated automatically and sent by email. The user will be required to change it at first login.
                 </div>
               )}
-              <label className="text-sm text-slate-300">Platform role<select value={form.role} onChange={(event) => setForm((current) => ({ ...current, role: event.target.value as FormState["role"] }))} className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white"><option value="USER">USER</option><option value="ADMIN">ADMIN</option><option value="SUPER_ADMIN">SUPER_ADMIN</option></select></label>
+              {canManageOrganizations ? (
+                <label className="text-sm text-slate-300">Organization<select value={form.organizationId} onChange={(event) => handleUserOrganizationChange(event.target.value)} className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white"><option value="">Select organization</option>{organizations.map((organization) => <option key={organization.id} value={organization.id}>{organization.name}</option>)}</select></label>
+              ) : null}
+              <label className="text-sm text-slate-300">Platform role<select value={form.role} onChange={(event) => setForm((current) => ({ ...current, role: event.target.value as FormState["role"] }))} className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white"><option value="USER">USER</option><option value="ADMIN">ADMIN</option><option value="IT_ADMIN" disabled={!canAssignAdminRoles}>IT_ADMIN</option><option value="SUPER_ADMIN" disabled={!canAssignAdminRoles}>SUPER_ADMIN</option></select></label>
               <label className="text-sm text-slate-300 md:col-span-2">Department<select value={form.departmentId} onChange={(event) => setForm((current) => ({ ...current, departmentId: event.target.value }))} className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white"><option value="">Unassigned</option>{departments.map((department) => <option key={department.id} value={department.id}>{department.name}</option>)}</select></label>
               <label className="inline-flex items-center gap-3 text-sm text-slate-300 md:col-span-2"><input type="checkbox" checked={form.enabled} onChange={(event) => setForm((current) => ({ ...current, enabled: event.target.checked }))} />Active account</label>
               <div className="md:col-span-2">
@@ -358,7 +440,7 @@ export function SuperAdminPanel() {
                 <div className="mt-3 grid gap-3 sm:grid-cols-3">
                   {appOptions.map((app) => (
                     <label key={app} className="inline-flex items-center gap-3 rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-sm text-slate-200">
-                      <input type="checkbox" checked={form.apps[app]} onChange={(event) => setForm((current) => ({ ...current, apps: { ...current.apps, [app]: event.target.checked } }))} />
+                      <input type="checkbox" disabled={!getEnabledAppsForOrganization(form.organizationId || String(viewerOrganizationId || "")).includes(app)} checked={form.apps[app]} onChange={(event) => setForm((current) => ({ ...current, apps: { ...current.apps, [app]: event.target.checked } }))} />
                       {app}
                     </label>
                   ))}
@@ -374,7 +456,7 @@ export function SuperAdminPanel() {
         </div>
       ) : null}
 
-      {showOrganizationModal ? (
+      {canManageOrganizations && showOrganizationModal ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 px-6 py-10 backdrop-blur-sm">
           <div className="w-full max-w-2xl rounded-3xl border border-white/10 bg-slate-900 p-8 shadow-2xl">
             <div className="flex items-start justify-between gap-4">
@@ -387,6 +469,18 @@ export function SuperAdminPanel() {
 
             <div className="mt-8 grid gap-4">
               <label className="text-sm text-slate-300">Organization name<input value={organizationForm.name} onChange={(event) => setOrganizationForm((current) => ({ ...current, name: event.target.value }))} className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white" /></label>
+              <label className="text-sm text-slate-300">Assigned To<select value={organizationForm.assignedAdminId} onChange={(event) => setOrganizationForm((current) => ({ ...current, assignedAdminId: event.target.value }))} className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white"><option value="">Unassigned</option>{itAdmins.map((admin) => <option key={admin.id} value={admin.id}>{admin.name} ({admin.email})</option>)}</select></label>
+              <div>
+                <p className="text-sm text-slate-300">App Access</p>
+                <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                  {appOptions.map((app) => (
+                    <label key={app} className="inline-flex items-center gap-3 rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-sm text-slate-200">
+                      <input type="checkbox" checked={organizationForm.apps[app]} onChange={(event) => setOrganizationForm((current) => ({ ...current, apps: { ...current.apps, [app]: event.target.checked } }))} />
+                      {app}
+                    </label>
+                  ))}
+                </div>
+              </div>
               <label className="inline-flex items-center gap-3 text-sm text-slate-300"><input type="checkbox" checked={organizationForm.enabled} onChange={(event) => setOrganizationForm((current) => ({ ...current, enabled: event.target.checked }))} />Organization is active</label>
             </div>
 

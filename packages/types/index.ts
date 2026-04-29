@@ -1,5 +1,5 @@
 export type UserRole = "Admin" | "Manager" | "Employee" | "HR" | "IT";
-export type PlatformRole = "SUPER_ADMIN" | "ADMIN" | "USER";
+export type PlatformRole = "SUPER_ADMIN" | "IT_ADMIN" | "ADMIN" | "USER";
 export type AppAccess = "HR" | "CARE" | "URSAFE";
 
 export interface SessionUser {

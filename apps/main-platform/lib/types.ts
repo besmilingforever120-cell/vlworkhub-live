@@ -11,7 +11,7 @@ export type AdminUserRecord = {
   email: string;
   status: string;
   enabled: boolean;
-  role: "SUPER_ADMIN" | "ADMIN" | "USER";
+  role: "SUPER_ADMIN" | "IT_ADMIN" | "ADMIN" | "USER";
   app_access: AdminAppAccess[];
 };
 
@@ -19,6 +19,10 @@ export type OrganizationRecord = {
   id: string;
   name: string;
   enabled: boolean;
+  assigned_admin_id: string | null;
+  assigned_admin_name: string | null;
+  assigned_admin_email: string | null;
+  apps: Array<"HR" | "CARE" | "URSAFE">;
   disabled_at: string | null;
   created_at: string;
   user_count: number;

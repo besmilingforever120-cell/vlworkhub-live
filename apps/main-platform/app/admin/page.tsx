@@ -12,6 +12,10 @@ export default async function AdminIndexPage() {
     redirect("/change-password");
   }
 
+  if (user.platformRole === "IT_ADMIN") {
+    redirect("/admin/users");
+  }
+
   if (user.platformRole !== "SUPER_ADMIN") {
     redirect("/dashboard");
   }

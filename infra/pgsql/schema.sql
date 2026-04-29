@@ -3,6 +3,7 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;
 CREATE TABLE IF NOT EXISTS organizations (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL,
+  assigned_admin_id UUID,
   is_active BOOLEAN NOT NULL DEFAULT TRUE,
   disabled_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -29,6 +30,28 @@ CREATE TABLE IF NOT EXISTS user_app_access (
   id BIGSERIAL PRIMARY KEY,
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   app TEXT NOT NULL
+);
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'organizations_assigned_admin_id_fkey'
+  ) THEN
+    ALTER TABLE organizations
+    ADD CONSTRAINT organizations_assigned_admin_id_fkey
+    FOREIGN KEY (assigned_admin_id)
+    REFERENCES users(id)
+    ON DELETE SET NULL;
+  END IF;
+END
+$$;
+
+CREATE TABLE IF NOT EXISTS organization_app_access (
+  id BIGSERIAL PRIMARY KEY,
+  organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  app TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (organization_id, app)
 );
 
 CREATE TABLE IF NOT EXISTS clients (

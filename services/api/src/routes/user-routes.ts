@@ -7,6 +7,7 @@ import {
   getMyAppAccess,
   listAccessibleDepartments,
   listAdminUsers,
+  listAssignableItAdmins,
   listDepartments,
   listOrganizations,
   listUsers,
@@ -27,6 +28,7 @@ userRouter.get("/apps/my-access", getMyAppAccess);
 
 adminUserRouter.use(requireAuth);
 adminUserRouter.get("/users", listAdminUsers);
+adminUserRouter.get("/it-admins", listAssignableItAdmins);
 adminUserRouter.post("/users", createAdminUser);
 adminUserRouter.put("/users/:id", updateAdminUser);
 adminUserRouter.post("/user-access", upsertUserAppAccess);

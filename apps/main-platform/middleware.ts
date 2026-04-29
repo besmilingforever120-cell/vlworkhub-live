@@ -49,7 +49,23 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL("/login", request.url));
   }
 
-  if ((pathname.startsWith("/platform/admin") || pathname.startsWith("/admin")) && (session.user.role || session.user.platformRole) !== "SUPER_ADMIN") {
+  const platformRole = String(session.user.platformRole || session.user.role || "USER").toUpperCase();
+  const isSuperAdmin = platformRole === "SUPER_ADMIN";
+  const isItAdmin = platformRole === "IT_ADMIN";
+
+  if (pathname.startsWith("/platform/admin") && !isSuperAdmin) {
+    return NextResponse.redirect(new URL("/dashboard", request.url));
+  }
+
+  if (pathname.startsWith("/admin")) {
+    if (isSuperAdmin) {
+      return NextResponse.next();
+    }
+
+    if (isItAdmin && (pathname.startsWith("/admin/users") || pathname.startsWith("/admin/departments"))) {
+      return NextResponse.next();
+    }
+
     return NextResponse.redirect(new URL("/dashboard", request.url));
   }
 

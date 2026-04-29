@@ -4,12 +4,12 @@ import crypto from "node:crypto";
 export interface AuthPayload {
   user_id: string;
   organization_id: string;
-  role: "SUPER_ADMIN" | "ADMIN" | "USER";
+  role: "SUPER_ADMIN" | "IT_ADMIN" | "ADMIN" | "USER";
   roles: Array<"Admin" | "Manager" | "Employee" | "HR" | "IT">;
   apps: Array<"HR" | "CARE" | "URSAFE">;
   email: string;
   full_name: string;
-  platform_role: "SUPER_ADMIN" | "ADMIN" | "USER";
+  platform_role: "SUPER_ADMIN" | "IT_ADMIN" | "ADMIN" | "USER";
 }
 
 export interface AuthTokenPayload extends AuthPayload {
