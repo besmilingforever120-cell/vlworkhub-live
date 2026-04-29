@@ -34,15 +34,21 @@ type UserRecord = QueryResultRow & {
   status: string | null;
   role: PlatformRole | null;
   must_change_password: boolean;
+  failed_login_attempts: number;
+  locked_until: Date | null;
 };
 
 const PASSWORD_HISTORY_COUNT = 5;
+const MAX_FAILED_LOGIN_ATTEMPTS = 5;
+const ACCOUNT_LOCKOUT_MINUTES = 20;
 let ensureSecuritySchemaPromise: Promise<void> | null = null;
 
 function ensureSecuritySchema() {
   if (!ensureSecuritySchemaPromise) {
     ensureSecuritySchemaPromise = (async () => {
       await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN NOT NULL DEFAULT FALSE`);
+      await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS failed_login_attempts INTEGER NOT NULL DEFAULT 0`);
+      await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS locked_until TIMESTAMPTZ`);
       await pool.query(
         `CREATE TABLE IF NOT EXISTS user_password_history (
           id BIGSERIAL PRIMARY KEY,
@@ -118,7 +124,9 @@ async function findUserByEmail(email: string) {
        u.last_name,
        u.status,
        COALESCE(u.role, 'USER') AS role,
-       COALESCE(u.must_change_password, FALSE) AS must_change_password
+       COALESCE(u.must_change_password, FALSE) AS must_change_password,
+       COALESCE(u.failed_login_attempts, 0) AS failed_login_attempts,
+       u.locked_until
      FROM users u
      WHERE u.email = $1`,
     [email]
@@ -148,6 +156,11 @@ type LoginResult = {
   token: string;
 };
 
+type AuthenticateResult =
+  | { status: "ok"; loginResult: LoginResult }
+  | { status: "invalid" }
+  | { status: "locked"; lockedUntil: Date };
+
 async function toSessionUser(user: UserRecord): Promise<SessionUser> {
   const platformRole = user.role || "USER";
   return {
@@ -175,18 +188,72 @@ async function getMustChangePassword(userId: string) {
   return Boolean(result.rows[0]?.must_change_password);
 }
 
-async function authenticate(email: string, password: string): Promise<LoginResult | null> {
+async function resetFailedLoginState(userId: string) {
+  await ensureSecuritySchema();
+  await pool.query(
+    `UPDATE users
+     SET failed_login_attempts = 0,
+         locked_until = NULL
+     WHERE id = $1`,
+    [userId]
+  );
+}
+
+async function recordFailedLoginAttempt(user: UserRecord) {
+  await ensureSecuritySchema();
+
+  const nextAttempts = Number(user.failed_login_attempts || 0) + 1;
+  if (nextAttempts >= MAX_FAILED_LOGIN_ATTEMPTS) {
+    const result = await pool.query<{ locked_until: Date }>(
+      `UPDATE users
+       SET failed_login_attempts = $2,
+           locked_until = NOW() + ($3 * interval '1 minute')
+       WHERE id = $1
+       RETURNING locked_until`,
+      [user.id, nextAttempts, ACCOUNT_LOCKOUT_MINUTES]
+    );
+
+    return result.rows[0]?.locked_until || null;
+  }
+
+  await pool.query(
+    `UPDATE users
+     SET failed_login_attempts = $2
+     WHERE id = $1`,
+    [user.id, nextAttempts]
+  );
+
+  return null;
+}
+
+async function authenticate(email: string, password: string): Promise<AuthenticateResult> {
   const user = await findUserByEmail(email.trim());
 
   if (!user || user.status !== "active") {
-    return null;
+    return { status: "invalid" };
+  }
+
+  if (user.locked_until && new Date(user.locked_until).getTime() > Date.now()) {
+    return { status: "locked", lockedUntil: new Date(user.locked_until) };
+  }
+
+  if (user.locked_until && new Date(user.locked_until).getTime() <= Date.now()) {
+    await resetFailedLoginState(user.id);
+    user.failed_login_attempts = 0;
+    user.locked_until = null;
   }
 
   const passwordMatches = await verifyPassword(password, user.password_hash);
   if (!passwordMatches) {
-    return null;
+    const lockedUntil = await recordFailedLoginAttempt(user);
+    if (lockedUntil) {
+      return { status: "locked", lockedUntil: new Date(lockedUntil) };
+    }
+
+    return { status: "invalid" };
   }
 
+  await resetFailedLoginState(user.id);
   await migrateLegacyPasswordHashOnLogin(user.id, password, user.password_hash);
 
   const sessionUser = await toSessionUser(user);
@@ -204,7 +271,7 @@ async function authenticate(email: string, password: string): Promise<LoginResul
     env.jwtSecret
   );
 
-  return { user: sessionUser, token };
+  return { status: "ok", loginResult: { user: sessionUser, token } };
 }
 
 export async function login(req: Request, res: Response) {
@@ -215,11 +282,19 @@ export async function login(req: Request, res: Response) {
       return res.status(400).json({ message: "Email and password are required" });
     }
 
-    const loginResult = await authenticate(email, password);
-    if (!loginResult) {
+    const authResult = await authenticate(email, password);
+    if (authResult.status === "locked") {
+      return res.status(423).json({
+        message: "Account temporarily locked due to failed login attempts",
+        lockedUntil: authResult.lockedUntil.toISOString()
+      });
+    }
+
+    if (authResult.status !== "ok") {
       return res.status(401).json({ message: "Invalid credentials" });
     }
 
+    const { loginResult } = authResult;
     const cookieDomain = resolveCookieDomain(req);
     appendSessionCleanupHeaders(res, cookieDomain);
     res.append("Set-Cookie", buildCookie(loginResult.token, cookieDomain));
@@ -238,11 +313,19 @@ export async function mobileLogin(req: Request, res: Response) {
       return res.status(400).json({ message: "Email and password are required" });
     }
 
-    const loginResult = await authenticate(email, password);
-    if (!loginResult) {
+    const authResult = await authenticate(email, password);
+    if (authResult.status === "locked") {
+      return res.status(423).json({
+        message: "Account temporarily locked due to failed login attempts",
+        lockedUntil: authResult.lockedUntil.toISOString()
+      });
+    }
+
+    if (authResult.status !== "ok") {
       return res.status(401).json({ message: "Invalid credentials" });
     }
 
+    const { loginResult } = authResult;
     return res.json({ token: loginResult.token, user: loginResult.user, mustChangePassword: loginResult.user.mustChangePassword });
   } catch (error) {
     console.error("API error in POST /auth/mobile-login", error);
