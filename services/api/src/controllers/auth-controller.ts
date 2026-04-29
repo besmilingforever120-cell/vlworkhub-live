@@ -27,6 +27,8 @@ type SessionUser = {
 type UserRecord = QueryResultRow & {
   id: string;
   organization_id: string;
+  organization_enabled: boolean;
+  organization_name: string | null;
   email: string;
   password_hash: string;
   first_name: string | null;
@@ -42,6 +44,7 @@ const PASSWORD_HISTORY_COUNT = 5;
 const MAX_FAILED_LOGIN_ATTEMPTS = 5;
 const ACCOUNT_LOCKOUT_MINUTES = 20;
 let ensureSecuritySchemaPromise: Promise<void> | null = null;
+let ensureOrganizationsSchemaPromise: Promise<void> | null = null;
 
 function ensureSecuritySchema() {
   if (!ensureSecuritySchemaPromise) {
@@ -68,6 +71,20 @@ function ensureSecuritySchema() {
   }
 
   return ensureSecuritySchemaPromise;
+}
+
+function ensureOrganizationsSchema() {
+  if (!ensureOrganizationsSchemaPromise) {
+    ensureOrganizationsSchemaPromise = (async () => {
+      await pool.query(`ALTER TABLE organizations ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE`);
+      await pool.query(`ALTER TABLE organizations ADD COLUMN IF NOT EXISTS disabled_at TIMESTAMPTZ`);
+    })().catch((error) => {
+      ensureOrganizationsSchemaPromise = null;
+      throw error;
+    });
+  }
+
+  return ensureOrganizationsSchemaPromise;
 }
 
 function buildLegacyClearCookie(name: string, domain?: string) {
@@ -113,11 +130,14 @@ function appendSessionCleanupHeaders(res: Response, domain?: string) {
 
 async function findUserByEmail(email: string) {
   await ensureSecuritySchema();
+  await ensureOrganizationsSchema();
 
   const result = await pool.query<UserRecord>(
     `SELECT
        u.id,
        u.organization_id,
+       COALESCE(o.is_active, TRUE) AS organization_enabled,
+       o.name AS organization_name,
        u.email,
        u.password_hash,
        u.first_name,
@@ -128,6 +148,7 @@ async function findUserByEmail(email: string) {
        COALESCE(u.failed_login_attempts, 0) AS failed_login_attempts,
        u.locked_until
      FROM users u
+     INNER JOIN organizations o ON o.id = u.organization_id
      WHERE u.email = $1`,
     [email]
   );
@@ -159,6 +180,7 @@ type LoginResult = {
 type AuthenticateResult =
   | { status: "ok"; loginResult: LoginResult }
   | { status: "invalid" }
+  | { status: "organization-disabled"; organizationName: string | null }
   | { status: "locked"; lockedUntil: Date };
 
 async function toSessionUser(user: UserRecord): Promise<SessionUser> {
@@ -233,6 +255,10 @@ async function authenticate(email: string, password: string): Promise<Authentica
     return { status: "invalid" };
   }
 
+  if (!user.organization_enabled) {
+    return { status: "organization-disabled", organizationName: user.organization_name };
+  }
+
   if (user.locked_until && new Date(user.locked_until).getTime() > Date.now()) {
     return { status: "locked", lockedUntil: new Date(user.locked_until) };
   }
@@ -290,6 +316,12 @@ export async function login(req: Request, res: Response) {
       });
     }
 
+    if (authResult.status === "organization-disabled") {
+      return res.status(403).json({
+        message: "This organization is currently disabled. Please contact your system administrator."
+      });
+    }
+
     if (authResult.status !== "ok") {
       return res.status(401).json({ message: "Invalid credentials" });
     }
@@ -318,6 +350,12 @@ export async function mobileLogin(req: Request, res: Response) {
       return res.status(423).json({
         message: "Account temporarily locked due to failed login attempts",
         lockedUntil: authResult.lockedUntil.toISOString()
+      });
+    }
+
+    if (authResult.status === "organization-disabled") {
+      return res.status(403).json({
+        message: "This organization is currently disabled. Please contact your system administrator."
       });
     }
 

@@ -13,6 +13,7 @@ type AppAccessInput = { app: AppAccess; enabled: boolean };
 
 let ensureDepartmentsSchemaPromise: Promise<void> | null = null;
 let ensureUserSecuritySchemaPromise: Promise<void> | null = null;
+let ensureOrganizationsSchemaPromise: Promise<void> | null = null;
 
 function isSuperAdmin(req: AuthenticatedRequest) {
   return req.user?.platform_role === "SUPER_ADMIN" || req.user?.role === "SUPER_ADMIN";
@@ -56,6 +57,20 @@ function ensureUserSecuritySchema() {
   }
 
   return ensureUserSecuritySchemaPromise;
+}
+
+function ensureOrganizationsSchema() {
+  if (!ensureOrganizationsSchemaPromise) {
+    ensureOrganizationsSchemaPromise = (async () => {
+      await pool.query(`ALTER TABLE organizations ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE`);
+      await pool.query(`ALTER TABLE organizations ADD COLUMN IF NOT EXISTS disabled_at TIMESTAMPTZ`);
+    })().catch((error) => {
+      ensureOrganizationsSchemaPromise = null;
+      throw error;
+    });
+  }
+
+  return ensureOrganizationsSchemaPromise;
 }
 
 function resolveLoginUrl() {
@@ -171,12 +186,15 @@ export async function listAdminUsers(req: AuthenticatedRequest, res: Response) {
       return res.status(403).json({ message: "Access denied" });
     }
 
+    await ensureOrganizationsSchema();
+
     const organizationId = String(req.user?.organization_id || "");
 
     const result = await pool.query(
       `SELECT
          u.id,
          u.organization_id,
+         o.name AS organization_name,
          u.department_id,
          u.first_name,
          u.last_name,
@@ -193,9 +211,10 @@ export async function listAdminUsers(req: AuthenticatedRequest, res: Response) {
            '[]'::json
          ) AS app_access
        FROM users u
+       INNER JOIN organizations o ON o.id = u.organization_id
        LEFT JOIN user_app_access uaa ON uaa.user_id = u.id
        WHERE u.organization_id = $1
-       GROUP BY u.id, u.organization_id, u.department_id, u.first_name, u.last_name, u.email, u.status, u.role
+       GROUP BY u.id, u.organization_id, o.name, u.department_id, u.first_name, u.last_name, u.email, u.status, u.role
        ORDER BY u.first_name ASC, u.last_name ASC, u.email ASC`,
       [organizationId]
     );
@@ -223,6 +242,14 @@ export async function createAdminUser(req: AuthenticatedRequest, res: Response) 
 
   if (!name || !email) {
     return res.status(400).json({ message: "Name and email are required" });
+  }
+
+  if (role === "SUPER_ADMIN" && !isSuperAdmin(req)) {
+    return res.status(403).json({ message: "Only SUPER_ADMIN can create SUPER_ADMIN users" });
+  }
+
+  if (!["SUPER_ADMIN", "ADMIN", "USER"].includes(String(role))) {
+    return res.status(400).json({ message: "Invalid platform role" });
   }
 
   await ensureUserSecuritySchema();
@@ -286,6 +313,14 @@ export async function updateAdminUser(req: AuthenticatedRequest, res: Response) 
 
   if (!userId || !name || !email) {
     return res.status(400).json({ message: "User id, name, and email are required" });
+  }
+
+  if (role === "SUPER_ADMIN" && !isSuperAdmin(req)) {
+    return res.status(403).json({ message: "Only SUPER_ADMIN can assign the SUPER_ADMIN role" });
+  }
+
+  if (!["SUPER_ADMIN", "ADMIN", "USER"].includes(String(role))) {
+    return res.status(400).json({ message: "Invalid platform role" });
   }
 
   await ensureUserSecuritySchema();
@@ -439,6 +474,104 @@ export async function listDepartments(req: AuthenticatedRequest, res: Response) 
     return res.json({ items: result.rows });
   } catch (error) {
     console.error("API error in GET /api/admin/departments", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+}
+
+export async function listOrganizations(req: AuthenticatedRequest, res: Response) {
+  try {
+    if (!isSuperAdmin(req)) {
+      return res.status(403).json({ message: "Access denied" });
+    }
+
+    await ensureOrganizationsSchema();
+
+    const result = await pool.query(
+      `SELECT
+         o.id,
+         o.name,
+         COALESCE(o.is_active, TRUE) AS enabled,
+         o.disabled_at,
+         o.created_at,
+         COUNT(DISTINCT u.id) AS user_count,
+         COUNT(DISTINCT d.id) AS department_count
+       FROM organizations o
+       LEFT JOIN users u ON u.organization_id = o.id
+       LEFT JOIN departments d ON d.organization_id = o.id
+       GROUP BY o.id, o.name, o.is_active, o.disabled_at, o.created_at
+       ORDER BY o.created_at DESC, o.name ASC`
+    );
+
+    return res.json({ items: result.rows });
+  } catch (error) {
+    console.error("API error in GET /api/admin/organizations", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+}
+
+export async function createOrganization(req: AuthenticatedRequest, res: Response) {
+  try {
+    if (!isSuperAdmin(req)) {
+      return res.status(403).json({ message: "Access denied" });
+    }
+
+    await ensureOrganizationsSchema();
+
+    const { name } = req.body as { name: string };
+
+    if (!name || !name.trim()) {
+      return res.status(400).json({ message: "Organization name is required" });
+    }
+
+    const result = await pool.query(
+      `INSERT INTO organizations (name, is_active)
+       VALUES ($1, TRUE)
+       RETURNING id`,
+      [name.trim()]
+    );
+
+    return res.status(201).json({ id: result.rows[0].id });
+  } catch (error) {
+    console.error("API error in POST /api/admin/organizations", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+}
+
+export async function updateOrganization(req: AuthenticatedRequest, res: Response) {
+  try {
+    if (!isSuperAdmin(req)) {
+      return res.status(403).json({ message: "Access denied" });
+    }
+
+    await ensureOrganizationsSchema();
+
+    const organizationId = String(req.params.id || "");
+    const { name, enabled = true } = req.body as { name: string; enabled?: boolean };
+
+    if (!organizationId || !name || !name.trim()) {
+      return res.status(400).json({ message: "Organization id and name are required" });
+    }
+
+    const result = await pool.query(
+      `UPDATE organizations
+       SET name = $1,
+           is_active = $2,
+           disabled_at = CASE
+             WHEN $2 THEN NULL
+             ELSE COALESCE(disabled_at, NOW())
+           END
+       WHERE id = $3
+       RETURNING id`,
+      [name.trim(), Boolean(enabled), organizationId]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ message: "Organization not found" });
+    }
+
+    return res.json({ success: true });
+  } catch (error) {
+    console.error("API error in PUT /api/admin/organizations/:id", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 }
