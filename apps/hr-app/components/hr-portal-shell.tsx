@@ -61,6 +61,7 @@ export function HrPortalShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   const [user, setUser] = useState<SessionUser | null>(null);
+  const [today, setToday] = useState("");
 
   useEffect(() => {
     async function loadShell() {
@@ -75,18 +76,23 @@ export function HrPortalShell({ children }: { children: React.ReactNode }) {
     void loadShell();
   }, []);
 
+  useEffect(() => {
+    setToday(
+      new Date().toLocaleDateString(undefined, {
+        weekday: "short",
+        year: "numeric",
+        month: "short",
+        day: "numeric"
+      })
+    );
+  }, []);
+
   const visibleNav = useMemo(() => {
     const platformRole = String(user?.platformRole || user?.role || "USER").toUpperCase();
     return navItems.filter((item) => !item.adminOnly || platformRole === "SUPER_ADMIN" || platformRole === "ADMIN" || platformRole === "IT_ADMIN");
   }, [user]);
 
   const breadcrumb = pageTitles[pathname] || "Dashboard";
-  const today = new Date().toLocaleDateString(undefined, {
-    weekday: "short",
-    year: "numeric",
-    month: "short",
-    day: "numeric"
-  });
 
   return (
     <div className={`hr-shell ${collapsed ? "is-collapsed" : ""}`}>
@@ -140,7 +146,9 @@ export function HrPortalShell({ children }: { children: React.ReactNode }) {
 
           <div className="hr-header__actions">
             <NotificationsDropdown />
-            <span className="hr-header__date">{today}</span>
+            <span className="hr-header__date" style={{ display: "inline-block", minWidth: "10.5rem" }}>
+              {today}
+            </span>
             <div className="hr-header__user">
               <div className="hr-header__avatar">{initialsFromName(user?.fullName || "HR User")}</div>
               <span className="hr-header__name">{user?.fullName || "Loading user"}</span>
