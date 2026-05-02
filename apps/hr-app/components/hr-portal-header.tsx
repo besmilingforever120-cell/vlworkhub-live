@@ -1,6 +1,7 @@
 "use client";
 
 import { ShieldCheck } from "lucide-react";
+import { useEffect, useState } from "react";
 
 export function HrPortalHeader({
   title,
@@ -13,12 +14,18 @@ export function HrPortalHeader({
   breadcrumb: string;
   showBreadcrumb?: boolean;
 }) {
-  const today = new Date().toLocaleDateString(undefined, {
-    weekday: "short",
-    year: "numeric",
-    month: "short",
-    day: "numeric"
-  });
+  const [today, setToday] = useState("");
+
+  useEffect(() => {
+    setToday(
+      new Date().toLocaleDateString(undefined, {
+        weekday: "short",
+        year: "numeric",
+        month: "short",
+        day: "numeric"
+      })
+    );
+  }, []);
 
   return (
     <section className="hr-page-header">
@@ -33,7 +40,7 @@ export function HrPortalHeader({
             <ShieldCheck className="h-4 w-4" />
             Shared JWT session active
           </div>
-          <span>{today}</span>
+          <span style={{ display: "inline-block", minWidth: "10.5rem" }}>{today}</span>
         </div>
       </div>
     </section>
