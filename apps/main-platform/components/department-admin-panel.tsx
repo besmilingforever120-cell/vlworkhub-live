@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { platformLinks } from "@vlworkhub/config";
 import type { AdminUserRecord, DepartmentRecord } from "../lib/types";
+import { resolveImageUrl } from "../lib/image-url";
 
 type DepartmentForm = {
   id?: string;
@@ -31,20 +32,6 @@ export function DepartmentAdminPanel() {
   const [showModal, setShowModal] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-
-  function resolveImageUrl(relativePath: string | null | undefined) {
-    const normalized = String(relativePath || "").trim();
-    if (!normalized) {
-      return "";
-    }
-    if (normalized.startsWith("http://") || normalized.startsWith("https://")) {
-      return normalized;
-    }
-    if (normalized.startsWith("/")) {
-      return `${platformLinks.api}${normalized}`;
-    }
-    return `${platformLinks.api}/${normalized}`;
-  }
 
   async function loadDepartments() {
     const response = await fetch(`${platformLinks.api}/api/admin/departments`, { credentials: "include" });
@@ -192,9 +179,9 @@ export function DepartmentAdminPanel() {
                   <td className="px-3 py-4 font-medium text-white">
                     <div className="flex items-center gap-3">
                       {department.image_url ? (
-                        <img src={resolveImageUrl(department.image_url)} alt={`${department.name} logo`} className="h-10 w-10 rounded-xl border border-white/10 object-cover" />
+                        <img src={resolveImageUrl(department.image_url) || undefined} alt={`${department.name} logo`} className="h-10 w-10 rounded-full border border-white/10 object-cover" />
                       ) : (
-                        <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-white/10 text-xs font-semibold text-slate-200">
+                        <span className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/10 text-xs font-semibold text-slate-200">
                           {department.name.slice(0, 1).toUpperCase() || "D"}
                         </span>
                       )}
