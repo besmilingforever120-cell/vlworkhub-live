@@ -1,0 +1,5 @@
+ALTER TABLE organizations
+ADD COLUMN IF NOT EXISTS logo_url TEXT;
+
+ALTER TABLE departments
+ADD COLUMN IF NOT EXISTS image_url TEXT;

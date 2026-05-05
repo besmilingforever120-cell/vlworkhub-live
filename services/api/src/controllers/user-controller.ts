@@ -1,4 +1,5 @@
 import type { Response } from "express";
+import path from "node:path";
 import { pool } from "../config/db";
 import { env } from "../config/env";
 import { hashPassword } from "../lib/passwords";
@@ -32,6 +33,7 @@ function ensureDepartmentsSchema() {
   if (!ensureDepartmentsSchemaPromise) {
     ensureDepartmentsSchemaPromise = (async () => {
       await pool.query(`ALTER TABLE departments ADD COLUMN IF NOT EXISTS department_type TEXT`);
+      await pool.query(`ALTER TABLE departments ADD COLUMN IF NOT EXISTS image_url TEXT`);
       await pool.query(`UPDATE departments SET department_type = 'Program' WHERE department_type IS NULL`);
       await pool.query(`ALTER TABLE departments ALTER COLUMN department_type SET DEFAULT 'Program'`);
     })().catch((error) => {
@@ -74,6 +76,7 @@ function ensureOrganizationsSchema() {
       await pool.query(`ALTER TABLE organizations ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE`);
       await pool.query(`ALTER TABLE organizations ADD COLUMN IF NOT EXISTS disabled_at TIMESTAMPTZ`);
       await pool.query(`ALTER TABLE organizations ADD COLUMN IF NOT EXISTS assigned_admin_id UUID`);
+      await pool.query(`ALTER TABLE organizations ADD COLUMN IF NOT EXISTS logo_url TEXT`);
       await pool.query(
         `CREATE TABLE IF NOT EXISTS organization_app_access (
           id BIGSERIAL PRIMARY KEY,
@@ -127,6 +130,60 @@ function normalizeApps(apps: AppAccessInput[] = []): AppAccess[] {
     .filter((entry) => entry.enabled)
     .map((entry) => String(entry.app || "").toUpperCase())
     .filter((app): app is AppAccess => ALL_APPS.includes(app as AppAccess));
+}
+
+function normalizeAppCodesFromUnknown(rawApps: unknown) {
+  if (Array.isArray(rawApps)) {
+    return rawApps
+      .map((app) => String(app || "").toUpperCase())
+      .filter((app): app is AppAccess => ALL_APPS.includes(app as AppAccess));
+  }
+
+  if (typeof rawApps === "string") {
+    const trimmed = rawApps.trim();
+    if (!trimmed) {
+      return [] as AppAccess[];
+    }
+
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) {
+        return parsed
+          .map((app) => String(app || "").toUpperCase())
+          .filter((app): app is AppAccess => ALL_APPS.includes(app as AppAccess));
+      }
+    } catch {
+      // Fall through to comma-separated parsing.
+    }
+
+    return trimmed
+      .split(",")
+      .map((app) => app.trim().toUpperCase())
+      .filter((app): app is AppAccess => ALL_APPS.includes(app as AppAccess));
+  }
+
+  return [] as AppAccess[];
+}
+
+function getUploadedFile(req: AuthenticatedRequest, fieldNames: string[]) {
+  const files = req.files as Record<string, Express.Multer.File[]> | undefined;
+  for (const fieldName of fieldNames) {
+    const candidate = files?.[fieldName]?.[0];
+    if (candidate) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
+function toUploadsRelativePath(filePath: string) {
+  const uploadsRoot = path.resolve(__dirname, "../../uploads");
+  const relative = path.relative(uploadsRoot, filePath);
+  const normalized = relative.split(path.sep).join("/").replace(/^\/+/, "");
+  if (!normalized || normalized.startsWith("..")) {
+    throw new Error("Invalid upload path");
+  }
+  return `/uploads/${normalized}`;
 }
 
 async function getOrganizationEnabledApps(client: { query: typeof pool.query }, organizationId: string) {
@@ -750,6 +807,7 @@ export async function listDepartments(req: AuthenticatedRequest, res: Response) 
          o.name AS organization_name,
          d.name,
         d.department_type,
+        d.image_url,
          d.address,
          d.manager_id,
          TRIM(COALESCE(u.first_name, '') || ' ' || COALESCE(u.last_name, '')) AS manager_name,
@@ -782,6 +840,7 @@ export async function listOrganizations(req: AuthenticatedRequest, res: Response
       `SELECT
          o.id,
          o.name,
+        o.logo_url,
          COALESCE(o.is_active, TRUE) AS enabled,
          o.assigned_admin_id,
          TRIM(COALESCE(au.first_name, '') || ' ' || COALESCE(au.last_name, '')) AS assigned_admin_name,
@@ -799,7 +858,7 @@ export async function listOrganizations(req: AuthenticatedRequest, res: Response
        LEFT JOIN organization_app_access oaa ON oaa.organization_id = o.id
        LEFT JOIN users u ON u.organization_id = o.id
        LEFT JOIN departments d ON d.organization_id = o.id
-       GROUP BY o.id, o.name, o.is_active, o.assigned_admin_id, au.first_name, au.last_name, au.email, o.disabled_at, o.created_at
+       GROUP BY o.id, o.name, o.logo_url, o.is_active, o.assigned_admin_id, au.first_name, au.last_name, au.email, o.disabled_at, o.created_at
        ORDER BY o.created_at DESC, o.name ASC`
     );
 
@@ -818,17 +877,23 @@ export async function createOrganization(req: AuthenticatedRequest, res: Respons
 
     await ensureOrganizationsSchema();
 
-    const { name, assignedAdminId = null, apps = ALL_APPS } = req.body as {
+    const body = req.body as {
       name: string;
       assignedAdminId?: string | null;
-      apps?: string[];
+      apps?: string[] | string;
     };
+
+    const name = String(body.name || "");
+    const assignedAdminId = body.assignedAdminId ? String(body.assignedAdminId) : null;
+    const requestedApps = normalizeAppCodesFromUnknown(body.apps);
+    const uploadedLogo = getUploadedFile(req, ["logo"]);
+    const logoUrl = uploadedLogo ? toUploadsRelativePath(uploadedLogo.path) : null;
 
     if (!name || !name.trim()) {
       return res.status(400).json({ message: "Organization name is required" });
     }
 
-    const normalizedApps = Array.from(new Set((apps || ALL_APPS)
+    const normalizedApps = Array.from(new Set((requestedApps.length > 0 ? requestedApps : ALL_APPS)
       .map((app) => String(app || "").toUpperCase())
       .filter((app): app is AppAccess => ALL_APPS.includes(app as AppAccess))));
 
@@ -842,10 +907,10 @@ export async function createOrganization(req: AuthenticatedRequest, res: Respons
       }
 
       const result = await client.query(
-        `INSERT INTO organizations (name, is_active, assigned_admin_id)
-         VALUES ($1, TRUE, $2)
-         RETURNING id`,
-        [name.trim(), null]
+        `INSERT INTO organizations (name, logo_url, is_active, assigned_admin_id)
+         VALUES ($1, $2, TRUE, $3)
+         RETURNING id, logo_url`,
+        [name.trim(), logoUrl, null]
       );
 
       for (const app of normalizedApps) {
@@ -858,7 +923,7 @@ export async function createOrganization(req: AuthenticatedRequest, res: Respons
       }
 
       await client.query("COMMIT");
-      return res.status(201).json({ id: result.rows[0].id });
+      return res.status(201).json({ id: result.rows[0].id, logo_url: result.rows[0].logo_url || null });
     } catch (error) {
       await client.query("ROLLBACK").catch(() => undefined);
       throw error;
@@ -1007,6 +1072,9 @@ export async function createDepartment(req: AuthenticatedRequest, res: Response)
     await ensureDepartmentsSchema();
 
     const { name, address, departmentType = "Program", managerId = null } = req.body as { name: string; address?: string; departmentType?: string; managerId?: string | null };
+    const uploadedImage = getUploadedFile(req, ["image", "logo"]);
+    const imageUrl = uploadedImage ? toUploadsRelativePath(uploadedImage.path) : null;
+    const normalizedManagerId = managerId ? String(managerId) : null;
 
     if (!name) {
       return res.status(400).json({ message: "Department name is required" });
@@ -1017,13 +1085,13 @@ export async function createDepartment(req: AuthenticatedRequest, res: Response)
     }
 
     const result = await pool.query(
-      `INSERT INTO departments (organization_id, name, department_type, address, manager_id)
-       VALUES ($1, $2, $3, $4, $5)
-       RETURNING id`,
-      [req.user?.organization_id, name.trim(), String(departmentType), address?.trim() || null, managerId]
+      `INSERT INTO departments (organization_id, name, department_type, address, manager_id, image_url)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING id, image_url`,
+      [req.user?.organization_id, name.trim(), String(departmentType), address?.trim() || null, normalizedManagerId, imageUrl]
     );
 
-    return res.status(201).json({ id: result.rows[0].id });
+    return res.status(201).json({ id: result.rows[0].id, image_url: result.rows[0].image_url || null });
   } catch (error) {
     console.error("API error in POST /api/admin/departments", error);
     return res.status(500).json({ error: "Internal server error" });
@@ -1040,6 +1108,7 @@ export async function updateDepartment(req: AuthenticatedRequest, res: Response)
 
     const departmentId = String(req.params.id || "");
     const { name, address, departmentType = "Program", managerId = null } = req.body as { name: string; address?: string; departmentType?: string; managerId?: string | null };
+    const normalizedManagerId = managerId ? String(managerId) : null;
 
     if (!departmentId || !name) {
       return res.status(400).json({ message: "Department id and name are required" });
@@ -1056,7 +1125,7 @@ export async function updateDepartment(req: AuthenticatedRequest, res: Response)
            address = $3,
            manager_id = $4
        WHERE id = $5 AND organization_id = $6`,
-      [name.trim(), String(departmentType), address?.trim() || null, managerId, departmentId, req.user?.organization_id]
+      [name.trim(), String(departmentType), address?.trim() || null, normalizedManagerId, departmentId, req.user?.organization_id]
     );
 
     return res.json({ success: true });

@@ -20,6 +20,7 @@ type FormState = {
 type OrganizationForm = {
   id?: string;
   name: string;
+  logoFile: File | null;
   enabled: boolean;
   assignedAdminId: string;
   apps: Record<"HR" | "CARE" | "URSAFE", boolean>;
@@ -48,6 +49,7 @@ function emptyForm(): FormState {
 function emptyOrganizationForm(): OrganizationForm {
   return {
     name: "",
+    logoFile: null,
     enabled: true,
     assignedAdminId: "",
     apps: { HR: true, CARE: true, URSAFE: true }
@@ -91,6 +93,20 @@ export function SuperAdminPanel({ viewerRole, viewerOrganizationId }: { viewerRo
 
   function getAssignableItAdminsForOrganization(organizationId: string) {
     return itAdmins.filter((admin) => admin.organization_id === organizationId);
+  }
+
+  function resolveImageUrl(relativePath: string | null | undefined) {
+    const normalized = String(relativePath || "").trim();
+    if (!normalized) {
+      return "";
+    }
+    if (normalized.startsWith("http://") || normalized.startsWith("https://")) {
+      return normalized;
+    }
+    if (normalized.startsWith("/")) {
+      return `${platformLinks.api}${normalized}`;
+    }
+    return `${platformLinks.api}/${normalized}`;
   }
 
   async function readApiMessage(response: Response) {
@@ -213,6 +229,7 @@ export function SuperAdminPanel({ viewerRole, viewerOrganizationId }: { viewerRo
     setOrganizationForm({
       id: organization.id,
       name: organization.name,
+      logoFile: null,
       enabled: organization.enabled,
       assignedAdminId: organization.assigned_admin_id || "",
       apps: appMap
@@ -279,17 +296,35 @@ export function SuperAdminPanel({ viewerRole, viewerOrganizationId }: { viewerRo
     try {
       const url = organizationForm.id ? `${platformLinks.api}/api/admin/organizations/${organizationForm.id}` : `${platformLinks.api}/api/admin/organizations`;
       const method = organizationForm.id ? "PUT" : "POST";
-      const response = await fetch(url, {
-        method,
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: organizationForm.name,
-          enabled: organizationForm.enabled,
-          assignedAdminId: organizationForm.assignedAdminId || null,
-          apps: appOptions.filter((app) => organizationForm.apps[app])
+      const response = organizationForm.id
+        ? await fetch(url, {
+          method,
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: organizationForm.name,
+            enabled: organizationForm.enabled,
+            assignedAdminId: organizationForm.assignedAdminId || null,
+            apps: appOptions.filter((app) => organizationForm.apps[app])
+          })
         })
-      });
+        : await (async () => {
+          const formData = new FormData();
+          formData.append("name", organizationForm.name);
+          formData.append("assignedAdminId", organizationForm.assignedAdminId || "");
+          for (const app of appOptions.filter((candidate) => organizationForm.apps[candidate])) {
+            formData.append("apps", app);
+          }
+          if (organizationForm.logoFile) {
+            formData.append("logo", organizationForm.logoFile);
+          }
+
+          return fetch(url, {
+            method,
+            credentials: "include",
+            body: formData
+          });
+        })();
 
       if (!response.ok) {
         throw new Error(await readApiMessage(response));
@@ -367,7 +402,18 @@ export function SuperAdminPanel({ viewerRole, viewerOrganizationId }: { viewerRo
             <tbody>
               {organizations.map((organization) => (
                 <tr key={organization.id} className="border-t border-white/10">
-                  <td className="px-3 py-4 font-medium text-white">{organization.name}</td>
+                  <td className="px-3 py-4 font-medium text-white">
+                    <div className="flex items-center gap-3">
+                      {organization.logo_url ? (
+                        <img src={resolveImageUrl(organization.logo_url)} alt={`${organization.name} logo`} className="h-10 w-10 rounded-xl border border-white/10 object-cover" />
+                      ) : (
+                        <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-white/10 text-xs font-semibold text-slate-200">
+                          {organization.name.slice(0, 1).toUpperCase() || "O"}
+                        </span>
+                      )}
+                      <span>{organization.name}</span>
+                    </div>
+                  </td>
                   <td className="px-3 py-4"><span className={`rounded-full px-3 py-1 text-xs ${organization.enabled ? "bg-emerald-500/15 text-emerald-200" : "bg-rose-500/15 text-rose-200"}`}>{organization.enabled ? "active" : "disabled"}</span></td>
                   <td className="px-3 py-4 text-slate-300">{organization.assigned_admin_name ? `${organization.assigned_admin_name}${organization.assigned_admin_email ? ` (${organization.assigned_admin_email})` : ""}` : "Unassigned"}</td>
                   <td className="px-3 py-4"><div className="flex flex-wrap gap-2">{((organization.apps || []).length > 0 ? organization.apps : appOptions).map((app) => (<span key={`${organization.id}-${app}`} className="rounded-full bg-white/10 px-3 py-1 text-xs text-white">{app}</span>))}</div></td>
@@ -502,6 +548,17 @@ export function SuperAdminPanel({ viewerRole, viewerOrganizationId }: { viewerRo
 
             <div className="mt-8 grid gap-4">
               <label className="text-sm text-slate-300">Organization name<input value={organizationForm.name} onChange={(event) => setOrganizationForm((current) => ({ ...current, name: event.target.value }))} className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white" /></label>
+              <label className="text-sm text-slate-300">Logo (optional)
+                <input
+                  type="file"
+                  accept=".jpg,.jpeg,.png,image/jpeg,image/png"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0] || null;
+                    setOrganizationForm((current) => ({ ...current, logoFile: file }));
+                  }}
+                  className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white file:mr-4 file:rounded-xl file:border-0 file:bg-cyan-400 file:px-3 file:py-2 file:text-sm file:font-medium file:text-slate-950"
+                />
+              </label>
               <label className="text-sm text-slate-300">Assigned To<select value={organizationForm.assignedAdminId} onChange={(event) => setOrganizationForm((current) => ({ ...current, assignedAdminId: event.target.value }))} disabled={!organizationForm.id} className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white disabled:opacity-60"><option value="">{organizationForm.id ? "Unassigned" : "Save organization first"}</option>{organizationForm.id ? getAssignableItAdminsForOrganization(organizationForm.id).map((admin) => <option key={admin.id} value={admin.id}>{admin.name} ({admin.email})</option>) : null}</select></label>
               {!organizationForm.id ? <p className="text-xs text-slate-400">Create the organization first, then create or move an active IT_ADMIN into it before assigning ownership.</p> : null}
               {organizationForm.id && getAssignableItAdminsForOrganization(organizationForm.id).length === 0 ? <p className="text-xs text-slate-400">No active IT_ADMIN currently belongs to this organization. Create or move one first.</p> : null}

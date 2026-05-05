@@ -17,6 +17,7 @@ import {
   upsertUserAppAccess
 } from "../controllers/user-controller";
 import { requireAuth } from "../middleware/auth";
+import { uploadDepartmentImage, uploadOrganizationLogo } from "../middleware/image-upload";
 
 export const userRouter = Router();
 export const adminUserRouter = Router();
@@ -33,9 +34,9 @@ adminUserRouter.post("/users", createAdminUser);
 adminUserRouter.put("/users/:id", updateAdminUser);
 adminUserRouter.post("/user-access", upsertUserAppAccess);
 adminUserRouter.get("/organizations", listOrganizations);
-adminUserRouter.post("/organizations", createOrganization);
+adminUserRouter.post("/organizations", uploadOrganizationLogo, createOrganization);
 adminUserRouter.put("/organizations/:id", updateOrganization);
 adminUserRouter.get("/departments", listDepartments);
-adminUserRouter.post("/departments", createDepartment);
+adminUserRouter.post("/departments", uploadDepartmentImage, createDepartment);
 adminUserRouter.put("/departments/:id", updateDepartment);
 adminUserRouter.delete("/departments/:id", deleteDepartment);

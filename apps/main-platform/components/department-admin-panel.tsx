@@ -8,6 +8,7 @@ import type { AdminUserRecord, DepartmentRecord } from "../lib/types";
 type DepartmentForm = {
   id?: string;
   name: string;
+  imageFile: File | null;
   address: string;
   departmentType: "Community housing" | "Program";
   managerId: string;
@@ -16,6 +17,7 @@ type DepartmentForm = {
 function emptyForm(): DepartmentForm {
   return {
     name: "",
+    imageFile: null,
     address: "",
     departmentType: "Program",
     managerId: ""
@@ -29,6 +31,20 @@ export function DepartmentAdminPanel() {
   const [showModal, setShowModal] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+
+  function resolveImageUrl(relativePath: string | null | undefined) {
+    const normalized = String(relativePath || "").trim();
+    if (!normalized) {
+      return "";
+    }
+    if (normalized.startsWith("http://") || normalized.startsWith("https://")) {
+      return normalized;
+    }
+    if (normalized.startsWith("/")) {
+      return `${platformLinks.api}${normalized}`;
+    }
+    return `${platformLinks.api}/${normalized}`;
+  }
 
   async function loadDepartments() {
     const response = await fetch(`${platformLinks.api}/api/admin/departments`, { credentials: "include" });
@@ -65,6 +81,7 @@ export function DepartmentAdminPanel() {
     setForm({
       id: department.id,
       name: department.name,
+      imageFile: null,
       address: department.address || "",
       departmentType: department.department_type || "Program",
       managerId: department.manager_id || ""
@@ -78,17 +95,34 @@ export function DepartmentAdminPanel() {
     try {
       const url = form.id ? `${platformLinks.api}/api/admin/departments/${form.id}` : `${platformLinks.api}/api/admin/departments`;
       const method = form.id ? "PUT" : "POST";
-      const response = await fetch(url, {
-        method,
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: form.name,
-          address: form.address,
-          departmentType: form.departmentType,
-          managerId: form.managerId || null
+      const response = form.id
+        ? await fetch(url, {
+          method,
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: form.name,
+            address: form.address,
+            departmentType: form.departmentType,
+            managerId: form.managerId || null
+          })
         })
-      });
+        : await (async () => {
+          const formData = new FormData();
+          formData.append("name", form.name);
+          formData.append("address", form.address);
+          formData.append("departmentType", form.departmentType);
+          formData.append("managerId", form.managerId || "");
+          if (form.imageFile) {
+            formData.append("image", form.imageFile);
+          }
+
+          return fetch(url, {
+            method,
+            credentials: "include",
+            body: formData
+          });
+        })();
 
       if (!response.ok) {
         const message = await response.text();
@@ -155,7 +189,18 @@ export function DepartmentAdminPanel() {
             <tbody>
               {departments.map((department) => (
                 <tr key={department.id} className="border-t border-white/10">
-                  <td className="px-3 py-4 font-medium text-white">{department.name}</td>
+                  <td className="px-3 py-4 font-medium text-white">
+                    <div className="flex items-center gap-3">
+                      {department.image_url ? (
+                        <img src={resolveImageUrl(department.image_url)} alt={`${department.name} logo`} className="h-10 w-10 rounded-xl border border-white/10 object-cover" />
+                      ) : (
+                        <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-white/10 text-xs font-semibold text-slate-200">
+                          {department.name.slice(0, 1).toUpperCase() || "D"}
+                        </span>
+                      )}
+                      <span>{department.name}</span>
+                    </div>
+                  </td>
                   <td className="px-3 py-4 text-slate-300">{department.department_type || "Program"}</td>
                   <td className="px-3 py-4 text-slate-300">{department.address || "-"}</td>
                   <td className="px-3 py-4 text-slate-300">{department.manager_name ? `${department.manager_name}${department.manager_email ? ` (${department.manager_email})` : ""}` : "Unassigned"}</td>
@@ -186,6 +231,17 @@ export function DepartmentAdminPanel() {
 
             <div className="mt-8 grid gap-4 md:grid-cols-2">
               <label className="text-sm text-slate-300 md:col-span-2">Department Name<input value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white" /></label>
+              <label className="text-sm text-slate-300 md:col-span-2">Logo/Image (optional)
+                <input
+                  type="file"
+                  accept=".jpg,.jpeg,.png,image/jpeg,image/png"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0] || null;
+                    setForm((current) => ({ ...current, imageFile: file }));
+                  }}
+                  className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white file:mr-4 file:rounded-xl file:border-0 file:bg-cyan-400 file:px-3 file:py-2 file:text-sm file:font-medium file:text-slate-950"
+                />
+              </label>
               <label className="text-sm text-slate-300 md:col-span-2">Department Type<select value={form.departmentType} onChange={(event) => setForm((current) => ({ ...current, departmentType: event.target.value as "Community housing" | "Program" }))} className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white"><option value="Community housing">Community housing</option><option value="Program">Program</option></select></label>
               <label className="text-sm text-slate-300 md:col-span-2">Address<input value={form.address} onChange={(event) => setForm((current) => ({ ...current, address: event.target.value }))} className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white" /></label>
               <label className="text-sm text-slate-300 md:col-span-2">Manager<select value={form.managerId} onChange={(event) => setForm((current) => ({ ...current, managerId: event.target.value }))} className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white"><option value="">Unassigned</option>{users.map((user) => <option key={user.id} value={user.id}>{`${user.first_name} ${user.last_name}`.trim()} ({user.email})</option>)}</select></label>

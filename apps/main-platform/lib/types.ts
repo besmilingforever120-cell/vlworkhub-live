@@ -18,6 +18,7 @@ export type AdminUserRecord = {
 export type OrganizationRecord = {
   id: string;
   name: string;
+  logo_url: string | null;
   enabled: boolean;
   assigned_admin_id: string | null;
   assigned_admin_name: string | null;
@@ -33,6 +34,7 @@ export type DepartmentRecord = {
   id: string;
   organization_id: string;
   name: string;
+  image_url: string | null;
   address: string | null;
   department_type: "Community housing" | "Program";
   manager_id: string | null;
