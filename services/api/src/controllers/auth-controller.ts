@@ -7,6 +7,7 @@ import { hashPassword, migrateLegacyPasswordHashOnLogin, verifyPassword } from "
 import { validatePasswordPolicy } from "../lib/password-policy";
 import { revokeTokenByJti } from "../lib/token-revocation";
 import type { AuthenticatedRequest } from "../middleware/auth";
+import { buildAuditLogInput, tryWriteAuditLog } from "../services/audit-log-service";
 
 type UserRole = "Admin" | "Manager" | "Employee" | "HR" | "IT";
 type AppAccess = "HR" | "CARE" | "URSAFE";
@@ -303,6 +304,8 @@ async function authenticate(email: string, password: string): Promise<Authentica
 export async function login(req: Request, res: Response) {
   try {
     const { email, password } = req.body as { email: string; password: string };
+    const attemptedEmail = String(email || "").trim();
+    const db = pool;
 
     if (!email || !password) {
       return res.status(400).json({ message: "Email and password are required" });
@@ -323,6 +326,18 @@ export async function login(req: Request, res: Response) {
     }
 
     if (authResult.status !== "ok") {
+      await tryWriteAuditLog(
+        buildAuditLogInput(
+          {
+            userId: null,
+            userEmail: attemptedEmail,
+            action: "LOGIN_FAILED",
+            entityType: "AUTH"
+          },
+          req
+        ),
+        db
+      );
       return res.status(401).json({ message: "Invalid credentials" });
     }
 
@@ -330,6 +345,18 @@ export async function login(req: Request, res: Response) {
     const cookieDomain = resolveCookieDomain(req);
     appendSessionCleanupHeaders(res, cookieDomain);
     res.append("Set-Cookie", buildCookie(loginResult.token, cookieDomain));
+    await tryWriteAuditLog(
+      buildAuditLogInput(
+        {
+          userId: loginResult.user.id,
+          userEmail: loginResult.user.email,
+          action: "LOGIN_SUCCESS",
+          entityType: "AUTH"
+        },
+        req
+      ),
+      db
+    );
     return res.json({ user: loginResult.user, mustChangePassword: loginResult.user.mustChangePassword });
   } catch (error) {
     console.error("API error in POST /auth/login", error);
@@ -340,6 +367,8 @@ export async function login(req: Request, res: Response) {
 export async function mobileLogin(req: Request, res: Response) {
   try {
     const { email, password } = req.body as { email: string; password: string };
+    const attemptedEmail = String(email || "").trim();
+    const db = pool;
 
     if (!email || !password) {
       return res.status(400).json({ message: "Email and password are required" });
@@ -360,10 +389,34 @@ export async function mobileLogin(req: Request, res: Response) {
     }
 
     if (authResult.status !== "ok") {
+      await tryWriteAuditLog(
+        buildAuditLogInput(
+          {
+            userId: null,
+            userEmail: attemptedEmail,
+            action: "LOGIN_FAILED",
+            entityType: "AUTH"
+          },
+          req
+        ),
+        db
+      );
       return res.status(401).json({ message: "Invalid credentials" });
     }
 
     const { loginResult } = authResult;
+    await tryWriteAuditLog(
+      buildAuditLogInput(
+        {
+          userId: loginResult.user.id,
+          userEmail: loginResult.user.email,
+          action: "LOGIN_SUCCESS",
+          entityType: "AUTH"
+        },
+        req
+      ),
+      db
+    );
     return res.json({ token: loginResult.token, user: loginResult.user, mustChangePassword: loginResult.user.mustChangePassword });
   } catch (error) {
     console.error("API error in POST /auth/mobile-login", error);
@@ -373,12 +426,19 @@ export async function mobileLogin(req: Request, res: Response) {
 
 export async function logout(req: Request, res: Response) {
   try {
-    const bearer = req.headers.authorization?.replace("Bearer ", "");
-    const token = bearer || req.cookies[getCookieName()];
+    const db = pool;
+    let auditUserId: string | null = null;
+    let auditUserEmail: string | null = null;
+    const authHeader = String(req.headers.authorization || "").trim();
+    const bearer = /^Bearer\s+/i.test(authHeader) ? authHeader.replace(/^Bearer\s+/i, "").trim() : "";
+    const cookieToken = String(req.cookies?.vlwh_session || req.cookies?.[getCookieName()] || "").trim();
+    const token = bearer || cookieToken;
 
     if (token) {
       try {
         const payload = verifyAuthToken(token, env.jwtSecret);
+        auditUserId = String(payload.user_id || "").trim() || null;
+        auditUserEmail = String(payload.email || "").trim() || null;
         if (payload.jti && payload.exp) {
           await revokeTokenByJti(payload.jti, payload.exp);
         }
@@ -386,6 +446,19 @@ export async function logout(req: Request, res: Response) {
         // Keep logout idempotent even when token is missing/invalid.
       }
     }
+
+    const auditResult = await tryWriteAuditLog(
+      buildAuditLogInput(
+        {
+          userId: auditUserId,
+          userEmail: auditUserEmail,
+          action: "LOGOUT",
+          entityType: "AUTH"
+        },
+        req
+      ),
+      db
+    );
 
     appendSessionCleanupHeaders(res, env.cookieDomain);
     return res.json({ success: true });
