@@ -83,17 +83,22 @@ export function DepartmentAdminPanel() {
       const url = form.id ? `${platformLinks.api}/api/admin/departments/${form.id}` : `${platformLinks.api}/api/admin/departments`;
       const method = form.id ? "PUT" : "POST";
       const response = form.id
-        ? await fetch(url, {
-          method,
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name: form.name,
-            address: form.address,
-            departmentType: form.departmentType,
-            managerId: form.managerId || null
-          })
-        })
+        ? await (async () => {
+          const formData = new FormData();
+          formData.append("name", form.name);
+          formData.append("address", form.address);
+          formData.append("departmentType", form.departmentType);
+          formData.append("managerId", form.managerId || "");
+          if (form.imageFile) {
+            formData.append("image", form.imageFile);
+          }
+
+          return fetch(url, {
+            method,
+            credentials: "include",
+            body: formData
+          });
+        })()
         : await (async () => {
           const formData = new FormData();
           formData.append("name", form.name);
@@ -178,13 +183,21 @@ export function DepartmentAdminPanel() {
                 <tr key={department.id} className="border-t border-white/10">
                   <td className="px-3 py-4 font-medium text-white">
                     <div className="flex items-center gap-3">
-                      {department.image_url ? (
-                        <img src={resolveImageUrl(department.image_url) || undefined} alt={`${department.name} logo`} className="h-10 w-10 rounded-full border border-white/10 object-cover" />
-                      ) : (
-                        <span className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/10 text-xs font-semibold text-slate-200">
+                      <span className="relative inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/10 text-xs font-semibold text-slate-200">
+                        <span className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-white/10 text-xs font-semibold text-slate-200">
                           {department.name.slice(0, 1).toUpperCase() || "D"}
                         </span>
-                      )}
+                        {department.image_url ? (
+                          <img
+                            src={resolveImageUrl(department.image_url) || undefined}
+                            alt={`${department.name} logo`}
+                            className="absolute inset-0 h-12 w-12 rounded-full bg-white object-cover"
+                            onError={(event) => {
+                              event.currentTarget.style.display = "none";
+                            }}
+                          />
+                        ) : null}
+                      </span>
                       <span>{department.name}</span>
                     </div>
                   </td>

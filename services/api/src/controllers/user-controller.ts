@@ -166,6 +166,11 @@ function normalizeAppCodesFromUnknown(rawApps: unknown) {
 }
 
 function getUploadedFile(req: AuthenticatedRequest, fieldNames: string[]) {
+  const singleFile = req.file as Express.Multer.File | undefined;
+  if (singleFile) {
+    return singleFile;
+  }
+
   const files = req.files as Record<string, Express.Multer.File[]> | undefined;
   for (const fieldName of fieldNames) {
     const candidate = files?.[fieldName]?.[0];
@@ -945,12 +950,19 @@ export async function updateOrganization(req: AuthenticatedRequest, res: Respons
     await ensureOrganizationsSchema();
 
     const organizationId = String(req.params.id || "");
-    const { name, enabled = true, assignedAdminId, apps } = req.body as {
-      name: string;
-      enabled?: boolean;
-      assignedAdminId?: string | null;
-      apps?: string[];
-    };
+    const body = req.body as Record<string, unknown>;
+    const name = String(body.name || "");
+    const rawEnabled = body.enabled;
+    const enabled = rawEnabled === undefined
+      ? true
+      : (typeof rawEnabled === "boolean" ? rawEnabled : String(rawEnabled).toLowerCase() === "true");
+    const assignedAdminRaw = body.assignedAdminId;
+    const assignedAdminId = assignedAdminRaw === undefined
+      ? undefined
+      : (String(assignedAdminRaw || "").trim() || null);
+    const hasAppsField = Object.prototype.hasOwnProperty.call(body, "apps");
+    const normalizedApps = normalizeAppCodesFromUnknown(body.apps);
+    const uploadedLogo = getUploadedFile(req, ["logo"]);
 
     if (!organizationId || !name || !name.trim()) {
       return res.status(400).json({ message: "Organization id and name are required" });
@@ -960,8 +972,8 @@ export async function updateOrganization(req: AuthenticatedRequest, res: Respons
     try {
       await client.query("BEGIN");
 
-      const current = await client.query<{ assigned_admin_id: string | null }>(
-        `SELECT assigned_admin_id
+      const current = await client.query<{ assigned_admin_id: string | null; logo_url: string | null }>(
+        `SELECT assigned_admin_id, logo_url
          FROM organizations
          WHERE id = $1
          LIMIT 1`,
@@ -976,6 +988,7 @@ export async function updateOrganization(req: AuthenticatedRequest, res: Respons
       const nextAssignedAdminId = assignedAdminId === undefined
         ? current.rows[0].assigned_admin_id
         : assignedAdminId;
+      const nextLogoUrl = uploadedLogo ? toUploadsRelativePath(uploadedLogo.path) : current.rows[0].logo_url;
 
       if (nextAssignedAdminId) {
         const owner = await client.query<{ id: string }>(
@@ -1000,21 +1013,20 @@ export async function updateOrganization(req: AuthenticatedRequest, res: Respons
          SET name = $1,
              is_active = $2,
              assigned_admin_id = $3,
+             logo_url = $4,
              disabled_at = CASE
                WHEN $2 THEN NULL
                ELSE COALESCE(disabled_at, NOW())
              END
-         WHERE id = $4`,
-        [name.trim(), Boolean(enabled), nextAssignedAdminId || null, organizationId]
+         WHERE id = $5`,
+        [name.trim(), Boolean(enabled), nextAssignedAdminId || null, nextLogoUrl, organizationId]
       );
 
-      if (Array.isArray(apps)) {
-        const normalizedApps = Array.from(new Set(apps
-          .map((app) => String(app || "").toUpperCase())
-          .filter((app): app is AppAccess => ALL_APPS.includes(app as AppAccess))));
+      if (hasAppsField) {
+        const dedupedApps = Array.from(new Set(normalizedApps));
 
         await client.query(`DELETE FROM organization_app_access WHERE organization_id = $1`, [organizationId]);
-        for (const app of normalizedApps) {
+        for (const app of dedupedApps) {
           await client.query(
             `INSERT INTO organization_app_access (organization_id, app)
              VALUES ($1, $2)
@@ -1107,8 +1119,13 @@ export async function updateDepartment(req: AuthenticatedRequest, res: Response)
     await ensureDepartmentsSchema();
 
     const departmentId = String(req.params.id || "");
-    const { name, address, departmentType = "Program", managerId = null } = req.body as { name: string; address?: string; departmentType?: string; managerId?: string | null };
+    const body = req.body as Record<string, unknown>;
+    const name = String(body.name || "");
+    const address = String(body.address || "");
+    const departmentType = String(body.departmentType || "Program");
+    const managerId = String(body.managerId || "").trim() || null;
     const normalizedManagerId = managerId ? String(managerId) : null;
+    const uploadedImage = getUploadedFile(req, ["image", "logo"]);
 
     if (!departmentId || !name) {
       return res.status(400).json({ message: "Department id and name are required" });
@@ -1118,14 +1135,29 @@ export async function updateDepartment(req: AuthenticatedRequest, res: Response)
       return res.status(400).json({ message: "departmentType must be Community housing or Program" });
     }
 
+    const current = await pool.query<{ image_url: string | null }>(
+      `SELECT image_url
+       FROM departments
+       WHERE id = $1 AND organization_id = $2
+       LIMIT 1`,
+      [departmentId, req.user?.organization_id]
+    );
+
+    if ((current.rowCount ?? 0) === 0) {
+      return res.status(404).json({ message: "Department not found" });
+    }
+
+    const nextImageUrl = uploadedImage ? toUploadsRelativePath(uploadedImage.path) : current.rows[0].image_url;
+
     await pool.query(
       `UPDATE departments
        SET name = $1,
            department_type = $2,
            address = $3,
-           manager_id = $4
-       WHERE id = $5 AND organization_id = $6`,
-      [name.trim(), String(departmentType), address?.trim() || null, normalizedManagerId, departmentId, req.user?.organization_id]
+           manager_id = $4,
+           image_url = $5
+       WHERE id = $6 AND organization_id = $7`,
+      [name.trim(), String(departmentType), address?.trim() || null, normalizedManagerId, nextImageUrl, departmentId, req.user?.organization_id]
     );
 
     return res.json({ success: true });

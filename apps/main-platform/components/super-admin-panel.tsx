@@ -284,17 +284,22 @@ export function SuperAdminPanel({ viewerRole, viewerOrganizationId }: { viewerRo
       const url = organizationForm.id ? `${platformLinks.api}/api/admin/organizations/${organizationForm.id}` : `${platformLinks.api}/api/admin/organizations`;
       const method = organizationForm.id ? "PUT" : "POST";
       const response = organizationForm.id
-        ? await fetch(url, {
-          method,
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name: organizationForm.name,
-            enabled: organizationForm.enabled,
-            assignedAdminId: organizationForm.assignedAdminId || null,
-            apps: appOptions.filter((app) => organizationForm.apps[app])
-          })
-        })
+        ? await (async () => {
+          const formData = new FormData();
+          formData.append("name", organizationForm.name);
+          formData.append("enabled", String(organizationForm.enabled));
+          formData.append("assignedAdminId", organizationForm.assignedAdminId || "");
+          formData.append("apps", JSON.stringify(appOptions.filter((app) => organizationForm.apps[app])));
+          if (organizationForm.logoFile) {
+            formData.append("logo", organizationForm.logoFile);
+          }
+
+          return fetch(url, {
+            method,
+            credentials: "include",
+            body: formData
+          });
+        })()
         : await (async () => {
           const formData = new FormData();
           formData.append("name", organizationForm.name);
@@ -391,13 +396,21 @@ export function SuperAdminPanel({ viewerRole, viewerOrganizationId }: { viewerRo
                 <tr key={organization.id} className="border-t border-white/10">
                   <td className="px-3 py-4 font-medium text-white">
                     <div className="flex items-center gap-3">
-                      {organization.logo_url ? (
-                        <img src={resolveImageUrl(organization.logo_url) || undefined} alt={`${organization.name} logo`} className="h-10 w-10 rounded-full border border-white/10 object-cover" />
-                      ) : (
-                        <span className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/10 text-xs font-semibold text-slate-200">
+                      <span className="relative inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/10 text-xs font-semibold text-slate-200">
+                        <span className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-white/10 text-xs font-semibold text-slate-200">
                           {organization.name.slice(0, 1).toUpperCase() || "O"}
                         </span>
-                      )}
+                        {organization.logo_url ? (
+                          <img
+                            src={resolveImageUrl(organization.logo_url) || undefined}
+                            alt={`${organization.name} logo`}
+                            className="absolute inset-0 h-12 w-12 rounded-full bg-white object-cover"
+                            onError={(event) => {
+                              event.currentTarget.style.display = "none";
+                            }}
+                          />
+                        ) : null}
+                      </span>
                       <span>{organization.name}</span>
                     </div>
                   </td>
