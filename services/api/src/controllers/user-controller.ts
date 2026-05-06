@@ -5,6 +5,7 @@ import { env } from "../config/env";
 import { hashPassword } from "../lib/passwords";
 import { generateTemporaryPassword } from "../lib/password-policy";
 import type { AuthenticatedRequest } from "../middleware/auth";
+import { buildAuditLogInput, tryWriteAuditLog } from "../services/audit-log-service";
 import { getSmtpTransporter, getStoredEmailSettings } from "../services/email-settings-service";
 
 type PlatformRole = "SUPER_ADMIN" | "IT_ADMIN" | "ADMIN" | "USER";
@@ -233,6 +234,23 @@ async function getExistingUserApps(client: { query: typeof pool.query }, userId:
   return result.rows
     .map((row) => String(row.app || "").toUpperCase())
     .filter((app): app is AppAccess => ALL_APPS.includes(app as AppAccess));
+}
+
+function haveSameApps(a: AppAccess[], b: AppAccess[]) {
+  const left = [...a].sort();
+  const right = [...b].sort();
+  if (left.length !== right.length) {
+    return false;
+  }
+
+  return left.every((value, index) => value === right[index]);
+}
+
+function getAuditActor(req: AuthenticatedRequest) {
+  return {
+    userId: String(req.user?.user_id || "").trim() || null,
+    userEmail: String(req.user?.email || "").trim() || null
+  };
 }
 
 async function departmentBelongsToOrganization(
@@ -504,6 +522,7 @@ export async function createAdminUser(req: AuthenticatedRequest, res: Response) 
   const lastName = parts.join(" ");
 
   const client = await pool.connect();
+  const actor = getAuditActor(req);
   try {
     await client.query("BEGIN");
 
@@ -539,6 +558,27 @@ export async function createAdminUser(req: AuthenticatedRequest, res: Response) 
     }
 
     await client.query("COMMIT");
+
+    await tryWriteAuditLog(
+      buildAuditLogInput(
+        {
+          userId: actor.userId,
+          userEmail: actor.userEmail,
+          action: "USER_CREATED",
+          entityType: "USER",
+          entityId: result.rows[0].id,
+          newValue: {
+            organizationId: targetOrganizationId,
+            departmentId,
+            email: email.trim().toLowerCase(),
+            status: enabled ? "active" : "inactive",
+            role: normalizedRole,
+            apps: normalizedApps
+          }
+        },
+        req
+      )
+    );
 
     try {
       await sendWelcomeOnboardingEmail({
@@ -605,11 +645,26 @@ export async function updateAdminUser(req: AuthenticatedRequest, res: Response) 
   await ensureOrganizationsSchema();
 
   const client = await pool.connect();
+  const actor = getAuditActor(req);
   try {
     await client.query("BEGIN");
 
-    const userRecord = await client.query<{ organization_id: string }>(
-      `SELECT organization_id
+    const userRecord = await client.query<{
+      organization_id: string;
+      department_id: string | null;
+      email: string;
+      first_name: string | null;
+      last_name: string | null;
+      status: string;
+      role: PlatformRole | null;
+    }>(
+      `SELECT organization_id,
+              department_id,
+              email,
+              first_name,
+              last_name,
+              status,
+              COALESCE(role, 'USER') AS role
        FROM users
        WHERE id = $1
        LIMIT 1`,
@@ -622,6 +677,7 @@ export async function updateAdminUser(req: AuthenticatedRequest, res: Response) 
     }
 
     const currentOrganizationId = String(userRecord.rows[0].organization_id || "");
+    const currentSnapshot = userRecord.rows[0];
     if (!isSuperAdmin(req) && currentOrganizationId !== String(req.user?.organization_id || "")) {
       await client.query("ROLLBACK").catch(() => undefined);
       return res.status(403).json({ message: "Access denied" });
@@ -642,8 +698,9 @@ export async function updateAdminUser(req: AuthenticatedRequest, res: Response) 
       return res.status(400).json({ message: "Selected department does not belong to the chosen organization" });
     }
 
+    const previousApps = await getExistingUserApps(client, userId);
     const normalizedApps = apps ? normalizeApps(apps) : undefined;
-    const effectiveApps = normalizedApps ?? await getExistingUserApps(client, userId);
+    const effectiveApps = normalizedApps ?? previousApps;
     const enabledOrgApps = await getOrganizationEnabledApps(client, nextOrganizationId);
     assertAppsWithinOrganizationEntitlements(effectiveApps, enabledOrgApps);
 
@@ -716,6 +773,94 @@ export async function updateAdminUser(req: AuthenticatedRequest, res: Response) 
     );
 
     await client.query("COMMIT");
+
+    const nextStatus = enabled ? "active" : "inactive";
+    const nextApps = normalizedApps ?? previousApps;
+
+    if ((currentSnapshot.role || "USER") !== normalizedRole) {
+      await tryWriteAuditLog(
+        buildAuditLogInput(
+          {
+            userId: actor.userId,
+            userEmail: actor.userEmail,
+            action: "USER_ROLE_UPDATED",
+            entityType: "USER",
+            entityId: userId,
+            oldValue: {
+              role: currentSnapshot.role || "USER"
+            },
+            newValue: {
+              role: normalizedRole
+            }
+          },
+          req
+        )
+      );
+    }
+
+    if (!haveSameApps(previousApps, nextApps)) {
+      await tryWriteAuditLog(
+        buildAuditLogInput(
+          {
+            userId: actor.userId,
+            userEmail: actor.userEmail,
+            action: "USER_APP_ACCESS_UPDATED",
+            entityType: "USER",
+            entityId: userId,
+            oldValue: {
+              apps: previousApps
+            },
+            newValue: {
+              apps: nextApps
+            }
+          },
+          req
+        )
+      );
+    }
+
+    if (String(currentSnapshot.status || "").toLowerCase() === "active" && nextStatus === "inactive") {
+      await tryWriteAuditLog(
+        buildAuditLogInput(
+          {
+            userId: actor.userId,
+            userEmail: actor.userEmail,
+            action: "USER_DELETED",
+            entityType: "USER",
+            entityId: userId,
+            oldValue: {
+              status: currentSnapshot.status
+            },
+            newValue: {
+              status: nextStatus
+            }
+          },
+          req
+        )
+      );
+    }
+
+    if (String(currentSnapshot.status || "").toLowerCase() === "inactive" && nextStatus === "active") {
+      await tryWriteAuditLog(
+        buildAuditLogInput(
+          {
+            userId: actor.userId,
+            userEmail: actor.userEmail,
+            action: "USER_REACTIVATED",
+            entityType: "USER",
+            entityId: userId,
+            oldValue: {
+              status: "inactive"
+            },
+            newValue: {
+              status: "active"
+            }
+          },
+          req
+        )
+      );
+    }
+
     return res.json({ success: true });
   } catch (error) {
     await client.query("ROLLBACK").catch(() => undefined);
@@ -766,24 +911,71 @@ export async function upsertUserAppAccess(req: AuthenticatedRequest, res: Respon
       return res.status(400).json({ message: `App access not enabled for this organization: ${normalizedApp}` });
     }
 
-    if (!enabled) {
-      await pool.query(`DELETE FROM user_app_access WHERE user_id = $1 AND UPPER(app) = $2`, [userId, normalizedApp]);
-      return res.json({ success: true });
-    }
-
-    const existing = await pool.query(
+    const actor = getAuditActor(req);
+    const appAccessBefore = await pool.query<{ id: string }>(
       `SELECT id
        FROM user_app_access
        WHERE user_id = $1 AND UPPER(app) = $2
        LIMIT 1`,
       [userId, normalizedApp]
     );
+    const hadAccessBefore = (appAccessBefore.rowCount ?? 0) > 0;
 
-    if (existing.rowCount === 0) {
+    if (!enabled) {
+      await pool.query(`DELETE FROM user_app_access WHERE user_id = $1 AND UPPER(app) = $2`, [userId, normalizedApp]);
+
+      if (hadAccessBefore) {
+        await tryWriteAuditLog(
+          buildAuditLogInput(
+            {
+              userId: actor.userId,
+              userEmail: actor.userEmail,
+              action: "USER_APP_ACCESS_UPDATED",
+              entityType: "USER",
+              entityId: userId,
+              oldValue: {
+                app: normalizedApp,
+                enabled: true
+              },
+              newValue: {
+                app: normalizedApp,
+                enabled: false
+              }
+            },
+            req
+          )
+        );
+      }
+
+      return res.json({ success: true });
+    }
+
+    if (!hadAccessBefore) {
       await pool.query(
         `INSERT INTO user_app_access (user_id, app)
          VALUES ($1, $2)`,
         [userId, normalizedApp]
+      );
+
+      await tryWriteAuditLog(
+        buildAuditLogInput(
+          {
+            userId: actor.userId,
+            userEmail: actor.userEmail,
+            action: "USER_APP_ACCESS_UPDATED",
+            entityType: "USER",
+            entityId: userId,
+            oldValue: {
+              app: normalizedApp,
+              enabled: false
+            },
+            newValue: {
+              app: normalizedApp,
+              enabled: true
+            }
+          },
+          req
+        )
       );
     }
 
