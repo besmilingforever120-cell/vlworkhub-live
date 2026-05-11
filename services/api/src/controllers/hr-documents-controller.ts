@@ -151,6 +151,40 @@ function getLocalUploadsBaseUrl() {
   return `${apiBaseUrl}/uploads`;
 }
 
+function safeUnlinkLocalUpload(fileUrl: string | null | undefined): void {
+  const raw = String(fileUrl || "").trim();
+  if (!raw) return;
+
+  let pathname: string;
+  try {
+    pathname = new URL(raw).pathname;
+  } catch {
+    pathname = raw;
+  }
+
+  const marker = "/uploads/";
+  const idx = pathname.indexOf(marker);
+  if (idx < 0) {
+    console.warn("[safeUnlinkLocalUpload] Not an uploads path, skipping:", raw);
+    return;
+  }
+
+  const rel = pathname.slice(idx + marker.length);
+  const uploadsRoot = getUploadsRoot();
+  const absPath = path.resolve(uploadsRoot, rel);
+
+  if (!absPath.startsWith(uploadsRoot + path.sep)) {
+    console.warn("[safeUnlinkLocalUpload] Path traversal detected, skipping:", absPath);
+    return;
+  }
+
+  fs.unlink(absPath).catch((err: unknown) => {
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+      console.warn("[safeUnlinkLocalUpload] Could not delete file:", absPath, err);
+    }
+  });
+}
+
 function normalizeFileUrlForApi(fileUrl: string | null | undefined) {
   const normalized = String(fileUrl || "").trim();
   if (!normalized) {
@@ -2282,9 +2316,37 @@ export async function deleteHrDocument(req: AuthenticatedRequest, res: Response)
     }
 
     const documentId = Number(req.params.id || 0);
+
+    const [docResult, sigResult] = await Promise.all([
+      pool.query<{ file_url: string | null }>(
+        `SELECT file_url FROM documents WHERE organization_id = $1 AND id = $2 LIMIT 1`,
+        [organizationId, documentId]
+      ),
+      pool.query<{ note: string | null }>(
+        `SELECT note FROM document_signatures WHERE organization_id = $1 AND document_id = $2`,
+        [organizationId, documentId]
+      )
+    ]);
+
+    const originalFileUrl = docResult.rows[0]?.file_url ?? null;
+    const signedFileUrls = sigResult.rows.map((row) => {
+      try {
+        const note = row.note ? JSON.parse(row.note) : {};
+        return typeof note.fileUrl === "string" ? note.fileUrl : null;
+      } catch {
+        return null;
+      }
+    }).filter((u): u is string => u !== null);
+
     await pool.query(`DELETE FROM document_assignments WHERE organization_id = $1 AND document_id = $2`, [organizationId, documentId]);
     await pool.query(`DELETE FROM document_signatures WHERE organization_id = $1 AND document_id = $2`, [organizationId, documentId]);
     await pool.query(`DELETE FROM documents WHERE organization_id = $1 AND id = $2`, [organizationId, documentId]);
+
+    safeUnlinkLocalUpload(originalFileUrl);
+    for (const url of signedFileUrls) {
+      safeUnlinkLocalUpload(url);
+    }
+
     return res.json({ success: true });
   } catch (error) {
     console.error("API error in DELETE /hr/documents/:id", error);

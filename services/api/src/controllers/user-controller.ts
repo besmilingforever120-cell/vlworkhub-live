@@ -1,4 +1,5 @@
 import type { Response } from "express";
+import fs from "node:fs/promises";
 import path from "node:path";
 import { pool } from "../config/db";
 import { env } from "../config/env";
@@ -190,6 +191,40 @@ function toUploadsRelativePath(filePath: string) {
     throw new Error("Invalid upload path");
   }
   return `/uploads/${normalized}`;
+}
+
+function safeUnlinkLocalUpload(fileUrl: string | null | undefined): void {
+  const raw = String(fileUrl || "").trim();
+  if (!raw) return;
+
+  let pathname: string;
+  try {
+    pathname = new URL(raw).pathname;
+  } catch {
+    pathname = raw;
+  }
+
+  const marker = "/uploads/";
+  const idx = pathname.indexOf(marker);
+  if (idx < 0) {
+    console.warn("[safeUnlinkLocalUpload] Not an uploads path, skipping:", raw);
+    return;
+  }
+
+  const rel = pathname.slice(idx + marker.length);
+  const uploadsRoot = path.resolve(__dirname, "../../uploads");
+  const absPath = path.resolve(uploadsRoot, rel);
+
+  if (!absPath.startsWith(uploadsRoot + path.sep)) {
+    console.warn("[safeUnlinkLocalUpload] Path traversal detected, skipping:", absPath);
+    return;
+  }
+
+  fs.unlink(absPath).catch((err: unknown) => {
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+      console.warn("[safeUnlinkLocalUpload] Could not delete file:", absPath, err);
+    }
+  });
 }
 
 async function getOrganizationEnabledApps(client: { query: typeof pool.query }, organizationId: string) {
@@ -1229,6 +1264,11 @@ export async function updateOrganization(req: AuthenticatedRequest, res: Respons
       }
 
       await client.query("COMMIT");
+
+      if (uploadedLogo && current.rows[0].logo_url) {
+        safeUnlinkLocalUpload(current.rows[0].logo_url);
+      }
+
       return res.json({ success: true });
     } catch (error) {
       await client.query("ROLLBACK").catch(() => undefined);
@@ -1352,6 +1392,10 @@ export async function updateDepartment(req: AuthenticatedRequest, res: Response)
       [name.trim(), String(departmentType), address?.trim() || null, normalizedManagerId, nextImageUrl, departmentId, req.user?.organization_id]
     );
 
+    if (uploadedImage && current.rows[0].image_url) {
+      safeUnlinkLocalUpload(current.rows[0].image_url);
+    }
+
     return res.json({ success: true });
   } catch (error) {
     console.error("API error in PUT /api/admin/departments/:id", error);
@@ -1370,7 +1414,15 @@ export async function deleteDepartment(req: AuthenticatedRequest, res: Response)
       return res.status(400).json({ message: "Department id is required" });
     }
 
+    const existing = await pool.query<{ image_url: string | null }>(
+      `SELECT image_url FROM departments WHERE id = $1 AND organization_id = $2 LIMIT 1`,
+      [departmentId, req.user?.organization_id]
+    );
+
     await pool.query(`DELETE FROM departments WHERE id = $1 AND organization_id = $2`, [departmentId, req.user?.organization_id]);
+
+    safeUnlinkLocalUpload(existing.rows[0]?.image_url ?? null);
+
     return res.json({ success: true });
   } catch (error) {
     console.error("API error in DELETE /api/admin/departments/:id", error);
