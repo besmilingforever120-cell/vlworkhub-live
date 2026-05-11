@@ -35,7 +35,11 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      - ./services/api/uploads:/app/services/api/uploads
+      - /mnt/synology/HRDocuments/original:/app/services/api/uploads/original
+      - /mnt/synology/HRDocuments/signed:/app/services/api/uploads/signed
+      - /mnt/synology/HRDocuments/onboarding:/app/services/api/uploads/onboarding
+      - /mnt/synology/MainPlatformDocuments/organizations:/app/services/api/uploads/organizations
+      - /mnt/synology/MainPlatformDocuments/departments:/app/services/api/uploads/departments
     depends_on:
       - postgres
 
