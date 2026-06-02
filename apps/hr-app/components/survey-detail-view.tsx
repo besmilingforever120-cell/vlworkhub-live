@@ -1,14 +1,18 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, ClipboardList, Shield } from "lucide-react";
+import { ArrowLeft, CheckCircle2, ClipboardList, Shield } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import type { SessionUser } from "@vlworkhub/types";
 import {
+  createResource,
   getApiErrorMessage,
   getCurrentUser,
+  getPlatformUsers,
   getResource,
-  type HrRecord
+  updateResource,
+  type HrRecord,
+  type PlatformUserRecord
 } from "../lib/hr-client";
 import { useHrRole } from "../lib/use-hr-role";
 import { formatDate, formatHrRoleLabel } from "../lib/workflow-utils";
@@ -38,9 +42,13 @@ export function SurveyDetailView({ surveyId }: Props) {
   const searchParams = useSearchParams();
   const { role: hrRole } = useHrRole();
   const [user, setUser] = useState<SessionUser | null>(null);
+  const [users, setUsers] = useState<PlatformUserRecord[]>([]);
   const [surveys, setSurveys] = useState<HrRecord[]>([]);
   const [assignments, setAssignments] = useState<HrRecord[]>([]);
+  const [completions, setCompletions] = useState<HrRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isCompleting, setIsCompleting] = useState(false);
+  const [showCompleteConfirm, setShowCompleteConfirm] = useState(false);
   const [error, setError] = useState("");
 
   const assignmentId = searchParams.get("assignmentId") || "";
@@ -49,14 +57,18 @@ export function SurveyDetailView({ surveyId }: Props) {
     try {
       setLoading(true);
       setError("");
-      const [session, surveyRows, assignmentRows] = await Promise.all([
+      const [session, platformUsers, surveyRows, assignmentRows, completionRows] = await Promise.all([
         getCurrentUser(),
+        getPlatformUsers(),
         getResource("surveys"),
-        getResource("survey_assignments")
+        getResource("survey_assignments"),
+        getResource("survey_completions")
       ]);
       setUser(session);
+      setUsers(platformUsers.items || []);
       setSurveys(surveyRows || []);
       setAssignments(assignmentRows || []);
+      setCompletions(completionRows || []);
     } catch (loadError) {
       setError(getApiErrorMessage(loadError));
     } finally {
@@ -85,6 +97,56 @@ export function SurveyDetailView({ surveyId }: Props) {
 
   const survey = useMemo(() => surveys.find((item) => String(item.id) === surveyId) || null, [surveys, surveyId]);
   const assignment = useMemo(() => assignments.find((item) => String(item.id) === assignmentId) || null, [assignmentId, assignments]);
+  const currentPlatformUser = useMemo(
+    () => users.find((candidate) => candidate.id === user?.id) || null,
+    [user?.id, users]
+  );
+  const existingCompletion = useMemo(
+    () => completions.find((item) => String(item.assignment_id ?? "") === assignmentId && String(item.user_id ?? "") === String(user?.id ?? "")) || null,
+    [assignmentId, completions, user?.id]
+  );
+  const isAssignedToCurrentUser = useMemo(() => {
+    if (!assignment || !user) return false;
+
+    if (Boolean(assignment.all_staff)) return true;
+    if (String(assignment.user_id ?? "") === String(user.id)) return true;
+
+    const assignmentDepartment = asString(assignment.department_name);
+    const currentDepartment = asString(currentPlatformUser?.department_name);
+    if (assignmentDepartment && currentDepartment && assignmentDepartment === currentDepartment) {
+      return true;
+    }
+
+    return asString(assignment.user_name) === asString(user.fullName);
+  }, [assignment, currentPlatformUser?.department_name, user]);
+  const isArchived = asString(assignment?.status).toLowerCase() === "archived";
+  const canComplete = Boolean(user && assignmentId && assignment && !existingCompletion && !isArchived && isAssignedToCurrentUser);
+
+  async function handleCompleteSurvey() {
+    if (!user || !assignmentId) return;
+
+    const payload = {
+      assignment_id: assignmentId,
+      user_id: user.id,
+      completed_on: new Date().toISOString()
+    };
+
+    try {
+      setIsCompleting(true);
+      if (existingCompletion) {
+        await updateResource("survey_completions", Number(existingCompletion.id), payload);
+      } else {
+        await createResource("survey_completions", payload);
+      }
+      setShowCompleteConfirm(false);
+      await load();
+      router.push("/surveys");
+    } catch (completeError) {
+      setError(getApiErrorMessage(completeError));
+    } finally {
+      setIsCompleting(false);
+    }
+  }
 
   if (loading) return <div className="legacy-empty">Loading survey...</div>;
   if (error) return <div className="hr-card" style={{ color: "#b91c1c", borderColor: "#fecaca", background: "#fff1f2" }}>{error}</div>;
@@ -100,10 +162,15 @@ export function SurveyDetailView({ surveyId }: Props) {
             <div className="mt-2 flex items-center gap-3 text-sm text-slate-600"><span className="legacy-role"><Shield className="h-4 w-4" />HR Role: {formatHrRoleLabel(hrRole)}</span></div>
           </div>
         </div>
+        {canComplete ? (
+          <button type="button" className="legacy-primary-btn shrink-0" onClick={() => setShowCompleteConfirm(true)}>
+            <CheckCircle2 className="h-4 w-4" />Complete Survey
+          </button>
+        ) : null}
       </div>
 
       <div className="px-4 pb-6 pt-4 lg:px-6 xl:px-8">
-        <p className="legacy-header__subtitle">Complete and submit the Microsoft Form, then go back to Surveys to click Complete.</p>
+        <p className="legacy-header__subtitle">Complete and submit the Microsoft Form, then mark the survey complete here.</p>
       </div>
 
       <section className="w-full px-4 lg:px-6 xl:px-8">
@@ -143,18 +210,49 @@ export function SurveyDetailView({ surveyId }: Props) {
                 <h4>Assignment</h4>
                 <p>Assigned to: {asString(assignment?.assignee_name) || "-"}</p>
                 <p>Due date: {formatDate(asString(assignment?.due_date) || null)}</p>
-                <p>Status: {asString(assignment?.status) || "Assigned"}</p>
+                <p>Status: {existingCompletion ? "Completed" : asString(assignment?.status) || "Assigned"}</p>
                 <p>Survey link: {asString(survey.url) ? "Configured" : "Not configured"}</p>
               </div>
               <div className="legacy-detail-card">
                 <button type="button" className="legacy-secondary-btn" onClick={() => router.push("/surveys")}>
-                  <ClipboardList className="h-4 w-4" />Back to Surveys to mark complete
+                  <ClipboardList className="h-4 w-4" />Back to Surveys
                 </button>
               </div>
             </div>
           </div>
         </div>
       </section>
+
+      {showCompleteConfirm ? (
+        <div className="legacy-modal-overlay">
+          <div className="legacy-modal" style={{ maxWidth: 560 }}>
+            <div className="legacy-modal-header">
+              <h2>Mark Survey as Completed?</h2>
+            </div>
+            <div className="legacy-modal-body">
+              <p>Are you sure you completed this survey? Once marked completed, this assignment will move to completed status.</p>
+            </div>
+            <div className="legacy-modal-footer">
+              <button
+                type="button"
+                className="legacy-secondary-btn"
+                onClick={() => setShowCompleteConfirm(false)}
+                disabled={isCompleting}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="legacy-primary-btn"
+                onClick={() => void handleCompleteSurvey()}
+                disabled={isCompleting}
+              >
+                <CheckCircle2 className="h-4 w-4" /> {isCompleting ? "Saving..." : "Confirm Completion"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

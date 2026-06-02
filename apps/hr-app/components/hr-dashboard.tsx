@@ -23,6 +23,7 @@ import {
   getHrDocuments,
   getPlatformUsers,
   getResource,
+  resolveApiUploadUrl,
   type HrDashboardSummary,
   type HrDocumentRecord,
   type HrRecord
@@ -93,7 +94,7 @@ function daysUntil(value: string) {
 }
 
 async function openUrlInNewTab(rawUrl: string) {
-  const url = String(rawUrl || "").trim();
+  const url = resolveApiUploadUrl(rawUrl);
   if (!url || typeof window === "undefined") return;
 
   if (!url.startsWith("data:")) {
@@ -658,6 +659,8 @@ export function HrDashboard() {
             const audience = String(item.audience || "All Staff");
             const eventImageUrl = String(item.event_image_url || "").trim();
             const attachmentUrl = String(item.attachment_url || "").trim();
+            const eventImageHref = resolveApiUploadUrl(eventImageUrl);
+            const attachmentHref = resolveApiUploadUrl(attachmentUrl);
             const attachmentName = String(item.attachment_name || "").trim() || "Attachment";
             const eventLinkUrl = String(item.event_link_url || "").trim();
             return (
@@ -669,7 +672,7 @@ export function HrDashboard() {
                   <div className="hr-activity-item__pending">{String(item.body || "No description provided.")}</div>
                   {eventImageUrl ? (
                     <a
-                      href={eventImageUrl}
+                      href={eventImageHref}
                       target="_blank"
                       rel="noreferrer"
                       style={{ display: "inline-block", marginTop: 10 }}
@@ -680,7 +683,7 @@ export function HrDashboard() {
                       }}
                     >
                       <img
-                        src={eventImageUrl}
+                        src={eventImageHref}
                         alt={`${String(item.title || "Announcement")} event image`}
                         style={{ width: "auto", height: "auto", maxWidth: "min(100%, 1200px)", maxHeight: "70vh", objectFit: "contain", borderRadius: 12, border: "1px solid #e5e7eb" }}
                       />
@@ -694,7 +697,7 @@ export function HrDashboard() {
                           className="hr-status-chip"
                           style={{ cursor: "pointer", border: "1px solid #d1d5db", background: "#fff", color: "#0f172a" }}
                           onClick={() => {
-                            void openUrlInNewTab(attachmentUrl);
+                            void openUrlInNewTab(attachmentHref);
                           }}
                         >
                           <Paperclip className="h-3.5 w-3.5" style={{ marginRight: 6 }} />

@@ -131,6 +131,15 @@ export function getFriendlyUploadValidationMessage(error: unknown) {
   return message;
 }
 
+export function resolveApiUploadUrl(rawUrl: string) {
+  const url = String(rawUrl || "").trim();
+  if (!url) return "";
+  if (url.startsWith("data:")) return url;
+  if (/^https?:\/\//i.test(url)) return url;
+  if (url.startsWith("/uploads/")) return `${platformLinks.api}${url}`;
+  return url;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 8000);

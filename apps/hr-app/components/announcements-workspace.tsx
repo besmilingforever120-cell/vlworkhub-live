@@ -11,6 +11,7 @@ import {
   getDepartments,
   getPlatformUsers,
   getResource,
+  resolveApiUploadUrl,
   updateResource,
   type DepartmentRecord,
   type HrRecord
@@ -62,7 +63,7 @@ function readFileAsDataUrl(file: File) {
 }
 
 async function openUrlInNewTab(rawUrl: string) {
-  const url = String(rawUrl || "").trim();
+  const url = resolveApiUploadUrl(rawUrl);
   if (!url || typeof window === "undefined") return;
 
   if (!url.startsWith("data:")) {
@@ -274,6 +275,8 @@ export function AnnouncementsWorkspace() {
           const priority = String(item.priority ?? "Normal");
           const expired = isExpired(item);
           const status = String(item.status ?? "Draft");
+          const eventImageUrl = resolveApiUploadUrl(String(item.event_image_url ?? ""));
+          const attachmentUrl = resolveApiUploadUrl(String(item.attachment_url ?? ""));
           return (
             <article key={String(item.id)} className="legacy-card legacy-card--compact">
               <div className="legacy-card-header">
@@ -287,10 +290,10 @@ export function AnnouncementsWorkspace() {
                 </div>
               </div>
               <div className="legacy-card-copy" style={{ marginBottom: 16 }}>{String(item.body ?? "No announcement content provided.").slice(0, 240)}{String(item.body ?? "").length > 240 ? "..." : ""}</div>
-              {String(item.event_image_url ?? "").trim() ? (
+              {eventImageUrl ? (
                 <div style={{ marginBottom: 16 }}>
                   <img
-                    src={String(item.event_image_url)}
+                    src={eventImageUrl}
                     alt={`${String(item.title ?? "Announcement")} event image`}
                     style={{ width: "100%", maxHeight: 280, objectFit: "cover", borderRadius: 14, border: "1px solid #e5e7eb" }}
                   />
@@ -301,14 +304,14 @@ export function AnnouncementsWorkspace() {
                 <div className="legacy-meta-item"><Calendar className="h-4 w-4" />Publish: {formatDate(item.publish_date)} · Start: {formatDate(item.start_date)} · End: {formatDate(item.end_date)}</div>
                 <div className="legacy-meta-item"><strong>Author:</strong> {user?.fullName || "HR Team"}</div>
               </div>
-              {String(item.attachment_url ?? "").trim() || String(item.event_link_url ?? "").trim() ? (
+              {attachmentUrl || String(item.event_link_url ?? "").trim() ? (
                 <div className="legacy-actions-row" style={{ justifyContent: "flex-start", marginTop: 12 }}>
-                  {String(item.attachment_url ?? "").trim() ? (
+                  {attachmentUrl ? (
                     <button
                       type="button"
                       className="legacy-secondary-btn"
                       onClick={() => {
-                        void openUrlInNewTab(String(item.attachment_url));
+                        void openUrlInNewTab(attachmentUrl);
                       }}
                     >
                       <Paperclip className="h-4 w-4" />

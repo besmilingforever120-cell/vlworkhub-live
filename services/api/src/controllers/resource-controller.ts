@@ -18,9 +18,14 @@ import {
   logHrPermissionFailure
 } from "../lib/hr-permissions";
 import { sendAssignmentNotifications } from "../services/assignment-email-service";
+import { deleteAnnouncementImage, deleteAnnouncementAttachment } from "../services/announcement-storage";
 
 const tableOrgColumnCache = new Map<string, boolean>();
 let tasksArchivedColumnPromise: Promise<boolean> | null = null;
+let announcementsColumnsPromise: Promise<void> | null = null;
+
+const ANNOUNCEMENT_OPTIONAL_COLUMNS = ["event_image_url", "attachment_name", "attachment_url", "event_link_url"] as const;
+const RESOURCE_SCHEMA_NAMES = ["hr", "public", "care", "ursafe"] as const;
 
 class ClientInputError extends Error {
   statusCode: number;
@@ -521,6 +526,47 @@ async function ensureTasksArchivedColumn() {
     return true;
   })();
   return tasksArchivedColumnPromise;
+}
+
+async function ensureAnnouncementsColumns() {
+  if (announcementsColumnsPromise) {
+    return announcementsColumnsPromise;
+  }
+
+  announcementsColumnsPromise = (async () => {
+    for (const schemaName of RESOURCE_SCHEMA_NAMES) {
+      for (const columnName of ANNOUNCEMENT_OPTIONAL_COLUMNS) {
+        await pool.query(`ALTER TABLE IF EXISTS ${schemaName}.announcements ADD COLUMN IF NOT EXISTS ${columnName} TEXT`);
+      }
+    }
+  })().catch((error) => {
+    announcementsColumnsPromise = null;
+    throw error;
+  });
+
+  return announcementsColumnsPromise;
+}
+
+function buildCreatePayloadLog(body: unknown) {
+  const input = (body && typeof body === "object") ? (body as Record<string, unknown>) : {};
+  const entries = Object.entries(input).map(([key, value]) => {
+    if (typeof value === "string") {
+      const normalized = value.length > 120 ? `${value.slice(0, 120)}...[len=${value.length}]` : value;
+      return [key, normalized] as const;
+    }
+
+    if (value === null || typeof value === "number" || typeof value === "boolean") {
+      return [key, value] as const;
+    }
+
+    if (Array.isArray(value)) {
+      return [key, `array(len=${value.length})`] as const;
+    }
+
+    return [key, typeof value] as const;
+  });
+
+  return Object.fromEntries(entries);
 }
 
 async function tasksTableHasArchivedColumn() {
@@ -1035,6 +1081,9 @@ export async function createResource(req: AuthenticatedRequest, res: Response) {
     const id = await withFallback(
       resourceName,
       async () => {
+        if (resourceName === "announcements") {
+          await ensureAnnouncementsColumns();
+        }
         if (isSurveyResource(resourceName)) {
           return insertSurvey(req, organizationId);
         }
@@ -1110,8 +1159,40 @@ export async function createResource(req: AuthenticatedRequest, res: Response) {
     if (error instanceof ClientInputError) {
       return res.status(error.statusCode).json({ error: error.message });
     }
-    console.error(`Task query failed in POST ${req.originalUrl}`, error);
-    return res.status(500).json({ error: "Task query failed" });
+
+    const dbError = error as {
+      message?: string;
+      code?: string;
+      detail?: string;
+      hint?: string;
+      table?: string;
+      column?: string;
+      constraint?: string;
+    };
+
+    const resourceName = asParam(req.params.resource);
+    console.error(`Create resource failed in POST ${req.originalUrl}`, {
+      resource: resourceName,
+      userId: String(req.user?.user_id || ""),
+      organizationId: String(req.user?.organization_id || ""),
+      payload: buildCreatePayloadLog(req.body),
+      db: {
+        code: dbError.code,
+        detail: dbError.detail,
+        hint: dbError.hint,
+        table: dbError.table,
+        column: dbError.column,
+        constraint: dbError.constraint,
+        message: dbError.message
+      }
+    });
+
+    const detail = dbError.message || "Unexpected server error";
+    return res.status(500).json({
+      error: `Failed to create ${resourceName}`,
+      message: `Failed to create ${resourceName}: ${detail}`,
+      code: dbError.code || "INTERNAL_ERROR"
+    });
   }
 }
 
@@ -1142,6 +1223,9 @@ export async function updateResource(req: AuthenticatedRequest, res: Response) {
     await withFallback(
       resourceName,
       async () => {
+        if (resourceName === "announcements") {
+          await ensureAnnouncementsColumns();
+        }
         if (isSurveyResource(resourceName)) {
           await updateSurvey(req, recordId, organizationId);
         } else if (isSurveyAssignmentResource(resourceName)) {
@@ -1247,6 +1331,30 @@ export async function deleteResource(req: AuthenticatedRequest, res: Response) {
     const permission = await enforceUpdateOrDeletePermissions(req, res, resourceName, organizationId, recordId);
     if (!permission.ok) {
       return;
+    }
+
+    // For announcements, fetch the record first to clean up associated files
+    if (resourceName === "announcements") {
+      try {
+        const existing = await selectExistingRecord(resource.table, recordId, organizationId) as Record<string, unknown> | null;
+        
+        if (existing) {
+          // Clean up image if it exists
+          const eventImageUrl = existing.event_image_url;
+          if (eventImageUrl && typeof eventImageUrl === "string") {
+            await deleteAnnouncementImage(eventImageUrl);
+          }
+
+          // Clean up attachment if it exists
+          const attachmentUrl = existing.attachment_url;
+          if (attachmentUrl && typeof attachmentUrl === "string") {
+            await deleteAnnouncementAttachment(attachmentUrl);
+          }
+        }
+      } catch (error) {
+        console.warn("[Resource Delete] Failed to clean up announcement files:", error);
+        // Continue with deletion even if file cleanup fails
+      }
     }
 
     await withFallback(

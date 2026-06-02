@@ -10,7 +10,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-vlworkhub}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
     ports:
-      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+      - "0.0.0.0:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - vlworkhub_pg_data:/var/lib/postgresql/data
 
@@ -32,6 +32,7 @@ services:
       DATABASE_URL: postgres://${POSTGRES_USER:-vlworkhub}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@vlworkhub-postgres:5432/${POSTGRES_DB:-vlworkhub}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS}
       TRUST_PROXY_HOPS: 1
+      ANNOUNCEMENTS_STORAGE_PATH: ${ANNOUNCEMENTS_STORAGE_PATH:-/app/services/api/uploads/announcements}
     ports:
       - "8080:8080"
     volumes:
@@ -40,6 +41,8 @@ services:
       - /mnt/synology/HRDocuments/onboarding:/app/services/api/uploads/onboarding
       - /mnt/synology/MainPlatformDocuments/organizations:/app/services/api/uploads/organizations
       - /mnt/synology/MainPlatformDocuments/departments:/app/services/api/uploads/departments
+      - /mnt/synology/HRDocuments/Announcements/Images:/app/services/api/uploads/announcements/Images
+      - /mnt/synology/HRDocuments/Announcements/Attachments:/app/services/api/uploads/announcements/Attachments
     depends_on:
       - postgres
 
