@@ -56,6 +56,9 @@ export function HrAdminPanel() {
   const [users, setUsers] = useState<PlatformUserRecord[]>([]);
   const [departments, setDepartments] = useState<DepartmentRecord[]>([]);
   const [roles, setRoles] = useState<HrAssignment[]>([]);
+  const [employeeFilter, setEmployeeFilter] = useState("");
+  const [roleFilter, setRoleFilter] = useState("");
+  const [departmentFilter, setDepartmentFilter] = useState("");
   const [form, setForm] = useState<FormState>(emptyForm());
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
@@ -128,6 +131,25 @@ export function HrAdminPanel() {
     managers: assignments.filter((item) => item.role === "MANAGER").length,
     admins: assignments.filter((item) => item.role === "ADMIN").length
   };
+
+  const roleFilterOptions = useMemo(() => Array.from(new Set(assignments.map((assignment) => assignment.role))).sort(), [assignments]);
+  const departmentFilterOptions = useMemo(
+    () => Array.from(new Set(assignments.map((assignment) => assignment.departmentName).filter(Boolean))).sort(),
+    [assignments]
+  );
+
+  const filteredAssignments = useMemo(() => {
+    const normalizedEmployeeFilter = employeeFilter.trim().toLowerCase();
+    return assignments.filter((assignment) => {
+      if (normalizedEmployeeFilter) {
+        const employeeText = `${assignment.employeeName} ${assignment.employeeEmail}`.toLowerCase();
+        if (!employeeText.includes(normalizedEmployeeFilter)) return false;
+      }
+      if (roleFilter && assignment.role !== roleFilter) return false;
+      if (departmentFilter && assignment.departmentName !== departmentFilter) return false;
+      return true;
+    });
+  }, [assignments, departmentFilter, employeeFilter, roleFilter]);
 
   const managerOptions = useMemo(() => users.filter((user) => user.id !== form.userId), [users, form.userId]);
 
@@ -279,6 +301,28 @@ export function HrAdminPanel() {
           <button type="button" className="legacy-primary-btn" onClick={openCreateModal}><Plus className="h-4 w-4" />Assign HR Role</button>
         </div>
 
+        <div className="legacy-toolbar" style={{ marginTop: 16, marginBottom: 0 }}>
+          <div className="legacy-toolbar__row">
+            <div className="legacy-search" style={{ maxWidth: 480 }}>
+              <input
+                value={employeeFilter}
+                onChange={(event) => setEmployeeFilter(event.target.value)}
+                placeholder="Search employee name or email..."
+              />
+            </div>
+            <div className="legacy-filter-group">
+              <select value={roleFilter} onChange={(event) => setRoleFilter(event.target.value)}>
+                <option value="">All roles</option>
+                {roleFilterOptions.map((role) => <option key={role} value={role}>{role}</option>)}
+              </select>
+              <select value={departmentFilter} onChange={(event) => setDepartmentFilter(event.target.value)}>
+                <option value="">All departments</option>
+                {departmentFilterOptions.map((department) => <option key={department} value={department}>{department}</option>)}
+              </select>
+            </div>
+          </div>
+        </div>
+
         <div className="mt-5 overflow-x-auto">
           <table className="min-w-full text-left text-sm text-gray-700">
             <thead className="text-xs uppercase tracking-[0.16em] text-gray-500">
@@ -291,7 +335,7 @@ export function HrAdminPanel() {
               </tr>
             </thead>
             <tbody>
-              {assignments.map((assignment) => (
+              {filteredAssignments.map((assignment) => (
                 <tr key={assignment.id} className="border-t border-gray-200">
                   <td className="px-3 py-4">
                     <div className="text-sm font-semibold text-gray-900">{assignment.employeeEmail || assignment.employeeName}</div>
@@ -317,6 +361,7 @@ export function HrAdminPanel() {
             </tbody>
           </table>
           {!assignments.length ? <p className="mt-4 text-sm text-gray-700">No HR role assignments yet.</p> : null}
+          {assignments.length && !filteredAssignments.length ? <p className="mt-4 text-sm text-gray-700">No assignments match the selected filters.</p> : null}
         </div>
       </section>
 
