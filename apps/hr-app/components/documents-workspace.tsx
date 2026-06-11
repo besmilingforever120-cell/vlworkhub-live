@@ -43,6 +43,8 @@ type DocumentForm = {
 type ValidationState = Partial<Record<"file" | "assignments" | "categoryOther" | "signature", string>>;
 type DocumentViewerRecord = HrDocumentRecord;
 type ViewerRole = "ADMIN" | "MANAGER" | "EMPLOYEE";
+type DocumentStatusFilter = "pending" | "signed" | "all";
+type DocumentScopeFilter = "me" | "team" | "department" | "org";
 
 type ViewerContext = {
   id: string;
@@ -160,6 +162,9 @@ export function DocumentsWorkspace() {
   const [assignments, setAssignments] = useState<HrAssignment[]>([]);
   const [documents, setDocuments] = useState<DocumentViewerRecord[]>([]);
   const [query, setQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<DocumentStatusFilter>("pending");
+  const [scopeFilter, setScopeFilter] = useState<DocumentScopeFilter>("me");
+  const [departmentFilterId, setDepartmentFilterId] = useState("");
   const [editingDocument, setEditingDocument] = useState<DocumentViewerRecord | null>(null);
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [showUserPicker, setShowUserPicker] = useState(false);
@@ -232,6 +237,32 @@ export function DocumentsWorkspace() {
     };
   }, [assignments, hrRole, user]);
 
+  const currentUserDepartmentId = useMemo(() => {
+    if (!user) return "";
+    const match = users.find((candidate) => candidate.id === user.id);
+    return String(match?.department_id || "");
+  }, [user, users]);
+
+  useEffect(() => {
+    if (!viewer) return;
+    if (viewer.role === "MANAGER") {
+      setScopeFilter((current) => (current === "me" || current === "team" ? current : "me"));
+      return;
+    }
+    if (viewer.role === "ADMIN") {
+      setScopeFilter((current) => (current === "me" || current === "department" || current === "org" ? current : "org"));
+      return;
+    }
+    setScopeFilter("me");
+  }, [viewer]);
+
+  useEffect(() => {
+    if (!viewer || viewer.role !== "ADMIN" || scopeFilter !== "department") return;
+    if (departmentFilterId && departments.some((department) => department.id === departmentFilterId)) return;
+    const fallbackDepartmentId = currentUserDepartmentId || departments[0]?.id || "";
+    setDepartmentFilterId(fallbackDepartmentId);
+  }, [currentUserDepartmentId, departmentFilterId, departments, scopeFilter, viewer]);
+
   function getEffectiveAssignedUserIds(document: DocumentViewerRecord) {
     const directIds = (document.direct_user_ids || []).map(String);
     const departmentIds = new Set((document.assigned_department_ids || []).map(String));
@@ -284,13 +315,57 @@ export function DocumentsWorkspace() {
   }
 
   const visibleDocuments = useMemo(() => {
-    const items = documents;
     if (!viewer) return [] as DocumentViewerRecord[];
-    if (viewer.role === "ADMIN") {
-      return items.filter((document) => getDocumentStatus(document) !== "archived");
-    }
-    return items.filter((document) => getDocumentStatus(document) === "pending");
-  }, [documents, viewer]);
+
+    const teamUserIds = new Set(viewer.reportIds.map(String));
+    const departmentUserIds = new Set(
+      users
+        .filter((candidate) => String(candidate.department_id || "") === departmentFilterId)
+        .map((candidate) => candidate.id)
+    );
+
+    return documents.filter((document) => {
+      if (!canViewDocument(document, viewer)) return false;
+
+      const status = getDocumentStatus(document);
+      if (status === "archived") return false;
+      if (statusFilter !== "all" && status !== statusFilter) return false;
+
+      const assignedUserIds = getEffectiveAssignedUserIds(document);
+      const signedUserIds = (document.signed_user_ids || []).map(String);
+
+      if (viewer.role === "EMPLOYEE") {
+        if (status === "pending") return assignedUserIds.includes(viewer.id);
+        if (status === "signed") return signedUserIds.includes(viewer.id);
+        return false;
+      }
+
+      if (viewer.role === "MANAGER") {
+        if (scopeFilter === "team") {
+          if (status === "pending") return assignedUserIds.some((id) => teamUserIds.has(id));
+          if (status === "signed") return signedUserIds.some((id) => teamUserIds.has(id));
+          return false;
+        }
+
+        if (status === "pending") return assignedUserIds.includes(viewer.id);
+        if (status === "signed") return signedUserIds.includes(viewer.id);
+        return false;
+      }
+
+      if (scopeFilter === "org") return true;
+
+      if (scopeFilter === "department") {
+        if (!departmentFilterId) return false;
+        if (status === "pending") return assignedUserIds.some((id) => departmentUserIds.has(id));
+        if (status === "signed") return signedUserIds.some((id) => departmentUserIds.has(id));
+        return false;
+      }
+
+      if (status === "pending") return assignedUserIds.includes(viewer.id);
+      if (status === "signed") return signedUserIds.includes(viewer.id);
+      return false;
+    });
+  }, [departmentFilterId, documents, scopeFilter, statusFilter, user?.id, users, viewer]);
 
   const filteredDocuments = useMemo(() => {
     const normalizedQuery = query.toLowerCase();
@@ -463,7 +538,73 @@ export function DocumentsWorkspace() {
       <section className="legacy-toolbar">
         <div className="legacy-toolbar__row">
           <div className="legacy-search"><Search className="h-4 w-4" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search documents..." /></div>
+          <div className="legacy-filter-group">
+            <span style={{ fontSize: 13, fontWeight: 600, color: "#64748b" }}>Status</span>
+            {[
+              { value: "pending" as const, label: "Pending" },
+              { value: "signed" as const, label: "Signed" },
+              { value: "all" as const, label: "All" }
+            ].map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                className={`legacy-filter-btn ${statusFilter === option.value ? "is-active" : ""}`}
+                onClick={() => setStatusFilter(option.value)}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+          {viewer?.role === "MANAGER" ? (
+            <div className="legacy-filter-group">
+              <span style={{ fontSize: 13, fontWeight: 600, color: "#64748b" }}>Scope</span>
+              {[
+                { value: "me" as const, label: "Me" },
+                { value: "team" as const, label: "My Team" }
+              ].map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  className={`legacy-filter-btn ${scopeFilter === option.value ? "is-active" : ""}`}
+                  onClick={() => setScopeFilter(option.value)}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          ) : null}
+          {viewer?.role === "ADMIN" ? (
+            <div className="legacy-filter-group">
+              <span style={{ fontSize: 13, fontWeight: 600, color: "#64748b" }}>Scope</span>
+              {[
+                { value: "me" as const, label: "Me" },
+                { value: "department" as const, label: "Department" },
+                { value: "org" as const, label: "Entire Org" }
+              ].map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  className={`legacy-filter-btn ${scopeFilter === option.value ? "is-active" : ""}`}
+                  onClick={() => setScopeFilter(option.value)}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          ) : null}
         </div>
+        {viewer?.role === "ADMIN" && scopeFilter === "department" ? (
+          <div className="legacy-toolbar__row">
+            <div className="legacy-filter-group">
+              <span style={{ fontSize: 13, fontWeight: 600, color: "#64748b" }}>Department</span>
+              <select value={departmentFilterId} onChange={(event) => setDepartmentFilterId(event.target.value)}>
+                {departments.map((department) => (
+                  <option key={department.id} value={department.id}>{department.name}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+        ) : null}
       </section>
 
       <div className="legacy-panel">
