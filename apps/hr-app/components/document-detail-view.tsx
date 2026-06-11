@@ -381,6 +381,12 @@ export function DocumentDetailView({ documentId }: Props) {
             <div className="legacy-modal-body">
               <div className="legacy-form-grid">
                 <div className="legacy-form-group legacy-form-group--full">
+                  <h3 style={{ margin: 0, fontSize: "1rem", fontWeight: 700, color: "#0f172a" }}>Did you review the document?</h3>
+                  <p style={{ marginTop: 8, color: "#dc2626" }}>
+                    By clicking Confirm Sign, you acknowledge that you have read this document and that you understand the entirety of its contents.
+                  </p>
+                </div>
+                <div className="legacy-form-group legacy-form-group--full">
                   <label>Draw Signature</label>
                   <div style={{ border: "1px solid #dbe1ea", borderRadius: 12, overflow: "hidden", background: "#fff" }}>
                     <SignatureCanvas ref={signatureRef} canvasProps={{ width: 640, height: 220, className: "signature-canvas" }} />
