@@ -8,6 +8,18 @@ export type DocumentViewerContext = {
   reportIds: string[];
 };
 
+type ManagerDepartmentContext = {
+  id?: string | null;
+  name?: string | null;
+};
+
+export function normalizeDepartmentKey(value: string | null | undefined) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+}
+
 export function normalizeDocumentRole(role: string): ViewerRole {
   if (role === "admin") return "ADMIN";
   if (role === "manager") return "MANAGER";
@@ -17,7 +29,7 @@ export function normalizeDocumentRole(role: string): ViewerRole {
 export function getEffectiveAssignedUserIds(document: HrDocumentRecord, users: PlatformUserRecord[]) {
   const directIds = (document.direct_user_ids || []).map(String);
   const departmentIds = new Set((document.assigned_department_ids || []).map(String));
-  const departmentNames = new Set((document.assigned_department_names || []).map(String));
+  const departmentNameKeys = new Set((document.assigned_department_names || []).map((name) => normalizeDepartmentKey(name)));
   const effective = new Set<string>(directIds);
 
   if (document.all_staff) {
@@ -26,8 +38,8 @@ export function getEffectiveAssignedUserIds(document: HrDocumentRecord, users: P
 
   users.forEach((candidate) => {
     const userDepartmentId = String(candidate.department_id || "");
-    const userDepartmentName = String(candidate.department_name || "");
-    if ((userDepartmentId && departmentIds.has(userDepartmentId)) || (userDepartmentName && departmentNames.has(userDepartmentName))) {
+    const userDepartmentNameKey = normalizeDepartmentKey(candidate.department_name);
+    if ((userDepartmentId && departmentIds.has(userDepartmentId)) || (userDepartmentNameKey && departmentNameKeys.has(userDepartmentNameKey))) {
       effective.add(candidate.id);
     }
   });
@@ -86,6 +98,48 @@ export function assignmentSummary(document: HrDocumentRecord) {
   ].filter(Boolean);
 
   return tokens.length ? tokens.join(", ") : "-";
+}
+
+export function isDocumentInManagerTeamScope(
+  document: HrDocumentRecord,
+  currentViewer: DocumentViewerContext | null,
+  users: PlatformUserRecord[],
+  managerDepartment: ManagerDepartmentContext
+) {
+  if (!currentViewer || currentViewer.role !== "MANAGER") {
+    return false;
+  }
+
+  const reportIdSet = new Set((currentViewer.reportIds || []).map(String));
+  const managerDepartmentId = String(managerDepartment.id || "").trim();
+  const managerDepartmentNameKey = normalizeDepartmentKey(managerDepartment.name);
+  const assignedUserIds = getEffectiveAssignedUserIds(document, users);
+  const assignedDepartmentIds = new Set((document.assigned_department_ids || []).map(String));
+  const assignedDepartmentNameKeys = new Set((document.assigned_department_names || []).map((name) => normalizeDepartmentKey(name)));
+
+  const usersById = new Map(users.map((candidate) => [candidate.id, candidate]));
+  const isManagerDepartmentUser = (userId: string) => {
+    const candidate = usersById.get(String(userId));
+    if (!candidate) {
+      return false;
+    }
+
+    const candidateDepartmentId = String(candidate.department_id || "").trim();
+    const candidateDepartmentNameKey = normalizeDepartmentKey(candidate.department_name);
+    if (managerDepartmentId && candidateDepartmentId === managerDepartmentId) {
+      return true;
+    }
+
+    return Boolean(managerDepartmentNameKey) && Boolean(candidateDepartmentNameKey) && candidateDepartmentNameKey === managerDepartmentNameKey;
+  };
+
+  const hasReportAssignment = assignedUserIds.some((userId) => reportIdSet.has(String(userId)));
+  const hasManagerDepartmentUserAssignment = assignedUserIds.some((userId) => isManagerDepartmentUser(userId));
+  const hasManagerDepartmentTarget =
+    (managerDepartmentId && assignedDepartmentIds.has(managerDepartmentId)) ||
+    (managerDepartmentNameKey && assignedDepartmentNameKeys.has(managerDepartmentNameKey));
+
+  return Boolean(hasReportAssignment || hasManagerDepartmentUserAssignment || hasManagerDepartmentTarget);
 }
 
 export function buildDocumentViewer(userId: string, hrRole: string, assignments: HrAssignment[]) {

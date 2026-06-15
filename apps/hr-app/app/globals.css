@@ -483,6 +483,12 @@ textarea {
   gap: 14px;
 }
 
+.hr-activity-list--scrollable {
+  max-height: 360px;
+  overflow-y: auto;
+  padding-right: 6px;
+}
+
 .hr-activity-item {
   display: flex;
   align-items: flex-start;
@@ -513,6 +519,19 @@ textarea {
 .hr-activity-item__body p { margin: 0 0 3px; font-size: 14px; }
 .hr-activity-item__meta { font-size: 12px; color: #94a3b8; }
 .hr-activity-item__pending { margin-top: 4px; font-size: 12px; color: var(--hr-text-muted); }
+
+.hr-signature-name {
+  transition: color 180ms ease;
+}
+
+.hr-signature-name--signed {
+  color: var(--hr-success);
+  font-weight: 600;
+}
+
+.hr-signature-name--pending {
+  color: var(--hr-text-muted);
+}
 
 .hr-task-item {
   display: flex;

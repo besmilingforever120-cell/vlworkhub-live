@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import type { Route } from "next";
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import {
   BookOpen,
   CheckCircle,
@@ -77,6 +77,17 @@ function splitNames(value: string | null | undefined) {
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function normalizeDepartmentKey(value: string | null | undefined) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+}
+
+function dedupeStrings(values: string[]) {
+  return Array.from(new Set(values.filter(Boolean)));
 }
 
 function formatDueDate(value: string) {
@@ -313,6 +324,64 @@ function announcementMatchesDepartment(item: HrRecord, departmentName: string | 
   return tokens.includes(departmentToken);
 }
 
+function getDocumentAssigneeStatuses(params: {
+  document: HrDocumentRecord;
+  role: HrAppRole;
+  currentUserId: string;
+  currentUserName: string;
+  currentUserDepartment: string | null;
+  directReportIds: Set<string>;
+  sharedUsers: Array<{ id: string; fullName: string; department: string | null }>;
+}) {
+  const { document, role, currentUserId, currentUserName, currentUserDepartment, directReportIds, sharedUsers } = params;
+  const sharedUsersById = new Map(sharedUsers.map((item) => [String(item.id), item]));
+  const signedUserIds = new Set((document.signed_user_ids || []).map(String));
+  const assignedUserIds = dedupeStrings((document.assigned_user_ids || []).map(String));
+  const managerDepartmentKey = normalizeDepartmentKey(currentUserDepartment);
+
+  const visibleAssignedUserIds = assignedUserIds.filter((userId) => {
+    if (role === "admin") {
+      return true;
+    }
+
+    if (role === "employee") {
+      return Boolean(currentUserId) && userId === currentUserId;
+    }
+
+    if (userId === currentUserId || directReportIds.has(userId)) {
+      return true;
+    }
+
+    const departmentKey = normalizeDepartmentKey(sharedUsersById.get(userId)?.department || null);
+    return Boolean(managerDepartmentKey) && Boolean(departmentKey) && managerDepartmentKey === departmentKey;
+  });
+
+  const visibleStatuses = visibleAssignedUserIds.map((userId) => ({
+    key: userId,
+    name: String(sharedUsersById.get(userId)?.fullName || "").trim(),
+    isSigned: signedUserIds.has(userId)
+  })).filter((item) => item.name);
+
+  if (visibleStatuses.length > 0) {
+    return visibleStatuses;
+  }
+
+  const assignedUserNames = dedupeStrings((document.assigned_user_names || []).map((name) => String(name).trim()));
+  const signedUserNames = new Set((document.signed_user_names || []).map((name) => String(name).trim()).filter(Boolean));
+
+  if (role === "employee") {
+    return currentUserName && assignedUserNames.includes(currentUserName)
+      ? [{ key: currentUserId || currentUserName, name: currentUserName, isSigned: signedUserNames.has(currentUserName) }]
+      : [];
+  }
+
+  return assignedUserNames.map((name) => ({
+    key: name,
+    name,
+    isSigned: signedUserNames.has(name)
+  }));
+}
+
 export function HrDashboard() {
   const [user, setUser] = useState<SessionUser | null>(null);
   const [sharedUsers, setSharedUsers] = useState<Array<{ id: string; fullName: string; department: string | null }>>([]);
@@ -414,6 +483,10 @@ export function HrDashboard() {
     if (!user) return null;
     return sharedUsers.find((item) => item.id === user.id)?.department || null;
   }, [sharedUsers, user]);
+  const directReportIds = useMemo(() => new Set(hrRoles
+    .filter((item) => String(item.manager_id ?? "") === String(user?.id || ""))
+    .map((item) => String(item.user_id ?? ""))
+    .filter(Boolean)), [hrRoles, user?.id]);
   const tasksWithAssignments = useMemo(() => {
     const namesByUserId = new Map(sharedUsers.map((item) => [item.id, item.fullName]));
     const managerNameByUserId = new Map(
@@ -575,16 +648,39 @@ export function HrDashboard() {
       <section className="hr-dashboard__grid">
         <div className="hr-card">
           <div className="hr-card__header"><div><h2 className="hr-card__title">Documents requiring signature</h2><p className="hr-card__subtitle">Only active documents visible to your HR role are shown here.</p></div></div>
-          <div className="hr-activity-list">
-            {activeDocumentsRequiringSignature.length ? activeDocumentsRequiringSignature.slice(0, 5).map((document) => {
+          <div className="hr-activity-list hr-activity-list--scrollable">
+            {activeDocumentsRequiringSignature.length ? activeDocumentsRequiringSignature.map((document) => {
               const dueDate = String(document.due_date || "");
               const overdue = dueDate ? (daysUntil(dueDate) ?? 0) < 0 : false;
+              const assigneeStatuses = getDocumentAssigneeStatuses({
+                document,
+                role: access.role,
+                currentUserId: String(user?.id || ""),
+                currentUserName: String(user?.fullName || "").trim(),
+                currentUserDepartment,
+                directReportIds,
+                sharedUsers
+              });
               return (
                 <div key={String(document.id)} className="hr-activity-item">
                   <div className="hr-activity-item__icon hr-activity-item__icon--signature"><FileSignature className="h-4 w-4" /></div>
                   <div className="hr-activity-item__body">
                     <p><strong>{String(document.file_name || "HR Document")}</strong>{overdue ? <span className="hr-status-chip is-overdue" style={{ marginLeft: "8px" }}>Overdue</span> : null}</p>
-                    <div className="hr-activity-item__meta">Assigned to: {document.assigned_user_names.join(", ") || "Unassigned"} · Due: {formatDueDate(dueDate)}</div>
+                    <div className="hr-activity-item__meta">
+                      <span>Assigned to: </span>
+                      {assigneeStatuses.length ? assigneeStatuses.map((assignee, index) => (
+                        <Fragment key={assignee.key}>
+                          {index ? <span>, </span> : null}
+                          <span
+                            className={`hr-signature-name ${assignee.isSigned ? "hr-signature-name--signed" : "hr-signature-name--pending"}`}
+                            title={assignee.isSigned ? "Signed" : "Pending signature"}
+                          >
+                            {assignee.name}
+                          </span>
+                        </Fragment>
+                      )) : <span>Unassigned</span>}
+                      <span> · Due: {formatDueDate(dueDate)}</span>
+                    </div>
                   </div>
                 </div>
               );

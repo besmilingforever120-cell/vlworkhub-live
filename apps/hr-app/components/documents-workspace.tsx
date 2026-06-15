@@ -22,6 +22,16 @@ import {
   type HrDocumentRecord,
   type PlatformUserRecord
 } from "../lib/hr-client";
+import {
+  assignmentSummary,
+  canOpenDocument,
+  canViewDocument,
+  getDocumentStatus,
+  getEffectiveAssignedUserIds,
+  getStatusBadgeClass,
+  isDocumentInManagerTeamScope,
+  normalizeDepartmentKey
+} from "../lib/document-helpers";
 import { useHrRole } from "../lib/use-hr-role";
 import { canCreateForHrRole, formatDate, formatHrRoleLabel } from "../lib/workflow-utils";
 
@@ -118,29 +128,6 @@ function checkboxRow(label: string, checked: boolean, onChange: (checked: boolea
       <span>{label}</span>
     </label>
   );
-}
-
-function getDocumentStatus(document: DocumentViewerRecord) {
-  const normalized = String(document.status || "").trim().toLowerCase();
-  if (normalized === "archived") return "archived" as const;
-  if (document.is_completed || normalized === "signed") return "signed" as const;
-  return "pending" as const;
-}
-
-function getStatusBadgeClass(status: "pending" | "signed" | "archived") {
-  if (status === "signed") return "legacy-status completed";
-  if (status === "archived") return "legacy-status archived";
-  return "legacy-status";
-}
-
-function assignmentSummary(document: DocumentViewerRecord) {
-  const tokens = [
-    ...(document.direct_user_names || []),
-    ...(document.assigned_department_names || []).map((name) => `Department: ${name}`),
-    ...(document.all_staff ? ["All Staff"] : [])
-  ].filter(Boolean);
-
-  return tokens.length ? tokens.join(", ") : "-";
 }
 
 function readFileAsDataUrl(file: File) {
@@ -243,6 +230,20 @@ export function DocumentsWorkspace() {
     return String(match?.department_id || "");
   }, [user, users]);
 
+  const currentUserDepartmentName = useMemo(() => {
+    if (!user) return "";
+    const match = users.find((candidate) => candidate.id === user.id);
+    if (match?.department_name) return String(match.department_name);
+    if (!currentUserDepartmentId) return "";
+    return String(departments.find((department) => department.id === currentUserDepartmentId)?.name || "");
+  }, [currentUserDepartmentId, departments, user, users]);
+
+  const managerAssignmentDepartmentId = useMemo(() => {
+    if (!user) return "";
+    const ownAssignment = assignments.find((assignment) => String(assignment.user_id || "") === user.id);
+    return String(ownAssignment?.department_id || "");
+  }, [assignments, user]);
+
   useEffect(() => {
     if (!viewer) return;
     if (viewer.role === "MANAGER") {
@@ -263,75 +264,36 @@ export function DocumentsWorkspace() {
     setDepartmentFilterId(fallbackDepartmentId);
   }, [currentUserDepartmentId, departmentFilterId, departments, scopeFilter, viewer]);
 
-  function getEffectiveAssignedUserIds(document: DocumentViewerRecord) {
-    const directIds = (document.direct_user_ids || []).map(String);
-    const departmentIds = new Set((document.assigned_department_ids || []).map(String));
-    const departmentNames = new Set((document.assigned_department_names || []).map(String));
-    const effective = new Set<string>(directIds);
-
-    if (document.all_staff) {
-      users.forEach((candidate) => effective.add(candidate.id));
-    }
-
-    users.forEach((candidate) => {
-      const userDepartmentId = String(candidate.department_id || "");
-      const userDepartmentName = String(candidate.department_name || "");
-      if ((userDepartmentId && departmentIds.has(userDepartmentId)) || (userDepartmentName && departmentNames.has(userDepartmentName))) {
-        effective.add(candidate.id);
-      }
-    });
-
-    return Array.from(effective);
-  }
-
-  function isAssignedToCurrentUser(document: DocumentViewerRecord, currentViewer: ViewerContext) {
-    return getEffectiveAssignedUserIds(document).includes(currentViewer.id);
-  }
-
-  function hasDirectReportAssignment(document: DocumentViewerRecord, currentViewer: ViewerContext) {
-    const reportIds = new Set(currentViewer.reportIds);
-    return getEffectiveAssignedUserIds(document).some((userId) => reportIds.has(userId));
-  }
-
-  function canViewDocument(document: DocumentViewerRecord, currentViewer: ViewerContext | null) {
-    if (!currentViewer) return false;
-    if (currentViewer.role === "ADMIN") return true;
-    return isAssignedToCurrentUser(document, currentViewer) || hasDirectReportAssignment(document, currentViewer);
-  }
-
-  function canOpenDocument(document: DocumentViewerRecord, currentViewer: ViewerContext | null) {
-    if (!currentViewer) return false;
-    if (currentViewer.role === "ADMIN") return true;
-    if (currentViewer.role === "MANAGER") {
-      if (document.sensitive) return isAssignedToCurrentUser(document, currentViewer);
-      return isAssignedToCurrentUser(document, currentViewer) || hasDirectReportAssignment(document, currentViewer);
-    }
-    return isAssignedToCurrentUser(document, currentViewer);
-  }
-
-  function canSignDocument(document: DocumentViewerRecord, currentViewer: ViewerContext | null) {
-    if (!currentViewer) return false;
-    return isAssignedToCurrentUser(document, currentViewer) && getDocumentStatus(document) === "pending";
-  }
-
   const visibleDocuments = useMemo(() => {
     if (!viewer) return [] as DocumentViewerRecord[];
 
-    const teamUserIds = new Set(viewer.reportIds.map(String));
+    const managerDepartmentId = currentUserDepartmentId || managerAssignmentDepartmentId;
+    const managerDepartmentName = currentUserDepartmentName || departments.find((department) => String(department.id) === managerAssignmentDepartmentId)?.name || "";
+    const selectedDepartmentNameKey = normalizeDepartmentKey(
+      departments.find((department) => String(department.id) === departmentFilterId)?.name || ""
+    );
+
     const departmentUserIds = new Set(
       users
-        .filter((candidate) => String(candidate.department_id || "") === departmentFilterId)
+        .filter((candidate) => {
+          const candidateDepartmentId = String(candidate.department_id || "");
+          const candidateDepartmentNameKey = normalizeDepartmentKey(candidate.department_name);
+          if (departmentFilterId && candidateDepartmentId === departmentFilterId) {
+            return true;
+          }
+          return Boolean(selectedDepartmentNameKey) && Boolean(candidateDepartmentNameKey) && candidateDepartmentNameKey === selectedDepartmentNameKey;
+        })
         .map((candidate) => candidate.id)
     );
 
     return documents.filter((document) => {
-      if (!canViewDocument(document, viewer)) return false;
+      if (!canViewDocument(document, viewer, users)) return false;
 
       const status = getDocumentStatus(document);
       if (status === "archived") return false;
       if (statusFilter !== "all" && status !== statusFilter) return false;
 
-      const assignedUserIds = getEffectiveAssignedUserIds(document);
+      const assignedUserIds = getEffectiveAssignedUserIds(document, users);
       const signedUserIds = (document.signed_user_ids || []).map(String);
 
       if (viewer.role === "EMPLOYEE") {
@@ -342,9 +304,10 @@ export function DocumentsWorkspace() {
 
       if (viewer.role === "MANAGER") {
         if (scopeFilter === "team") {
-          if (status === "pending") return assignedUserIds.some((id) => teamUserIds.has(id));
-          if (status === "signed") return signedUserIds.some((id) => teamUserIds.has(id));
-          return false;
+          return isDocumentInManagerTeamScope(document, viewer, users, {
+            id: managerDepartmentId,
+            name: managerDepartmentName
+          });
         }
 
         if (status === "pending") return assignedUserIds.includes(viewer.id);
@@ -365,7 +328,19 @@ export function DocumentsWorkspace() {
       if (status === "signed") return signedUserIds.includes(viewer.id);
       return false;
     });
-  }, [departmentFilterId, documents, scopeFilter, statusFilter, user?.id, users, viewer]);
+  }, [
+    assignments,
+    currentUserDepartmentId,
+    currentUserDepartmentName,
+    departmentFilterId,
+    departments,
+    documents,
+    managerAssignmentDepartmentId,
+    scopeFilter,
+    statusFilter,
+    users,
+    viewer
+  ]);
 
   const filteredDocuments = useMemo(() => {
     const normalizedQuery = query.toLowerCase();
@@ -526,7 +501,7 @@ export function DocumentsWorkspace() {
         {[
           { label: "Active Documents", value: activeDocuments.length, icon: FolderUp, color: "blue" },
           { label: "Needs Signature", value: activeDocumentsRequiringSignature.length, icon: FileSignature, color: "amber" },
-          { label: "Assigned Users", value: activeDocuments.reduce((count, document) => count + getEffectiveAssignedUserIds(document).length, 0), icon: Users, color: "green" }
+          { label: "Assigned Users", value: activeDocuments.reduce((count, document) => count + getEffectiveAssignedUserIds(document, users).length, 0), icon: Users, color: "green" }
         ].map((stat) => (
           <div key={stat.label} className={`legacy-stat-card ${stat.color}`}>
             <div className="legacy-stat-icon"><stat.icon className="h-5 w-5" /></div>
@@ -624,7 +599,7 @@ export function DocumentsWorkspace() {
               </thead>
               <tbody>
                 {filteredDocuments.map((document) => {
-                  const canOpen = canOpenDocument(document, viewer);
+                  const canOpen = canOpenDocument(document, viewer, users);
                   const status = getDocumentStatus(document);
                   return (
                     <tr

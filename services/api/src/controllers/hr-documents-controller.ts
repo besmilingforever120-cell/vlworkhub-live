@@ -117,6 +117,13 @@ function dedupeUsers(values: OrganizationUser[]) {
   });
 }
 
+function normalizeDepartmentKey(value: string | null | undefined) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+}
+
 function getSharePointFileUrl(fileName: string) {
   return `https://sharepoint.vlworkhub.local/sites/hr/Shared%20Documents/${encodeURIComponent(fileName)}`;
 }
@@ -1404,7 +1411,11 @@ function canViewDocument(row: DocumentRecord, context: Awaited<ReturnType<typeof
       return true;
     }
 
-    return assignment.departmentNames.some((departmentName) => context.visibleDepartmentNames.includes(departmentName));
+    const visibleDepartmentNameKeys = new Set((context.visibleDepartmentNames || []).map((name) => normalizeDepartmentKey(name)));
+    return assignment.departmentNames.some((departmentName) => {
+      const key = normalizeDepartmentKey(departmentName);
+      return Boolean(key) && visibleDepartmentNameKeys.has(key);
+    });
   }
 
   return assignment.effectiveUserIds.includes(context.userId);
