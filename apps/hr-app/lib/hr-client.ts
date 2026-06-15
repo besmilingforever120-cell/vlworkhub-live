@@ -383,6 +383,71 @@ export async function getHrDocuments() {
   return request<{ items: HrDocumentRecord[] }>("/hr/documents");
 }
 
+export type EmployeeAuditDocument = {
+  id: number;
+  file_name: string;
+  category: string;
+  category_other: string | null;
+  due_date: string | null;
+  status: "pending" | "signed" | "archived";
+  signed_at: string | null;
+  requires_signature: boolean;
+  assigned_department_names: string[];
+};
+
+export type EmployeeAuditTask = {
+  id: number;
+  title: string;
+  description: string | null;
+  due_date: string | null;
+  status: string;
+  priority: string | null;
+  completion_status: string | null;
+  completed_on: string | null;
+  is_archived: boolean;
+};
+
+export type EmployeeAuditTraining = {
+  id: number;
+  title: string;
+  category: string | null;
+  due_date: string | null;
+  status: string;
+  is_completed: boolean;
+  completed_on: string | null;
+  progress_percent: number;
+};
+
+export type EmployeeAuditSurvey = {
+  id: number;
+  title: string;
+  due_date: string | null;
+  status: string;
+  is_completed: boolean;
+  completed_on: string | null;
+};
+
+export type EmployeeAuditEmployee = {
+  user_id: string;
+  display_name: string;
+  email: string;
+  department: string;
+  hr_role: string;
+  reports_to: string;
+};
+
+export type EmployeeAuditPayload = {
+  employee: EmployeeAuditEmployee;
+  documents: { pending: EmployeeAuditDocument[]; signed: EmployeeAuditDocument[] };
+  tasks: { pending: EmployeeAuditTask[]; completed: EmployeeAuditTask[] };
+  training: { pending: EmployeeAuditTraining[]; completed: EmployeeAuditTraining[] };
+  surveys: { pending: EmployeeAuditSurvey[]; completed: EmployeeAuditSurvey[] };
+};
+
+export async function getEmployeeAudit(userId: string) {
+  return request<EmployeeAuditPayload>(`/hr/admin/employees/${encodeURIComponent(userId)}/audit`);
+}
+
 export async function getHrOnboardingFiles() {
   return request<{ items: HrOnboardingFileRecord[] }>("/hr/onboarding/files");
 }

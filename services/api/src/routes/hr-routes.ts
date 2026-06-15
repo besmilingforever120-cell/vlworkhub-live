@@ -13,6 +13,7 @@ import {
   createHrDocument,
   deleteHrDocument,
   downloadHrDocument,
+  getAdminEmployeeAudit,
   listAdminHrOnboardingFiles,
   listHrDocuments,
   listHrOnboardingFiles,
@@ -48,6 +49,7 @@ hrRouter.get("/documents/:id/download", downloadHrDocument);
 hrRouter.put("/documents/:id", updateHrDocument);
 hrRouter.delete("/documents/:id", deleteHrDocument);
 hrRouter.post("/documents/:id/complete", completeHrDocument);
+hrRouter.get("/admin/employees/:userId/audit", getAdminEmployeeAudit);
 hrRouter.get("/user-roles", listHrAssignments);
 hrRouter.post("/user-roles", createHrAssignment);
 hrRouter.get("/roles", listHrAssignments);

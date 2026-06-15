@@ -1095,6 +1095,11 @@ textarea {
 
 .legacy-secondary-btn:hover { background: #f8fafc; border-color: #cbd5e1; }
 
+.hr-audit-back-button {
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
 .legacy-icon-btn {
   display: inline-flex;
   align-items: center;
@@ -1919,6 +1924,148 @@ textarea {
 }
 
 .legacy-status.archived {
+  background: #e2e8f0;
+  color: #475569;
+}
+
+/* ── Employee HR Audit ────────────────────────────────────────────────── */
+
+.hr-audit-profile-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 20px;
+  background: #fff;
+  border: 1px solid var(--hr-border);
+  border-radius: 10px;
+  margin-bottom: 20px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.hr-audit-profile-card__avatar {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: var(--hr-primary);
+  color: #fff;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+
+.hr-audit-profile-card__body {
+  flex: 1;
+  min-width: 0;
+}
+
+.hr-audit-profile-card__name {
+  margin: 0 0 4px;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--hr-text);
+}
+
+.hr-audit-profile-card__email {
+  margin: 0 0 10px;
+  font-size: 13px;
+  color: var(--hr-text-muted);
+}
+
+.hr-audit-profile-card__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 13px;
+  color: var(--hr-text-muted);
+}
+
+.hr-audit-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.hr-audit-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.hr-audit-section {
+  border: 1px solid var(--hr-border);
+  border-radius: 10px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.hr-audit-section__toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--hr-text);
+  transition: background 150ms ease;
+}
+
+.hr-audit-section__toggle:hover {
+  background: #f8fafc;
+}
+
+.hr-audit-section__icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: var(--hr-primary);
+  color: #fff;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+
+.hr-audit-section__title {
+  flex: 1;
+}
+
+.hr-audit-section__counts {
+  display: flex;
+  gap: 6px;
+}
+
+.hr-audit-section__body {
+  border-top: 1px solid var(--hr-border);
+}
+
+.hr-audit-chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 3px 9px;
+  font-size: 11px;
+  font-weight: 600;
+  background: #f1f5f9;
+  color: #64748b;
+  white-space: nowrap;
+}
+
+.hr-audit-chip--pending {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.hr-audit-chip--signed {
+  background: #dcfce7;
+  color: #14532d;
+}
+
+.hr-audit-chip--archived {
   background: #e2e8f0;
   color: #475569;
 }

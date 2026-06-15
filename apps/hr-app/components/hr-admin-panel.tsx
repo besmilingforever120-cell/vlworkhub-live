@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import type { Route } from "next";
 import { useEffect, useMemo, useState } from "react";
 import { Archive, Briefcase, CheckSquare, ClipboardList, Edit, FolderOpen, Plus, Shield, Trash2, UserCog, Users, X } from "lucide-react";
 import {
@@ -338,7 +339,13 @@ export function HrAdminPanel() {
               {filteredAssignments.map((assignment) => (
                 <tr key={assignment.id} className="border-t border-gray-200">
                   <td className="px-3 py-4">
-                    <div className="text-sm font-semibold text-gray-900">{assignment.employeeEmail || assignment.employeeName}</div>
+                    <Link
+                      href={`/admin/employees/${encodeURIComponent(assignment.userId)}` as Route}
+                      className="text-sm font-semibold text-blue-700 hover:underline"
+                      title={`View HR Audit for ${assignment.employeeName}`}
+                    >
+                      {assignment.employeeEmail || assignment.employeeName}
+                    </Link>
                     <div className="text-xs text-gray-500">{assignment.employeeName}</div>
                   </td>
                   <td className="px-3 py-4">
