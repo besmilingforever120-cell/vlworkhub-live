@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { platformLinks } from "@vlworkhub/config";
+import { AdminEmployeeAudit } from "../../../components/admin-employee-audit";
 
 async function getSession() {
   const cookieStore = await cookies();
@@ -8,6 +9,7 @@ async function getSession() {
     .getAll()
     .map((c) => `${c.name}=${c.value}`)
     .join("; ");
+
   const response = await fetch(`${platformLinks.api}/auth/me`, {
     headers: { cookie: cookieHeader },
     cache: "no-store"
@@ -21,22 +23,30 @@ async function getSession() {
   return data.user as { role?: string; platformRole?: string } | null;
 }
 
-export default async function AdminEmployeeAuditPage({
+export default async function EmployeeProfileAuditPage({
   params
 }: {
   params: Promise<{ userId: string }>;
 }) {
-  const user = await getSession();
+  const { userId } = await params;
+  const session = await getSession();
 
-  if (!user) {
+  if (!session) {
     redirect(`${platformLinks.root}/login`);
   }
 
-  const platformRole = String(user.platformRole || user.role || "USER").toUpperCase();
-  if (platformRole !== "SUPER_ADMIN" && platformRole !== "ADMIN" && platformRole !== "IT_ADMIN") {
-    redirect("/dashboard");
+  if (!userId) {
+    notFound();
   }
 
-  const { userId } = await params;
-  redirect(`/employees/${encodeURIComponent(userId)}`);
+  const platformRole = String(session.platformRole || session.role || "USER").toUpperCase();
+  const isAdmin = platformRole === "SUPER_ADMIN" || platformRole === "ADMIN" || platformRole === "IT_ADMIN";
+
+  return (
+    <AdminEmployeeAudit
+      userId={userId}
+      backHref={"/employees"}
+      backLabel={isAdmin ? "Back to Employees" : "Back"}
+    />
+  );
 }

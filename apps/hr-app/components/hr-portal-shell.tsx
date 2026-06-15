@@ -16,6 +16,7 @@ import {
   PanelLeftOpen,
   Shield,
   SquareCheckBig,
+  Users,
   UserPlus
 } from "lucide-react";
 import type { SessionUser } from "@vlworkhub/types";
@@ -38,6 +39,7 @@ const navItems: ShellItem[] = [
   { label: "Training", href: "/training", icon: BookOpen },
   { label: "Surveys", href: "/surveys", icon: ClipboardList },
   { label: "Documents", href: "/documents", icon: FileText },
+  { label: "Employees", href: "/employees", icon: Users },
   { label: "Admin", href: "/admin", icon: Briefcase, adminOnly: true }
 ];
 
@@ -49,6 +51,7 @@ const pageTitles: Record<string, string> = {
   "/training": "Training",
   "/surveys": "Surveys",
   "/documents": "Documents",
+  "/employees": "Employees",
   "/admin": "Admin"
 };
 

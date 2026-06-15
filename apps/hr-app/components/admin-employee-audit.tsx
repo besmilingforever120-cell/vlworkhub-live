@@ -26,6 +26,10 @@ import {
 } from "../lib/hr-client";
 
 type Props = { userId: string };
+type BackLinkProps = {
+  backHref?: Route;
+  backLabel?: string;
+};
 
 type SectionId = "documents" | "tasks" | "training" | "surveys";
 
@@ -367,7 +371,7 @@ function SummaryCards({ data }: { data: EmployeeAuditPayload }) {
 
 // ── Main Component ─────────────────────────────────────────────────────────────
 
-export function AdminEmployeeAudit({ userId }: Props) {
+export function AdminEmployeeAudit({ userId, backHref = "/admin", backLabel = "Back to Admin" }: Props & BackLinkProps) {
   const [data, setData] = useState<EmployeeAuditPayload | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -403,9 +407,9 @@ export function AdminEmployeeAudit({ userId }: Props) {
   return (
     <div className="legacy-portal">
       <div className="mb-4">
-        <Link href={"/admin" as Route} className="legacy-secondary-btn hr-audit-back-button">
+        <Link href={backHref} className="legacy-secondary-btn hr-audit-back-button">
           <ArrowLeft className="h-4 w-4" />
-          <span>Back to Admin</span>
+          <span>{backLabel}</span>
         </Link>
       </div>
 

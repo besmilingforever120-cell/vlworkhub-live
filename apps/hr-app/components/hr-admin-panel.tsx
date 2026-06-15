@@ -340,7 +340,7 @@ export function HrAdminPanel() {
                 <tr key={assignment.id} className="border-t border-gray-200">
                   <td className="px-3 py-4">
                     <Link
-                      href={`/admin/employees/${encodeURIComponent(assignment.userId)}` as Route}
+                      href={`/employees/${encodeURIComponent(assignment.userId)}` as Route}
                       className="text-sm font-semibold text-blue-700 hover:underline"
                       title={`View HR Audit for ${assignment.employeeName}`}
                     >

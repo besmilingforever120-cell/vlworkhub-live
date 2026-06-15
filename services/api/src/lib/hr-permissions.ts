@@ -14,11 +14,29 @@ export type HrPermissionContext = {
   visibleDepartmentNames: string[];
 };
 
+export type VisibleHrEmployee = {
+  userId: string;
+  displayName: string;
+  email: string;
+  departmentId: string | null;
+  departmentName: string | null;
+  hrRole: "ADMIN" | "MANAGER" | "EMPLOYEE";
+  reportsToUserId: string | null;
+  reportsToName: string;
+};
+
 function splitNames(value: string | number | null | undefined) {
   return String(value ?? "")
     .split(",")
     .map((part) => part.trim())
     .filter(Boolean);
+}
+
+export function normalizeDepartmentKey(value: string | null | undefined) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
 }
 
 function isPublishedStatus(value: string | number | null | undefined) {
@@ -201,6 +219,99 @@ export async function getHrPermissionContext(userId: string, organizationId: str
     userDepartmentName,
     visibleDepartmentNames: userDepartmentName ? [userDepartmentName] : []
   } satisfies HrPermissionContext;
+}
+
+async function listOrganizationEmployeesForVisibility(organizationId: string) {
+  const result = await pool.query(
+    `SELECT
+       u.id::text AS user_id,
+       TRIM(COALESCE(u.first_name, '') || ' ' || COALESCE(u.last_name, '')) AS display_name,
+       u.email,
+       u.department_id::text AS department_id,
+       d.name AS department_name,
+       UPPER(COALESCE(hur.role, 'EMPLOYEE')) AS hr_role,
+       NULLIF(hur.department_id, '') AS reports_to_user_id,
+       COALESCE(NULLIF(TRIM(m.first_name || ' ' || m.last_name), ''), '') AS reports_to_name
+     FROM users u
+     LEFT JOIN departments d ON d.id = u.department_id
+     LEFT JOIN hr_user_roles hur
+       ON hur.organization_id = u.organization_id
+      AND hur.user_id = u.id
+     LEFT JOIN users m
+       ON m.organization_id = u.organization_id
+      AND m.id::text = NULLIF(hur.department_id, '')
+     WHERE u.organization_id = $1
+       AND u.status = 'active'
+     ORDER BY u.first_name ASC, u.last_name ASC, u.email ASC`,
+    [organizationId]
+  );
+
+  return result.rows.map((row) => ({
+    userId: String(row.user_id),
+    displayName: String(row.display_name || row.email || row.user_id).trim(),
+    email: String(row.email || ""),
+    departmentId: row.department_id ? String(row.department_id) : null,
+    departmentName: row.department_name ? String(row.department_name) : null,
+    hrRole: (String(row.hr_role || "EMPLOYEE").toUpperCase() as VisibleHrEmployee["hrRole"]),
+    reportsToUserId: row.reports_to_user_id ? String(row.reports_to_user_id) : null,
+    reportsToName: String(row.reports_to_name || "")
+  })) as VisibleHrEmployee[];
+}
+
+export async function listVisibleHrEmployees(params: {
+  userId: string;
+  organizationId: string;
+  platformRole?: string;
+  fullName?: string;
+}) {
+  const { userId, organizationId, platformRole, fullName } = params;
+  const [context, employees] = await Promise.all([
+    getHrPermissionContext(userId, organizationId, platformRole, fullName),
+    listOrganizationEmployeesForVisibility(organizationId)
+  ]);
+
+  if (context.role === "admin") {
+    return employees;
+  }
+
+  if (context.role === "employee") {
+    return employees.filter((employee) => employee.userId === userId);
+  }
+
+  const usersById = new Map(employees.map((employee) => [employee.userId, employee]));
+  const manager = usersById.get(userId) || null;
+  const managerDepartmentId = String(manager?.departmentId || "").trim();
+  const managerDepartmentNameKey = normalizeDepartmentKey(manager?.departmentName || context.userDepartmentName || null);
+  const reportIdSet = new Set(context.visibleUserIds.map(String));
+
+  return employees.filter((employee) => {
+    if (employee.userId === userId) {
+      return true;
+    }
+
+    if (reportIdSet.has(String(employee.userId))) {
+      return true;
+    }
+
+    const employeeDepartmentId = String(employee.departmentId || "").trim();
+    if (managerDepartmentId && employeeDepartmentId === managerDepartmentId) {
+      return true;
+    }
+
+    const employeeDepartmentNameKey = normalizeDepartmentKey(employee.departmentName);
+    return Boolean(managerDepartmentNameKey) && Boolean(employeeDepartmentNameKey) && managerDepartmentNameKey === employeeDepartmentNameKey;
+  });
+}
+
+export async function canViewHrEmployeeProfile(params: {
+  userId: string;
+  organizationId: string;
+  platformRole?: string;
+  fullName?: string;
+  targetUserId: string;
+}) {
+  const visibleEmployees = await listVisibleHrEmployees(params);
+  return visibleEmployees.some((employee) => employee.userId === params.targetUserId);
 }
 
 export function filterHrResourceRows(resourceName: string, rows: Array<Record<string, string | number | null>>, context: HrPermissionContext) {

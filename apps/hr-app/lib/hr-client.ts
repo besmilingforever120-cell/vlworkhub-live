@@ -444,8 +444,23 @@ export type EmployeeAuditPayload = {
   surveys: { pending: EmployeeAuditSurvey[]; completed: EmployeeAuditSurvey[] };
 };
 
+export type HrVisibleEmployee = {
+  user_id: string;
+  display_name: string;
+  email: string;
+  department_id: string | null;
+  department: string;
+  hr_role: "ADMIN" | "MANAGER" | "EMPLOYEE";
+  reports_to_user_id: string | null;
+  reports_to: string;
+};
+
+export async function getVisibleEmployees() {
+  return request<{ employees: HrVisibleEmployee[] }>("/hr/employees");
+}
+
 export async function getEmployeeAudit(userId: string) {
-  return request<EmployeeAuditPayload>(`/hr/admin/employees/${encodeURIComponent(userId)}/audit`);
+  return request<EmployeeAuditPayload>(`/hr/employees/${encodeURIComponent(userId)}/audit`);
 }
 
 export async function getHrOnboardingFiles() {

@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { pool } from "../config/db";
 import type { AuthenticatedRequest } from "../middleware/auth";
-import { getHrPermissionContext } from "../lib/hr-permissions";
+import { getHrPermissionContext, listVisibleHrEmployees, type VisibleHrEmployee } from "../lib/hr-permissions";
 import { sendAssignmentNotifications } from "../services/assignment-email-service";
 
 type DocumentRecord = Record<string, string | number | boolean | string[] | null>;
@@ -2624,6 +2624,329 @@ export async function downloadHrDocument(req: AuthenticatedRequest, res: Respons
 
 // ─── Admin Employee Audit Endpoint ───────────────────────────────────────────
 
+async function buildEmployeeAuditPayload(params: {
+  organizationId: string;
+  targetUserId: string;
+  employee: VisibleHrEmployee;
+}) {
+  const { organizationId, targetUserId, employee } = params;
+  const targetName = String(employee.displayName || "").trim();
+
+  const [allDocRows, orgUsers] = await Promise.all([
+    getDocumentRows(organizationId),
+    listOrganizationUsers(organizationId)
+  ]);
+
+  type AuditDocument = {
+    id: number;
+    file_name: string;
+    category: string;
+    category_other: string | null;
+    due_date: string | null;
+    status: string;
+    signed_at: string | null;
+    requires_signature: boolean;
+    assigned_department_names: string[];
+  };
+
+  const docsForUser: AuditDocument[] = [];
+  for (const row of allDocRows) {
+    const assignment = resolveEffectiveAssignees(row, orgUsers);
+    if (!assignment.effectiveUserIds.includes(targetUserId)) continue;
+    const signedUserIds = Array.isArray(row.signed_user_ids) ? row.signed_user_ids.map(String) : [];
+    const isSigned = signedUserIds.includes(targetUserId);
+    const rawStatus = asString(row.status).toLowerCase();
+    const status = rawStatus === "archived" ? "archived" : isSigned ? "signed" : "pending";
+    const docSignatureResult = await pool.query(
+      `SELECT signed_at::text AS signed_at FROM document_signatures WHERE document_id = $1 AND user_id = $2 ORDER BY id DESC LIMIT 1`,
+      [Number(row.id), targetUserId]
+    );
+    const signedAt = docSignatureResult.rows[0]?.signed_at ? String(docSignatureResult.rows[0].signed_at) : null;
+    docsForUser.push({
+      id: Number(row.id),
+      file_name: asString(row.file_name),
+      category: asString(row.category),
+      category_other: asNullableString(row.category_other),
+      due_date: asNullableString(row.due_date),
+      status,
+      signed_at: signedAt,
+      requires_signature: Boolean(row.requires_signature),
+      assigned_department_names: Array.isArray(row.assigned_department_names) ? row.assigned_department_names.map(String) : []
+    });
+  }
+
+  const pendingDocs = docsForUser.filter((d) => d.status === "pending");
+  const signedDocs = docsForUser.filter((d) => d.status === "signed");
+  const archivedDocs = docsForUser.filter((d) => d.status === "archived");
+
+  const tasksResult = await pool.query(
+    `SELECT
+       t.id,
+       t.title,
+       t.description,
+       t.due_date,
+       t.status,
+       t.priority,
+       t.assigned_to,
+       COALESCE(t.archived, false) AS archived,
+       tc.status AS completion_status,
+       tc.completed_at::text AS completed_on
+     FROM tasks t
+     LEFT JOIN task_completion tc ON tc.task_id = t.id AND tc.user_id = $2
+     WHERE t.organization_id = $1
+       AND (
+         t.assigned_to ILIKE '%' || $3 || '%'
+         OR EXISTS (
+           SELECT 1 FROM task_assignments ta
+           WHERE ta.task_id = t.id
+             AND (ta.user_id = $2::text OR ta.department = 'All Staff')
+         )
+       )
+     ORDER BY t.id DESC`,
+    [organizationId, targetUserId, targetName]
+  );
+
+  type AuditTask = {
+    id: number;
+    title: string;
+    description: string | null;
+    due_date: string | null;
+    status: string;
+    priority: string | null;
+    completion_status: string | null;
+    completed_on: string | null;
+    is_archived: boolean;
+  };
+
+  const allTasks: AuditTask[] = tasksResult.rows.map((row) => ({
+    id: Number(row.id),
+    title: asString(row.title) || "Task",
+    description: asNullableString(row.description),
+    due_date: asNullableString(row.due_date),
+    status: asString(row.status) || "Pending",
+    priority: asNullableString(row.priority),
+    completion_status: asNullableString(row.completion_status),
+    completed_on: asNullableString(row.completed_on),
+    is_archived: Boolean(row.archived)
+  }));
+
+  const pendingTasks = allTasks.filter((t) => {
+    const cs = (t.completion_status || "").toUpperCase();
+    return !t.is_archived && cs !== "COMPLETED";
+  });
+  const completedTasks = allTasks.filter((t) => {
+    const cs = (t.completion_status || "").toUpperCase();
+    return t.is_archived || cs === "COMPLETED";
+  });
+
+  type AuditTraining = {
+    id: number;
+    title: string;
+    category: string | null;
+    due_date: string | null;
+    status: string;
+    is_completed: boolean;
+    completed_on: string | null;
+    progress_percent: number;
+  };
+
+  let allTraining: AuditTraining[] = [];
+  try {
+    const trainingResult = await pool.query(
+      `SELECT
+         ta.id,
+         COALESCE(tr.training_name, ta.title, 'Training') AS title,
+         ta.due_date,
+         ta.status,
+         ta.assignee_name,
+         NULL::text AS category,
+         tc.progress_percent,
+         tc.completed_on::text AS completed_on
+       FROM training_assignments ta
+       LEFT JOIN training tr ON tr.id = ta.training_id
+       LEFT JOIN training_completions tc ON tc.assignment_id = ta.id AND tc.user_name = $2
+       WHERE ta.organization_id = $1
+         AND (
+           ta.assignee_name ILIKE '%' || $2 || '%'
+           OR ta.assignee_name ILIKE '%All Staff%'
+         )
+       ORDER BY ta.id DESC`,
+      [organizationId, targetName]
+    );
+
+    allTraining = trainingResult.rows.map((row) => {
+      const progress = Number(row.progress_percent || 0);
+      const completedOn = asNullableString(row.completed_on);
+      const isCompleted = progress >= 100 || Boolean(completedOn);
+      return {
+        id: Number(row.id),
+        title: asString(row.title) || "Training",
+        category: asNullableString(row.category),
+        due_date: asNullableString(row.due_date),
+        status: asString(row.status) || "Assigned",
+        is_completed: isCompleted,
+        completed_on: completedOn,
+        progress_percent: progress
+      };
+    });
+  } catch (trainingError) {
+    console.warn("[HR Audit] Training section unavailable; returning empty arrays", trainingError);
+    allTraining = [];
+  }
+
+  const pendingTraining = allTraining.filter((t) => !t.is_completed && asString(t.status).toLowerCase() !== "archived");
+  const completedTraining = allTraining.filter((t) => t.is_completed || asString(t.status).toLowerCase() === "archived");
+
+  const surveysResult = await pool.query(
+    `SELECT
+       sa.id,
+       sa.title,
+       sa.due_date,
+       sa.status,
+       sa.user_id,
+       sa.department_id,
+       COALESCE(sa.all_staff, false) AS all_staff,
+       sc.completed_on::text AS completed_on
+     FROM survey_assignments sa
+     INNER JOIN surveys s ON s.id = sa.survey_id AND s.organization_id = sa.organization_id
+     LEFT JOIN survey_completions sc ON sc.assignment_id = sa.id AND sc.user_id = $2
+     WHERE sa.organization_id = $1
+       AND (
+         sa.user_id = $2
+         OR COALESCE(sa.all_staff, false) = true
+         OR EXISTS (
+           SELECT 1 FROM users u2
+           WHERE u2.id = $2
+             AND u2.department_id = sa.department_id
+             AND u2.organization_id = sa.organization_id
+         )
+       )
+     ORDER BY sa.id DESC`,
+    [organizationId, targetUserId]
+  );
+
+  type AuditSurvey = {
+    id: number;
+    title: string;
+    due_date: string | null;
+    status: string;
+    is_completed: boolean;
+    completed_on: string | null;
+  };
+
+  const allSurveys: AuditSurvey[] = surveysResult.rows.map((row) => {
+    const completedOn = asNullableString(row.completed_on);
+    return {
+      id: Number(row.id),
+      title: asString(row.title) || "Survey",
+      due_date: asNullableString(row.due_date),
+      status: asString(row.status) || "Assigned",
+      is_completed: Boolean(completedOn),
+      completed_on: completedOn
+    };
+  });
+
+  const pendingSurveys = allSurveys.filter((survey) => !survey.is_completed && asString(survey.status).toLowerCase() !== "archived");
+  const completedSurveys = allSurveys.filter((survey) => survey.is_completed || asString(survey.status).toLowerCase() === "archived");
+
+  return {
+    employee: {
+      user_id: employee.userId,
+      display_name: employee.displayName,
+      email: employee.email,
+      department: employee.departmentName || "",
+      hr_role: employee.hrRole,
+      reports_to: employee.reportsToName || ""
+    },
+    documents: {
+      pending: pendingDocs,
+      signed: [...signedDocs, ...archivedDocs]
+    },
+    tasks: {
+      pending: pendingTasks,
+      completed: completedTasks
+    },
+    training: {
+      pending: pendingTraining,
+      completed: completedTraining
+    },
+    surveys: {
+      pending: pendingSurveys,
+      completed: completedSurveys
+    }
+  };
+}
+
+export async function listHrEmployees(req: AuthenticatedRequest, res: Response) {
+  try {
+    const userId = String(req.user?.user_id || "");
+    const organizationId = String(req.user?.organization_id || "");
+    const platformRole = String(req.user?.platform_role || req.user?.role || "USER");
+    const fullName = String(req.user?.full_name || "");
+
+    const employees = await listVisibleHrEmployees({
+      userId,
+      organizationId,
+      platformRole,
+      fullName
+    });
+
+    return res.json({
+      employees: employees.map((employee) => ({
+        user_id: employee.userId,
+        display_name: employee.displayName,
+        email: employee.email,
+        department_id: employee.departmentId,
+        department: employee.departmentName || "",
+        hr_role: employee.hrRole,
+        reports_to_user_id: employee.reportsToUserId,
+        reports_to: employee.reportsToName || ""
+      }))
+    });
+  } catch (error) {
+    console.error("API error in GET /hr/employees", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+}
+
+export async function getHrEmployeeAudit(req: AuthenticatedRequest, res: Response) {
+  try {
+    const userId = String(req.user?.user_id || "");
+    const organizationId = String(req.user?.organization_id || "");
+    const platformRole = String(req.user?.platform_role || req.user?.role || "USER");
+    const fullName = String(req.user?.full_name || "");
+    const targetUserId = asString(req.params.userId);
+
+    if (!targetUserId) {
+      return res.status(400).json({ message: "userId is required" });
+    }
+
+    const visibleEmployees = await listVisibleHrEmployees({
+      userId,
+      organizationId,
+      platformRole,
+      fullName
+    });
+
+    const targetEmployee = visibleEmployees.find((employee) => employee.userId === targetUserId);
+    if (!targetEmployee) {
+      const isAdmin = isAdminPlatformUser(req);
+      return res.status(isAdmin ? 404 : 403).json({ message: isAdmin ? "User not found" : "Forbidden" });
+    }
+
+    const payload = await buildEmployeeAuditPayload({
+      organizationId,
+      targetUserId,
+      employee: targetEmployee
+    });
+
+    return res.json(payload);
+  } catch (error) {
+    console.error("API error in GET /hr/employees/:userId/audit", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+}
+
 export async function getAdminEmployeeAudit(req: AuthenticatedRequest, res: Response) {
   try {
     if (!isAdminPlatformUser(req)) {
@@ -2637,279 +2960,25 @@ export async function getAdminEmployeeAudit(req: AuthenticatedRequest, res: Resp
       return res.status(400).json({ message: "userId is required" });
     }
 
-    // Resolve target employee info
-    const userResult = await pool.query(
-      `SELECT
-         u.id::text AS user_id,
-         TRIM(COALESCE(u.first_name, '') || ' ' || COALESCE(u.last_name, '')) AS display_name,
-         u.email,
-         COALESCE(d.name, '') AS department,
-         UPPER(COALESCE(r.role, '')) AS hr_role,
-         COALESCE(NULLIF(TRIM(m.first_name || ' ' || m.last_name), ''), '') AS reports_to
-       FROM users u
-       LEFT JOIN departments d ON d.id = u.department_id
-       LEFT JOIN hr_user_roles r ON r.user_id = u.id AND r.organization_id = u.organization_id
-       LEFT JOIN users m ON m.id::text = r.department_id
-       WHERE u.id = $1 AND u.organization_id = $2
-       LIMIT 1`,
-      [targetUserId, organizationId]
-    );
+    const visibleEmployees = await listVisibleHrEmployees({
+      userId: String(req.user?.user_id || ""),
+      organizationId,
+      platformRole: String(req.user?.platform_role || req.user?.role || "USER"),
+      fullName: String(req.user?.full_name || "")
+    });
+    const targetEmployee = visibleEmployees.find((employee) => employee.userId === targetUserId);
 
-    if (!userResult.rowCount) {
+    if (!targetEmployee) {
       return res.status(404).json({ message: "User not found" });
     }
 
-    const employee = userResult.rows[0] as {
-      user_id: string;
-      display_name: string;
-      email: string;
-      department: string;
-      hr_role: string;
-      reports_to: string;
-    };
-
-    const targetName = String(employee.display_name || "").trim();
-
-    // ── Documents ───────────────────────────────────────────────────────────
-    const [allDocRows, orgUsers] = await Promise.all([
-      getDocumentRows(organizationId),
-      listOrganizationUsers(organizationId)
-    ]);
-
-    type AuditDocument = {
-      id: number;
-      file_name: string;
-      category: string;
-      category_other: string | null;
-      due_date: string | null;
-      status: string;
-      signed_at: string | null;
-      requires_signature: boolean;
-      assigned_department_names: string[];
-    };
-
-    const docsForUser: AuditDocument[] = [];
-    for (const row of allDocRows) {
-      const assignment = resolveEffectiveAssignees(row, orgUsers);
-      if (!assignment.effectiveUserIds.includes(targetUserId)) continue;
-      const signedUserIds = Array.isArray(row.signed_user_ids) ? row.signed_user_ids.map(String) : [];
-      const isSigned = signedUserIds.includes(targetUserId);
-      const rawStatus = asString(row.status).toLowerCase();
-      const status = rawStatus === "archived" ? "archived" : isSigned ? "signed" : "pending";
-      const docSignatureResult = await pool.query(
-        `SELECT signed_at::text AS signed_at FROM document_signatures WHERE document_id = $1 AND user_id = $2 ORDER BY id DESC LIMIT 1`,
-        [Number(row.id), targetUserId]
-      );
-      const signedAt = docSignatureResult.rows[0]?.signed_at ? String(docSignatureResult.rows[0].signed_at) : null;
-      docsForUser.push({
-        id: Number(row.id),
-        file_name: asString(row.file_name),
-        category: asString(row.category),
-        category_other: asNullableString(row.category_other),
-        due_date: asNullableString(row.due_date),
-        status,
-        signed_at: signedAt,
-        requires_signature: Boolean(row.requires_signature),
-        assigned_department_names: Array.isArray(row.assigned_department_names) ? row.assigned_department_names.map(String) : []
-      });
-    }
-
-    const pendingDocs = docsForUser.filter((d) => d.status === "pending");
-    const signedDocs = docsForUser.filter((d) => d.status === "signed");
-    const archivedDocs = docsForUser.filter((d) => d.status === "archived");
-
-    // ── Tasks ───────────────────────────────────────────────────────────────
-    const tasksResult = await pool.query(
-      `SELECT
-         t.id,
-         t.title,
-         t.description,
-         t.due_date,
-         t.status,
-         t.priority,
-         t.assigned_to,
-         COALESCE(t.archived, false) AS archived,
-         tc.status AS completion_status,
-         tc.completed_at::text AS completed_on
-       FROM tasks t
-       LEFT JOIN task_completion tc ON tc.task_id = t.id AND tc.user_id = $2
-       WHERE t.organization_id = $1
-         AND (
-           t.assigned_to ILIKE '%' || $3 || '%'
-           OR EXISTS (
-             SELECT 1 FROM task_assignments ta
-             WHERE ta.task_id = t.id
-               AND (ta.user_id = $2::text OR ta.department = 'All Staff')
-           )
-         )
-       ORDER BY t.id DESC`,
-      [organizationId, targetUserId, targetName]
-    );
-
-    type AuditTask = {
-      id: number;
-      title: string;
-      description: string | null;
-      due_date: string | null;
-      status: string;
-      priority: string | null;
-      completion_status: string | null;
-      completed_on: string | null;
-      is_archived: boolean;
-    };
-
-    const allTasks: AuditTask[] = tasksResult.rows.map((row) => ({
-      id: Number(row.id),
-      title: asString(row.title) || "Task",
-      description: asNullableString(row.description),
-      due_date: asNullableString(row.due_date),
-      status: asString(row.status) || "Pending",
-      priority: asNullableString(row.priority),
-      completion_status: asNullableString(row.completion_status),
-      completed_on: asNullableString(row.completed_on),
-      is_archived: Boolean(row.archived)
-    }));
-
-    const pendingTasks = allTasks.filter((t) => {
-      const cs = (t.completion_status || "").toUpperCase();
-      return !t.is_archived && cs !== "COMPLETED";
-    });
-    const completedTasks = allTasks.filter((t) => {
-      const cs = (t.completion_status || "").toUpperCase();
-      return t.is_archived || cs === "COMPLETED";
+    const payload = await buildEmployeeAuditPayload({
+      organizationId,
+      targetUserId,
+      employee: targetEmployee
     });
 
-    // ── Training ────────────────────────────────────────────────────────────
-    type AuditTraining = {
-      id: number;
-      title: string;
-      category: string | null;
-      due_date: string | null;
-      status: string;
-      is_completed: boolean;
-      completed_on: string | null;
-      progress_percent: number;
-    };
-
-    let allTraining: AuditTraining[] = [];
-    try {
-      const trainingResult = await pool.query(
-        `SELECT
-           ta.id,
-           COALESCE(tr.training_name, ta.title, 'Training') AS title,
-           ta.due_date,
-           ta.status,
-           ta.assignee_name,
-           NULL::text AS category,
-           tc.progress_percent,
-           tc.completed_on::text AS completed_on
-         FROM training_assignments ta
-         LEFT JOIN training tr ON tr.id = ta.training_id
-         LEFT JOIN training_completions tc ON tc.assignment_id = ta.id AND tc.user_name = $2
-         WHERE ta.organization_id = $1
-           AND (
-             ta.assignee_name ILIKE '%' || $2 || '%'
-             OR ta.assignee_name ILIKE '%All Staff%'
-           )
-         ORDER BY ta.id DESC`,
-        [organizationId, targetName]
-      );
-
-      allTraining = trainingResult.rows.map((row) => {
-        const progress = Number(row.progress_percent || 0);
-        const completedOn = asNullableString(row.completed_on);
-        const isCompleted = progress >= 100 || Boolean(completedOn);
-        return {
-          id: Number(row.id),
-          title: asString(row.title) || "Training",
-          category: asNullableString(row.category),
-          due_date: asNullableString(row.due_date),
-          status: asString(row.status) || "Assigned",
-          is_completed: isCompleted,
-          completed_on: completedOn,
-          progress_percent: progress
-        };
-      });
-    } catch (trainingError) {
-      console.warn("[HR Audit] Training section unavailable; returning empty arrays", trainingError);
-      allTraining = [];
-    }
-
-    const pendingTraining = allTraining.filter((t) => !t.is_completed && asString(t.status).toLowerCase() !== "archived");
-    const completedTraining = allTraining.filter((t) => t.is_completed || asString(t.status).toLowerCase() === "archived");
-
-    // ── Surveys ─────────────────────────────────────────────────────────────
-    const surveysResult = await pool.query(
-      `SELECT
-         sa.id,
-         sa.title,
-         sa.due_date,
-         sa.status,
-         sa.user_id,
-         sa.department_id,
-         COALESCE(sa.all_staff, false) AS all_staff,
-         sc.completed_on::text AS completed_on
-       FROM survey_assignments sa
-       INNER JOIN surveys s ON s.id = sa.survey_id AND s.organization_id = sa.organization_id
-       LEFT JOIN survey_completions sc ON sc.assignment_id = sa.id AND sc.user_id = $2
-       WHERE sa.organization_id = $1
-         AND (
-           sa.user_id = $2
-           OR COALESCE(sa.all_staff, false) = true
-           OR EXISTS (
-             SELECT 1 FROM users u2
-             WHERE u2.id = $2
-               AND u2.department_id = sa.department_id
-               AND u2.organization_id = sa.organization_id
-           )
-         )
-       ORDER BY sa.id DESC`,
-      [organizationId, targetUserId]
-    );
-
-    type AuditSurvey = {
-      id: number;
-      title: string;
-      due_date: string | null;
-      status: string;
-      is_completed: boolean;
-      completed_on: string | null;
-    };
-
-    const allSurveys: AuditSurvey[] = surveysResult.rows.map((row) => {
-      const completedOn = asNullableString(row.completed_on);
-      return {
-        id: Number(row.id),
-        title: asString(row.title) || "Survey",
-        due_date: asNullableString(row.due_date),
-        status: asString(row.status) || "Assigned",
-        is_completed: Boolean(completedOn),
-        completed_on: completedOn
-      };
-    });
-
-    const pendingSurveys = allSurveys.filter((s) => !s.is_completed && asString(s.status).toLowerCase() !== "archived");
-    const completedSurveys = allSurveys.filter((s) => s.is_completed || asString(s.status).toLowerCase() === "archived");
-
-    return res.json({
-      employee,
-      documents: {
-        pending: pendingDocs,
-        signed: [...signedDocs, ...archivedDocs]
-      },
-      tasks: {
-        pending: pendingTasks,
-        completed: completedTasks
-      },
-      training: {
-        pending: pendingTraining,
-        completed: completedTraining
-      },
-      surveys: {
-        pending: pendingSurveys,
-        completed: completedSurveys
-      }
-    });
+    return res.json(payload);
   } catch (error) {
     console.error("API error in GET /hr/admin/employees/:userId/audit", error);
     return res.status(500).json({ error: "Internal server error" });
