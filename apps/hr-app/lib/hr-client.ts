@@ -463,6 +463,37 @@ export async function getEmployeeAudit(userId: string) {
   return request<EmployeeAuditPayload>(`/hr/employees/${encodeURIComponent(userId)}/audit`);
 }
 
+export type DepartmentAuditRow = {
+  user_id: string;
+  employee_name: string;
+  email: string;
+  hr_role: "ADMIN" | "MANAGER" | "EMPLOYEE";
+  department: string | null;
+  reports_to: string | null;
+  counts: {
+    tasks: { pending: number; completed: number };
+    training: { pending: number; completed: number };
+    surveys: { pending: number; completed: number };
+    documents: { pending: number; completed: number };
+  };
+};
+
+export type DepartmentAuditResponse = {
+  departments: string[];
+  selected_department: string | null;
+  rows: DepartmentAuditRow[];
+};
+
+export async function getAdminDepartmentAudit(department?: string) {
+  const params = new URLSearchParams();
+  const normalizedDepartment = String(department || "").trim();
+  if (normalizedDepartment) {
+    params.set("department", normalizedDepartment);
+  }
+  const suffix = params.toString() ? `?${params.toString()}` : "";
+  return request<DepartmentAuditResponse>(`/hr/admin/department-audit${suffix}`);
+}
+
 export async function getHrOnboardingFiles() {
   return request<{ items: HrOnboardingFileRecord[] }>("/hr/onboarding/files");
 }

@@ -2984,3 +2984,106 @@ export async function getAdminEmployeeAudit(req: AuthenticatedRequest, res: Resp
     return res.status(500).json({ error: "Internal server error" });
   }
 }
+
+export async function getAdminDepartmentAudit(req: AuthenticatedRequest, res: Response) {
+  try {
+    if (!isAdminPlatformUser(req)) {
+      return res.status(403).json({ message: "Forbidden" });
+    }
+
+    const organizationId = String(req.user?.organization_id || "");
+    const requestedDepartment = asNullableString(req.query.department);
+
+    const visibleEmployees = await listVisibleHrEmployees({
+      userId: String(req.user?.user_id || ""),
+      organizationId,
+      platformRole: String(req.user?.platform_role || req.user?.role || "USER"),
+      fullName: String(req.user?.full_name || "")
+    });
+
+    const departmentsResult = await pool.query(
+      `SELECT name
+       FROM departments
+       WHERE organization_id = $1
+       ORDER BY name ASC`,
+      [organizationId]
+    );
+
+    const tableDepartments = departmentsResult.rows
+      .map((row) => asString(row.name))
+      .filter(Boolean);
+    const fallbackDepartments = Array.from(
+      new Set(
+        visibleEmployees
+          .map((employee) => asString(employee.departmentName))
+          .filter(Boolean)
+      )
+    ).sort((a, b) => a.localeCompare(b));
+    const departments = tableDepartments.length ? tableDepartments : fallbackDepartments;
+
+    const selectedDepartment = requestedDepartment
+      ? departments.find((department) => normalizeDepartmentKey(department) === normalizeDepartmentKey(requestedDepartment)) || null
+      : null;
+
+    const roleRank: Record<string, number> = {
+      ADMIN: 0,
+      MANAGER: 1,
+      EMPLOYEE: 2
+    };
+
+    const selectedEmployees = (selectedDepartment
+      ? visibleEmployees.filter((employee) => normalizeDepartmentKey(employee.departmentName) === normalizeDepartmentKey(selectedDepartment))
+      : []
+    ).sort((a, b) => {
+      const roleDiff = (roleRank[a.hrRole] ?? 9) - (roleRank[b.hrRole] ?? 9);
+      if (roleDiff !== 0) return roleDiff;
+      return a.displayName.localeCompare(b.displayName);
+    });
+
+    const rows = await Promise.all(
+      selectedEmployees.map(async (employee) => {
+        const payload = await buildEmployeeAuditPayload({
+          organizationId,
+          targetUserId: employee.userId,
+          employee
+        });
+
+        return {
+          user_id: employee.userId,
+          employee_name: employee.displayName,
+          email: employee.email,
+          hr_role: employee.hrRole,
+          department: employee.departmentName,
+          reports_to: employee.reportsToName || null,
+          counts: {
+            tasks: {
+              pending: payload.tasks.pending.length,
+              completed: payload.tasks.completed.length
+            },
+            training: {
+              pending: payload.training.pending.length,
+              completed: payload.training.completed.length
+            },
+            surveys: {
+              pending: payload.surveys.pending.length,
+              completed: payload.surveys.completed.length
+            },
+            documents: {
+              pending: payload.documents.pending.length,
+              completed: payload.documents.signed.length
+            }
+          }
+        };
+      })
+    );
+
+    return res.json({
+      departments,
+      selected_department: selectedDepartment,
+      rows
+    });
+  } catch (error) {
+    console.error("API error in GET /hr/admin/department-audit", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+}

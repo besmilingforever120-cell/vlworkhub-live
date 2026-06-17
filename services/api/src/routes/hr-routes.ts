@@ -12,6 +12,7 @@ import {
   completeHrDocument,
   createHrDocument,
   deleteHrDocument,
+  getAdminDepartmentAudit,
   downloadHrDocument,
   getAdminEmployeeAudit,
   getHrEmployeeAudit,
@@ -54,6 +55,7 @@ hrRouter.post("/documents/:id/complete", completeHrDocument);
 hrRouter.get("/employees", listHrEmployees);
 hrRouter.get("/employees/:userId/audit", getHrEmployeeAudit);
 hrRouter.get("/admin/employees/:userId/audit", getAdminEmployeeAudit);
+hrRouter.get("/admin/department-audit", getAdminDepartmentAudit);
 hrRouter.get("/user-roles", listHrAssignments);
 hrRouter.post("/user-roles", createHrAssignment);
 hrRouter.get("/roles", listHrAssignments);

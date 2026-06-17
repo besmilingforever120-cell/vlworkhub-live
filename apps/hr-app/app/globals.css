@@ -1153,6 +1153,31 @@ textarea {
 .legacy-stat-value { font-size: 24px; font-weight: 600; color: #1f2937; margin: 0 0 2px; line-height: 1; }
 .legacy-stat-title { font-size: 13px; color: #64748b; margin: 0; }
 
+.admin-action-cards {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.admin-action-cards .legacy-stat-card {
+  padding: 14px 12px;
+  gap: 10px;
+  min-width: 0;
+}
+
+.admin-action-cards .legacy-stat-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 7px;
+}
+
+.admin-action-card__label {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.3;
+  font-weight: 600;
+  color: #1f2937;
+}
+
 .legacy-toolbar {
   display: flex;
   flex-direction: column;
@@ -1575,6 +1600,7 @@ textarea {
 .legacy-doc-meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
 
 @media (max-width: 1200px) {
+  .admin-action-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .legacy-split,
   .legacy-doc-layout { grid-template-columns: 1fr; }
   .legacy-doc-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -1582,6 +1608,7 @@ textarea {
 
 @media (max-width: 768px) {
   .legacy-header { flex-direction: column; align-items: stretch; }
+  .admin-action-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .legacy-stats-grid { grid-template-columns: repeat(2, 1fr); }
   .legacy-grid-cards,
   .legacy-doc-grid { grid-template-columns: 1fr; }
@@ -1591,6 +1618,7 @@ textarea {
 }
 
 @media (max-width: 480px) {
+  .admin-action-cards { grid-template-columns: 1fr; }
   .legacy-stats-grid { grid-template-columns: 1fr; }
 }
 
@@ -2068,4 +2096,86 @@ textarea {
 .hr-audit-chip--archived {
   background: #e2e8f0;
   color: #475569;
+}
+
+.department-audit-table-wrap {
+  overflow-x: auto;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  background: #ffffff;
+}
+
+.department-audit-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  table-layout: fixed;
+}
+
+.department-audit-table__head {
+  background: #f1f5f9;
+}
+
+.department-audit-table__head .department-audit-table__cell {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: #475569;
+  font-weight: 700;
+  text-transform: uppercase;
+  border-bottom: 1px solid #dbe4ee;
+  white-space: normal;
+  line-height: 1.25;
+  word-break: break-word;
+}
+
+.department-audit-table__row:nth-child(odd) {
+  background: #ffffff;
+}
+
+.department-audit-table__row:nth-child(even) {
+  background: #f8fafc;
+}
+
+.department-audit-table__row:hover {
+  background: #eef2ff;
+}
+
+.department-audit-table__cell {
+  padding: 12px 10px;
+  vertical-align: middle;
+  border-bottom: 1px solid #e5e7eb;
+  white-space: normal;
+}
+
+.department-audit-table__cell--employee {
+  text-align: left;
+  width: 24%;
+}
+
+.department-audit-table__cell--number {
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  width: 8.5%;
+  white-space: nowrap;
+}
+
+.department-audit-table__employee-link {
+  color: #1d4ed8;
+  text-decoration: none;
+}
+
+.department-audit-table__employee-link:hover {
+  text-decoration: underline;
+}
+
+.department-audit-table__employee-email {
+  margin-top: 4px;
+  color: #64748b;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 900px) {
+  .department-audit-table__cell {
+    padding: 10px 12px;
+  }
 }
