@@ -201,9 +201,37 @@ function normalizeFileUrlForApi(fileUrl: string | null | undefined) {
   const apiBaseUrl = getApiBaseUrl();
   let next = normalized;
 
+  const coerceToPublicUploadsUrl = (value: string) => {
+    const trimmed = String(value || "").trim();
+    if (!trimmed) return trimmed;
+
+    const fromUploadsPath = (pathname: string) => {
+      const marker = "/uploads/";
+      const markerIndex = pathname.indexOf(marker);
+      if (markerIndex < 0) return null;
+      const suffix = pathname.slice(markerIndex + marker.length).replace(/^\/+/, "");
+      if (!suffix) return null;
+      return apiBaseUrl ? `${apiBaseUrl}/uploads/${suffix}` : `/uploads/${suffix}`;
+    };
+
+    try {
+      const parsed = new URL(trimmed);
+      return fromUploadsPath(parsed.pathname) || trimmed;
+    } catch {
+      return fromUploadsPath(trimmed) || trimmed;
+    }
+  };
+
   if (apiBaseUrl && /^https?:\/\/(localhost|127\.0\.0\.1):8080/i.test(next)) {
     next = next.replace(/^https?:\/\/(localhost|127\.0\.0\.1):8080/i, apiBaseUrl);
   }
+
+  if (apiBaseUrl && /^https?:\/\/(192\.168\.1\.(47|50))(?::8080)?/i.test(next)) {
+    next = next.replace(/^https?:\/\/(192\.168\.1\.(47|50))(?::8080)?/i, apiBaseUrl);
+  }
+
+  // Migrate any legacy absolute uploads URL (old host/IP/protocol) to the canonical public API base.
+  next = coerceToPublicUploadsUrl(next);
 
   if (next.startsWith("/uploads/")) {
     return apiBaseUrl ? `${apiBaseUrl}${next}` : next;
