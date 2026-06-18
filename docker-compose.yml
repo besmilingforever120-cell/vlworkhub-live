@@ -12,7 +12,7 @@ services:
     ports:
       - "0.0.0.0:${POSTGRES_PORT:-5432}:5432"
     volumes:
-      - vlworkhub_pg_data:/var/lib/postgresql/data
+      - /srv/vlworkhub/postgres-data:/var/lib/postgresql/data
 
   api:
     build:
@@ -120,5 +120,3 @@ services:
     depends_on:
       - api
 
-volumes:
-  vlworkhub_pg_data:
