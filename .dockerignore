@@ -10,3 +10,8 @@ node_modules
 **/*.pid
 apps/*/legacy-*/node_modules
 services/api/uploads
+
+# Local runtime data (not needed in image build context)
+postgres-data
+backups
+uploads

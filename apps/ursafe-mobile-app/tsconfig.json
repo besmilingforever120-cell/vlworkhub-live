@@ -1,9 +1,14 @@
 {
+  "extends": "expo/tsconfig.base.json",
   "compilerOptions": {
-    "target": "ES2022",
-    "module": "ESNext",
+    "typeRoots": [
+      "./node_modules/@types",
+      "../../node_modules/@types"
+    ],
     "lib": [
-      "ES2022"
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
     ],
     "jsx": "react-jsx",
     "strict": true,
@@ -13,13 +18,11 @@
     "skipLibCheck": true,
     "noEmit": true,
     "types": [
-      "react",
-      "react-native"
+      "node"
     ]
   },
   "include": [
     "**/*.ts",
     "**/*.tsx"
-  ],
-  "extends": "expo/tsconfig.base"
+  ]
 }

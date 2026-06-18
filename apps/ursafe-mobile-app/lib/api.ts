@@ -9,7 +9,7 @@ class ApiError extends Error {
   }
 }
 
-const DEFAULT_API_URL = "http://192.168.1.47:8080";
+const DEFAULT_API_URL = "https://api.vlworkhub.ca";
 
 function getApiUrlFromExpoHost() {
   const hostUri =

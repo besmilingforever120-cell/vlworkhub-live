@@ -3,7 +3,7 @@ export function resolveImageUrl(path?: string | null) {
 
   if (path.startsWith("http")) return path;
 
-  const apiBaseUrl = String(process.env.NEXT_PUBLIC_API_URL || "http://192.168.1.47:8080").replace(/\/+$/, "");
+  const apiBaseUrl = String(process.env.NEXT_PUBLIC_API_URL || "https://api.vlworkhub.ca").replace(/\/+$/, "");
 
   const url = `${apiBaseUrl}${path}`;
   console.log("IMAGE URL:", url);

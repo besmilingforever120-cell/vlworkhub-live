@@ -9,6 +9,7 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-vlworkhub}
       POSTGRES_USER: ${POSTGRES_USER:-vlworkhub}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    # Temporary rollback safety path. Restrict/remove direct host exposure after HTTPS login is verified via nginx.
     ports:
       - "0.0.0.0:${POSTGRES_PORT:-5432}:5432"
     volumes:
@@ -31,8 +32,10 @@ services:
       EMAIL_SETTINGS_ENCRYPTION_KEY: ${EMAIL_SETTINGS_ENCRYPTION_KEY}
       DATABASE_URL: postgres://${POSTGRES_USER:-vlworkhub}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@vlworkhub-postgres:5432/${POSTGRES_DB:-vlworkhub}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS}
-      TRUST_PROXY_HOPS: 1
+      TRUST_PROXY_HOPS: ${TRUST_PROXY_HOPS:-1}
+      COOKIE_DOMAIN: ${COOKIE_DOMAIN:-}
       ANNOUNCEMENTS_STORAGE_PATH: ${ANNOUNCEMENTS_STORAGE_PATH:-/app/services/api/uploads/announcements}
+    # Temporary rollback safety path. Restrict/remove direct host exposure after HTTPS login is verified via nginx.
     ports:
       - "8080:8080"
     volumes:
@@ -78,6 +81,7 @@ services:
       NEXT_PUBLIC_CARE_APP_URL: ${CARE_APP_URL}
       NEXT_PUBLIC_URSAFE_APP_URL: ${URSAFE_APP_URL}
       NEXT_PUBLIC_API_URL: ${API_BASE_URL}
+    # Temporary rollback safety path. Restrict/remove direct host exposure after HTTPS login is verified via nginx.
     ports:
       - "3000:3000"
     depends_on:
@@ -115,8 +119,25 @@ services:
       NEXT_PUBLIC_CARE_APP_URL: ${CARE_APP_URL}
       NEXT_PUBLIC_URSAFE_APP_URL: ${URSAFE_APP_URL}
       NEXT_PUBLIC_API_URL: ${API_BASE_URL}
+    # Temporary rollback safety path. Restrict/remove direct host exposure after HTTPS login is verified via nginx.
     ports:
       - "3002:3002"
     depends_on:
       - api
+
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: vlworkhub-nginx
+    restart: always
+    depends_on:
+      - main-platform
+      - hr-app
+      - api
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./infra/nginx/vlworkhub.conf:/etc/nginx/conf.d/default.conf:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      - /var/www/certbot:/var/www/certbot:ro
 
