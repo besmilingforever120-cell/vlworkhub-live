@@ -9,9 +9,9 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-vlworkhub}
       POSTGRES_USER: ${POSTGRES_USER:-vlworkhub}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
-    # Temporary rollback safety path. Restrict/remove direct host exposure after HTTPS login is verified via nginx.
+    # Locked to localhost only — connect via SSH tunnel (e.g. DBeaver). LAN/public exposure removed.
     ports:
-      - "0.0.0.0:${POSTGRES_PORT:-5432}:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - /srv/vlworkhub/postgres-data:/var/lib/postgresql/data
 
@@ -35,9 +35,9 @@ services:
       TRUST_PROXY_HOPS: ${TRUST_PROXY_HOPS:-1}
       COOKIE_DOMAIN: ${COOKIE_DOMAIN:-}
       ANNOUNCEMENTS_STORAGE_PATH: ${ANNOUNCEMENTS_STORAGE_PATH:-/app/services/api/uploads/announcements}
-    # Temporary rollback safety path. Restrict/remove direct host exposure after HTTPS login is verified via nginx.
-    ports:
-      - "8080:8080"
+    # Internal only — nginx proxies to api:8080 via Docker network. No host port exposure needed.
+    expose:
+      - "8080"
     volumes:
       - /mnt/synology/HRDocuments/original:/app/services/api/uploads/original
       - /mnt/synology/HRDocuments/signed:/app/services/api/uploads/signed
@@ -81,9 +81,9 @@ services:
       NEXT_PUBLIC_CARE_APP_URL: ${CARE_APP_URL}
       NEXT_PUBLIC_URSAFE_APP_URL: ${URSAFE_APP_URL}
       NEXT_PUBLIC_API_URL: ${API_BASE_URL}
-    # Temporary rollback safety path. Restrict/remove direct host exposure after HTTPS login is verified via nginx.
-    ports:
-      - "3000:3000"
+    # Internal only — nginx proxies to main-platform:3000 via Docker network. No host port exposure needed.
+    expose:
+      - "3000"
     depends_on:
       - api
 
@@ -119,9 +119,9 @@ services:
       NEXT_PUBLIC_CARE_APP_URL: ${CARE_APP_URL}
       NEXT_PUBLIC_URSAFE_APP_URL: ${URSAFE_APP_URL}
       NEXT_PUBLIC_API_URL: ${API_BASE_URL}
-    # Temporary rollback safety path. Restrict/remove direct host exposure after HTTPS login is verified via nginx.
-    ports:
-      - "3002:3002"
+    # Internal only — nginx proxies to hr-app:3002 via Docker network. No host port exposure needed.
+    expose:
+      - "3002"
     depends_on:
       - api
 
