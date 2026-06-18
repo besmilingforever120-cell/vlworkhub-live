@@ -13,3 +13,8 @@ npm-debug.log*
 
 # User-uploaded files
 services/api/uploads/
+
+# Production runtime data
+backups/
+postgres-data/
+uploads/
