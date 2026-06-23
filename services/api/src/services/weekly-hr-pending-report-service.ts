@@ -174,23 +174,20 @@ async function countPendingTasksForRecipient(recipient: EligibleRecipient) {
        AND EXISTS (
          SELECT 1
          FROM hr.task_assignments ta
-         WHERE ta.organization_id = t.organization_id
-           AND ta.task_id = t.id
+         WHERE ta.task_id = t.id
            AND (
-             ta.assigned_user_id = $2
-             OR LOWER(COALESCE(ta.assignment_type, '')) = 'all_staff'
+             ta.user_id = $2::text
+             OR UPPER(BTRIM(COALESCE(ta.department, ''))) = 'ALL STAFF'
              OR (
-               LOWER(COALESCE(ta.assignment_type, '')) = 'department'
-               AND COALESCE(target_department.name, '') <> ''
-               AND COALESCE(ta.assigned_department_name, '') = target_department.name
+               COALESCE(target_department.name, '') <> ''
+               AND UPPER(BTRIM(COALESCE(ta.department, ''))) = UPPER(BTRIM(target_department.name))
              )
            )
        )
        AND NOT EXISTS (
          SELECT 1
          FROM hr.task_completion tc
-         WHERE tc.organization_id = t.organization_id
-           AND tc.task_id = t.id
+         WHERE tc.task_id = t.id
            AND tc.user_id = $2
            AND UPPER(COALESCE(tc.status, '')) = 'COMPLETED'
        )`,
