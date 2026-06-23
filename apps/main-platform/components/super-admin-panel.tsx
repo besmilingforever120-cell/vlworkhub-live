@@ -243,11 +243,12 @@ export function SuperAdminPanel({ viewerRole, viewerOrganizationId }: { viewerRo
     setSaving(true);
     setUserError("");
     try {
+      const normalizedPassword = form.password.trim();
       const payload = {
         ...(canManageOrganizations ? { organizationId: form.organizationId || null } : {}),
         name: form.name,
         email: form.email,
-        ...(form.id && form.password ? { password: form.password } : {}),
+        ...(form.id && normalizedPassword ? { password: normalizedPassword } : {}),
         enabled: form.enabled,
         role: form.role,
         departmentId: form.departmentId || null,

@@ -118,6 +118,161 @@ function resolveLoginUrl() {
   return env.mainPlatformUrl;
 }
 
+const PUBLIC_VLWORKHUB_LOGIN_URL = "https://www.vlworkhub.ca/login";
+
+function resolveCredentialEmailLoginUrl() {
+  const configuredBaseUrl = String(resolveLoginUrl() || "").trim().replace(/\/+$/, "");
+  if (!configuredBaseUrl) {
+    return PUBLIC_VLWORKHUB_LOGIN_URL;
+  }
+
+  try {
+    const candidate = new URL(`${configuredBaseUrl}/login`);
+    if (candidate.origin === "https://www.vlworkhub.ca" && candidate.pathname === "/login") {
+      return candidate.toString();
+    }
+  } catch {
+    // Fall back to the known public URL when configured URL is invalid.
+  }
+
+  return PUBLIC_VLWORKHUB_LOGIN_URL;
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function isLikelyEmailAddress(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
+function buildAccountCredentialsEmail(params: {
+  variant: "welcome" | "reset";
+  displayName: string;
+  recipientEmail: string;
+  temporaryPassword: string;
+}) {
+  const loginUrl = resolveCredentialEmailLoginUrl();
+  const safeDisplayName = escapeHtml(params.displayName);
+  const safeRecipientEmail = escapeHtml(params.recipientEmail);
+  const safeTemporaryPassword = escapeHtml(params.temporaryPassword);
+  const introText =
+    params.variant === "welcome"
+      ? "Your Venture Living VLWorkHub account has been created."
+      : "Your VLWorkHub sign-in credentials were reset by an administrator.";
+  const introHtml = escapeHtml(introText);
+  const subject =
+    params.variant === "welcome"
+      ? "Welcome to VLWorkHub - Your account is ready"
+      : "VLWorkHub credentials reset";
+  const greeting =
+    params.variant === "welcome"
+      ? `Welcome to VLWorkHub, ${params.displayName}.`
+      : `Hello ${params.displayName},`;
+  const passwordLabel = params.variant === "welcome" ? "Temporary password" : "New temporary password";
+  const closingText =
+    params.variant === "welcome"
+      ? "For your security, you will be required to change this temporary password after your first login."
+      : "For your security, sign in and change this temporary password immediately.";
+  const resetFollowUpText =
+    params.variant === "reset"
+      ? "If you were not expecting this reset, contact your Venture Living administrator."
+      : null;
+
+  const text = [
+    greeting,
+    "",
+    introText,
+    "",
+    "Login URL:",
+    loginUrl,
+    "",
+    "Username:",
+    params.recipientEmail,
+    "",
+    `${passwordLabel}:`,
+    params.temporaryPassword,
+    "",
+    closingText,
+    "Do not share your password with anyone.",
+    ...(resetFollowUpText ? [resetFollowUpText] : []),
+    "",
+    "Venture Living",
+    "VLWorkHub"
+  ].join("\n");
+
+  const html = `<!doctype html>
+<html lang="en">
+  <body style="margin:0;padding:0;background-color:#eef3f7;">
+    <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background-color:#eef3f7;padding:24px 12px;">
+      <tr>
+        <td align="center">
+          <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="600" style="width:600px;max-width:600px;background-color:#ffffff;border-collapse:collapse;border:1px solid #d7e1ea;">
+            <tr>
+              <td style="background-color:#112a46;color:#ffffff;padding:24px 28px;font-family:Arial,Helvetica,sans-serif;">
+                <div style="font-size:22px;line-height:1.2;font-weight:700;">VLWorkHub</div>
+                <div style="margin-top:6px;font-size:13px;line-height:1.4;color:#9adfee;">Venture Living</div>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:3px;background-color:#18b7c9;font-size:0;line-height:0;">&nbsp;</td>
+            </tr>
+            <tr>
+              <td style="padding:28px;font-family:Arial,Helvetica,sans-serif;color:#1f2d3d;">
+                <h1 style="margin:0 0 16px 0;font-size:24px;line-height:1.3;color:#112a46;">${params.variant === "welcome" ? "Your account is ready" : "Your credentials were reset"}</h1>
+                <p style="margin:0 0 12px 0;font-size:15px;line-height:1.6;">${escapeHtml(greeting)}</p>
+                <p style="margin:0 0 22px 0;font-size:15px;line-height:1.6;">${introHtml}</p>
+
+                <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="border-collapse:separate;border-spacing:0;border:1px solid #d7e1ea;background-color:#f8fbfd;">
+                  <tr>
+                    <td style="padding:14px 16px;border-bottom:1px solid #d7e1ea;font-size:13px;font-weight:700;color:#112a46;width:180px;">Login URL</td>
+                    <td style="padding:14px 16px;border-bottom:1px solid #d7e1ea;font-size:13px;line-height:1.5;color:#1f2d3d;"><a href="${loginUrl}" style="color:#0d6f8e;text-decoration:underline;">${loginUrl}</a></td>
+                  </tr>
+                  <tr>
+                    <td style="padding:14px 16px;border-bottom:1px solid #d7e1ea;font-size:13px;font-weight:700;color:#112a46;">Username</td>
+                    <td style="padding:14px 16px;border-bottom:1px solid #d7e1ea;font-size:13px;line-height:1.5;color:#1f2d3d;">${safeRecipientEmail}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding:14px 16px;font-size:13px;font-weight:700;color:#112a46;">${escapeHtml(passwordLabel)}</td>
+                    <td style="padding:14px 16px;font-size:13px;line-height:1.5;color:#1f2d3d;">${safeTemporaryPassword}</td>
+                  </tr>
+                </table>
+
+                <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin-top:22px;">
+                  <tr>
+                    <td align="center" bgcolor="#18b7c9" style="border-radius:4px;">
+                      <a href="${loginUrl}" style="display:inline-block;padding:12px 20px;font-size:14px;line-height:1.2;font-family:Arial,Helvetica,sans-serif;font-weight:700;color:#0b2239;text-decoration:none;">Sign in to VLWorkHub</a>
+                    </td>
+                  </tr>
+                </table>
+
+                <p style="margin:22px 0 0 0;padding:14px 16px;background-color:#f2f8fc;border-left:4px solid #18b7c9;font-size:13px;line-height:1.6;color:#1f2d3d;">
+                  ${escapeHtml(closingText)}<br />
+                  Do not share your password with anyone.${resetFollowUpText ? `<br />${escapeHtml(resetFollowUpText)}` : ""}
+                </p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:16px 28px;background-color:#f5f8fb;border-top:1px solid #d7e1ea;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.6;color:#4a5d73;">
+                Venture Living<br />
+                VLWorkHub
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>`;
+
+  return { subject, text, html };
+}
+
 function normalizeRole(value: string | undefined): PlatformRole | null {
   const candidate = String(value || "USER").toUpperCase();
   if (["SUPER_ADMIN", "IT_ADMIN", "ADMIN", "USER"].includes(candidate)) {
@@ -354,22 +509,48 @@ async function sendWelcomeOnboardingEmail(params: {
     throw new Error("SMTP settings are not configured for onboarding emails");
   }
 
-  const loginUrl = resolveLoginUrl().replace(/\/$/, "");
-  const text = [
-    `Welcome to ${params.organizationName} on VLWorkHub, ${params.fullName}.`,
-    "",
-    `Login URL: ${loginUrl}/login`,
-    `Username: ${params.recipientEmail}`,
-    `Temporary password: ${params.temporaryPassword}`,
-    "",
-    "For security, you must change your password immediately after first login."
-  ].join("\n");
+  const emailContent = buildAccountCredentialsEmail({
+    variant: "welcome",
+    displayName: params.fullName,
+    recipientEmail: params.recipientEmail,
+    temporaryPassword: params.temporaryPassword
+  });
 
   await transporter.sendMail({
     from: String(settings.email),
     to: params.recipientEmail,
-    subject: `Welcome to ${params.organizationName} - Temporary Login Credentials`,
-    text
+    subject: emailContent.subject,
+    text: emailContent.text,
+    html: emailContent.html
+  });
+}
+
+async function sendResetCredentialsEmail(params: {
+  organizationId: string;
+  recipientEmail: string;
+  fullName: string;
+  temporaryPassword: string;
+}) {
+  const transporter = await getSmtpTransporter(params.organizationId);
+  const settings = await getStoredEmailSettings(params.organizationId);
+
+  if (!transporter || !settings?.email) {
+    throw new Error("SMTP settings are not configured for reset emails");
+  }
+
+  const emailContent = buildAccountCredentialsEmail({
+    variant: "reset",
+    displayName: params.fullName,
+    recipientEmail: params.recipientEmail,
+    temporaryPassword: params.temporaryPassword
+  });
+
+  await transporter.sendMail({
+    from: String(settings.email),
+    to: params.recipientEmail,
+    subject: emailContent.subject,
+    text: emailContent.text,
+    html: emailContent.html
   });
 }
 
@@ -662,6 +843,16 @@ export async function updateAdminUser(req: AuthenticatedRequest, res: Response) 
     return res.status(400).json({ message: "User id, name, and email are required" });
   }
 
+  const requestBody = req.body && typeof req.body === "object"
+    ? (req.body as Record<string, unknown>)
+    : {};
+  const hasPasswordInput = Object.prototype.hasOwnProperty.call(requestBody, "password");
+  const normalizedPassword = typeof password === "string" ? password.trim() : "";
+
+  if (hasPasswordInput && normalizedPassword.length === 0) {
+    return res.status(400).json({ message: "Password must contain at least one non-whitespace character." });
+  }
+
   const normalizedRole = normalizeRole(role);
 
   if (!normalizedRole) {
@@ -743,7 +934,14 @@ export async function updateAdminUser(req: AuthenticatedRequest, res: Response) 
     const firstName = parts.shift() || name.trim();
     const lastName = parts.join(" ");
 
-    if (password) {
+    let resetEmailPayload: {
+      organizationId: string;
+      recipientEmail: string;
+      fullName: string;
+      temporaryPassword: string;
+    } | null = null;
+
+    if (normalizedPassword.length > 0) {
       const existing = await client.query<{ password_hash: string }>(
         `SELECT password_hash
          FROM users
@@ -760,7 +958,7 @@ export async function updateAdminUser(req: AuthenticatedRequest, res: Response) 
         );
       }
 
-      const passwordHash = await hashPassword(password);
+      const passwordHash = await hashPassword(normalizedPassword);
       await client.query(
         `UPDATE users
          SET organization_id = $1,
@@ -774,6 +972,16 @@ export async function updateAdminUser(req: AuthenticatedRequest, res: Response) 
          WHERE id = $9`,
         [nextOrganizationId, departmentId, email.trim().toLowerCase(), passwordHash, firstName, lastName || firstName, enabled ? "active" : "inactive", normalizedRole, userId]
       );
+
+      const normalizedRecipientEmail = email.trim().toLowerCase();
+      if (isLikelyEmailAddress(normalizedRecipientEmail)) {
+        resetEmailPayload = {
+          organizationId: nextOrganizationId,
+          recipientEmail: normalizedRecipientEmail,
+          fullName: `${firstName} ${lastName}`.trim() || firstName,
+          temporaryPassword: normalizedPassword
+        };
+      }
     } else {
       await client.query(
         `UPDATE users
@@ -894,6 +1102,18 @@ export async function updateAdminUser(req: AuthenticatedRequest, res: Response) 
           req
         )
       );
+    }
+
+    if (resetEmailPayload) {
+      try {
+        await sendResetCredentialsEmail(resetEmailPayload);
+      } catch (mailError) {
+        console.warn("Reset credentials email skipped after user update", {
+          organizationId: resetEmailPayload.organizationId,
+          recipientEmail: resetEmailPayload.recipientEmail,
+          error: mailError instanceof Error ? mailError.message : String(mailError)
+        });
+      }
     }
 
     return res.json({ success: true });
