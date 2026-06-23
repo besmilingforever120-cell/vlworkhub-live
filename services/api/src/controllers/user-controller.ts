@@ -968,7 +968,8 @@ export async function updateAdminUser(req: AuthenticatedRequest, res: Response) 
              first_name = $5,
              last_name = $6,
              status = $7,
-             role = $8
+             role = $8,
+             must_change_password = TRUE
          WHERE id = $9`,
         [nextOrganizationId, departmentId, email.trim().toLowerCase(), passwordHash, firstName, lastName || firstName, enabled ? "active" : "inactive", normalizedRole, userId]
       );
