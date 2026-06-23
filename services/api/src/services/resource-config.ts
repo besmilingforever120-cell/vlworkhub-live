@@ -38,7 +38,7 @@ export const resourceMap = {
   },
   training_completions: {
     table: "training_completions",
-    fields: ["assignment_id", "user_name", "progress_percent", "completed_on", "last_position_seconds"]
+    fields: ["assignment_id", "user_id", "user_name", "progress_percent", "completed_on", "last_position_seconds"]
   },
   surveys: {
     table: "surveys",

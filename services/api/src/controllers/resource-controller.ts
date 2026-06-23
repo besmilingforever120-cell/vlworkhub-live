@@ -19,6 +19,7 @@ import {
 } from "../lib/hr-permissions";
 import { sendAssignmentNotifications } from "../services/assignment-email-service";
 import { deleteAnnouncementImage, deleteAnnouncementAttachment } from "../services/announcement-storage";
+import { syncTrainingAssignmentUsers } from "../services/training-assignment-user-service";
 
 const tableOrgColumnCache = new Map<string, boolean>();
 let tasksArchivedColumnPromise: Promise<boolean> | null = null;
@@ -48,6 +49,16 @@ function resolveResource(name: string) {
 function normalizeNullable(value: unknown) {
   const normalized = String(value ?? "").trim();
   return normalized ? normalized : null;
+}
+
+function toStoreValue(value: unknown): string | number | boolean | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return value;
+  }
+  return String(value);
 }
 
 function normalizeTaskAssignmentPayload(body: Record<string, unknown>) {
@@ -633,8 +644,9 @@ function getActorField(resourceName: string) {
     case "task_completion":
       return "user_id";
     case "task_user_states":
-    case "training_completions":
       return "user_name";
+    case "training_completions":
+      return "user_id";
     case "survey_completions":
       return "user_id";
     case "document_signatures":
@@ -725,6 +737,81 @@ async function selectExistingRecord(table: string, recordId: number, organizatio
   return result.rows[0] || null;
 }
 
+async function prepareTrainingCompletionRequest(req: AuthenticatedRequest, organizationId: string, recordId?: number) {
+  const context = await getContextForResource(req, "training_completions");
+  const requestBody = req.body as Record<string, unknown>;
+  const sessionUserId = String(req.user?.user_id || "").trim();
+  const canManageOtherUsers = Boolean(context && canManageDefinitions(context.role));
+
+  const requestedAssignmentId = Number(requestBody.assignment_id ?? 0);
+  if (!Number.isInteger(requestedAssignmentId) || requestedAssignmentId <= 0) {
+    throw new ClientInputError("Training assignment is required", 400);
+  }
+
+  let targetUserId = normalizeNullable(requestBody.user_id);
+
+  if (!canManageOtherUsers) {
+    targetUserId = sessionUserId;
+  } else if (!targetUserId && recordId) {
+    const existingResult = await pool.query(
+      `SELECT user_id::text AS user_id
+       FROM hr.training_completions
+       WHERE id = $1 AND organization_id = $2
+       LIMIT 1`,
+      [recordId, organizationId]
+    );
+
+    targetUserId = existingResult.rows[0]?.user_id ? String(existingResult.rows[0].user_id) : null;
+  }
+
+  if (!targetUserId) {
+    throw new ClientInputError("Training completion user is required", 400);
+  }
+
+  const validationResult = await pool.query(
+    `SELECT
+       EXISTS(
+         SELECT 1
+         FROM public.users u
+         WHERE u.id = $2
+           AND u.organization_id = $1
+       ) AS user_exists,
+       EXISTS(
+         SELECT 1
+         FROM hr.training_assignments ta
+         WHERE ta.id = $3
+           AND ta.organization_id = $1
+       ) AS assignment_exists,
+       EXISTS(
+         SELECT 1
+         FROM hr.training_assignment_users tau
+         WHERE tau.organization_id = $1
+           AND tau.assignment_id = $3
+           AND tau.user_id = $2
+       ) AS assignment_user_exists,
+       (
+         SELECT COALESCE(NULLIF(BTRIM(COALESCE(u.first_name, '') || ' ' || COALESCE(u.last_name, '')), ''), u.email, u.id::text)
+         FROM public.users u
+         WHERE u.id = $2
+           AND u.organization_id = $1
+         LIMIT 1
+       ) AS user_name`,
+    [organizationId, targetUserId, requestedAssignmentId]
+  );
+
+  const row = validationResult.rows[0];
+  if (!row?.assignment_exists) {
+    throw new ClientInputError("Selected training assignment was not found", 400);
+  }
+
+  if (!row?.user_exists || !row?.assignment_user_exists) {
+    throw new ClientInputError("Forbidden", 403);
+  }
+
+  requestBody.user_id = targetUserId;
+  requestBody.user_name = String(row.user_name || targetUserId);
+}
+
 async function listTableRows(table: string, organizationId: string) {
   if (table === "tasks") {
     if (await tasksTableHasArchivedColumn()) {
@@ -764,7 +851,7 @@ async function listTableRows(table: string, organizationId: string) {
   return result.rows as Array<Record<string, string | number | null>>;
 }
 
-async function insertRow(table: string, fields: readonly string[], values: Array<string | number | null>, organizationId: string) {
+async function insertRow(table: string, fields: readonly string[], values: Array<string | number | boolean | null>, organizationId: string) {
   const hasOrgColumn = await tableHasOrganizationId(table);
   const insertFields = hasOrgColumn ? ["organization_id", ...fields] : [...fields];
   const insertValues = hasOrgColumn ? [organizationId, ...values] : values;
@@ -776,7 +863,7 @@ async function insertRow(table: string, fields: readonly string[], values: Array
   return Number(result.rows[0].id);
 }
 
-async function updateRow(table: string, fields: readonly string[], values: Array<string | number | null>, recordId: number, organizationId: string) {
+async function updateRow(table: string, fields: readonly string[], values: Array<string | number | boolean | null>, recordId: number, organizationId: string) {
   const assignments = fields.map((field, index) => `${field} = $${index + 1}`).join(", ");
   const hasOrgColumn = await tableHasOrganizationId(table);
 
@@ -1070,13 +1157,22 @@ export async function createResource(req: AuthenticatedRequest, res: Response) {
       return res.status(404).json({ message: "Unknown resource" });
     }
 
+    if (resourceName === "training_completions") {
+      await prepareTrainingCompletionRequest(req, organizationId);
+    }
+
     const permission = await enforceCreatePermissions(req, res, resourceName, organizationId);
     if (!permission.ok) {
       return;
     }
 
-    const valueMap = Object.fromEntries(resource.fields.map((field) => [field, req.body[field] ?? null]));
-    const values = resource.fields.map((field) => req.body[field] ?? null);
+    const requestBody = req.body as Record<string, unknown>;
+    if (resourceName === "training_completions" && !requestBody.user_id) {
+      requestBody.user_id = String(req.user?.user_id || "");
+    }
+
+    const valueMap = Object.fromEntries(resource.fields.map((field) => [field, toStoreValue(requestBody[field])])) as Record<string, string | number | boolean | null>;
+    const values = resource.fields.map((field) => toStoreValue(requestBody[field]));
 
     const id = await withFallback(
       resourceName,
@@ -1099,7 +1195,11 @@ export async function createResource(req: AuthenticatedRequest, res: Response) {
         if (isTaskCompletionResource(resourceName)) {
           return insertTaskCompletion(req, organizationId);
         }
-        return insertRow(resource.table, resource.fields, values, organizationId);
+        const insertedId = await insertRow(resource.table, resource.fields, values, organizationId);
+        if (resourceName === "training_assignments") {
+          await syncTrainingAssignmentUsers(organizationId, insertedId);
+        }
+        return insertedId;
       },
       () => createDevResource(resourceName as never, organizationId, valueMap).id
     );
@@ -1207,13 +1307,22 @@ export async function updateResource(req: AuthenticatedRequest, res: Response) {
       return res.status(404).json({ message: "Unknown resource" });
     }
 
+    if (resourceName === "training_completions") {
+      await prepareTrainingCompletionRequest(req, organizationId, recordId);
+    }
+
     const permission = await enforceUpdateOrDeletePermissions(req, res, resourceName, organizationId, recordId);
     if (!permission.ok) {
       return;
     }
 
-    const valueMap = Object.fromEntries(resource.fields.map((field) => [field, req.body[field] ?? null]));
-    const values = resource.fields.map((field) => req.body[field] ?? null);
+    const requestBody = req.body as Record<string, unknown>;
+    if (resourceName === "training_completions" && !requestBody.user_id) {
+      requestBody.user_id = String(req.user?.user_id || "");
+    }
+
+    const valueMap = Object.fromEntries(resource.fields.map((field) => [field, toStoreValue(requestBody[field])])) as Record<string, string | number | boolean | null>;
+    const values = resource.fields.map((field) => toStoreValue(requestBody[field]));
     const assignedBy = getAssignedBy(req);
     const shouldCheckAssignmentChange = ["tasks", "training_assignments", "survey_assignments"].includes(resourceName);
     const previousRecord = shouldCheckAssignmentChange
@@ -1238,6 +1347,9 @@ export async function updateResource(req: AuthenticatedRequest, res: Response) {
           await updateTaskCompletion(req, recordId, organizationId);
         } else {
           await updateRow(resource.table, resource.fields, values, recordId, organizationId);
+          if (resourceName === "training_assignments") {
+            await syncTrainingAssignmentUsers(organizationId, recordId);
+          }
         }
         return true;
       },

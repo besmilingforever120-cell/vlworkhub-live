@@ -17,6 +17,7 @@ import { adminRouter } from "./routes/admin-routes";
 import { requireAuth } from "./middleware/auth";
 import { csrfProtection } from "./middleware/csrf";
 import { startOnboardingExpiryTaskScheduler } from "./controllers/hr-documents-controller";
+import { startWeeklyHrPendingReportScheduler } from "./services/weekly-hr-pending-report-service";
 
 const app = express();
 
@@ -93,6 +94,7 @@ async function start() {
     await verifyDatabaseConnection();
     console.log("PostgreSQL connection verified.");
     startOnboardingExpiryTaskScheduler();
+    startWeeklyHrPendingReportScheduler();
 
     const server = app.listen(env.port, env.host, () => {
       console.log(`VLWorkHub API running on http://${env.host}:${env.port}`);

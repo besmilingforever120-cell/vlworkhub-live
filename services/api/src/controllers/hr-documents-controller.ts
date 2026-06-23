@@ -2652,7 +2652,7 @@ export async function downloadHrDocument(req: AuthenticatedRequest, res: Respons
 
 // ─── Admin Employee Audit Endpoint ───────────────────────────────────────────
 
-async function buildEmployeeAuditPayload(params: {
+export async function buildEmployeeAuditPayload(params: {
   organizationId: string;
   targetUserId: string;
   employee: VisibleHrEmployee;
