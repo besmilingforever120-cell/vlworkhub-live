@@ -1,0 +1,21 @@
+{
+  "verdict": "STAGING MIGRATION PASSED",
+  "timestamp_utc": "2026-06-24T18:02:53Z",
+  "staging_database": "vlworkhub_merge_staging",
+  "target_database": "vlworkhub",
+  "shared_tables": 45,
+  "classification": {
+    "SAFE_AUTO": 38,
+    "PRESERVE_NEW_ONLY": 6,
+    "DERIVED_REBUILD": 1,
+    "MANUAL_CONFLICT_REQUIRED": 0
+  },
+  "protected_tables_unchanged": true,
+  "migration_created_orphans": false,
+  "hashes": {
+    "migrate_staging.py": "7ed3f0cd312bbb7b3b912ab6f44fbaa474b160b4f64e7058c1b1f3dae15eb8a7",
+    "production_cutover_wrapper.py": "0149fc29ca9e6c3cd2edee22927a840645adca7305d8f1be8fd0a3bb3c998fc8",
+    "expected_reconciliation_45.tsv": "64593073c6258c73a0aea805ce4efaa88db5703beda6a68c963894c290e874d0"
+  },
+  "git_commit_sha": "ab5ad489ff8664b0d3fd1de026dd36439c816ca7"
+}

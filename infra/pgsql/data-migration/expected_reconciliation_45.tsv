@@ -1,0 +1,46 @@
+table	identity_key	key_type	old_dup_count	new_dup_count	imported_dup_count	old_only_count	new_only_count	overlapping_identical_count	overlapping_changed_count	merge_policy	classification
+care.clients	MANUAL_CONFLICT_REQUIRED	manual	0	0	0	0	0	0	0	no_op_empty_table	SAFE_AUTO
+care.incidents	MANUAL_CONFLICT_REQUIRED	manual	0	0	0	0	0	0	0	no_op_empty_table	SAFE_AUTO
+care.notes	MANUAL_CONFLICT_REQUIRED	manual	0	0	0	0	0	0	0	no_op_empty_table	SAFE_AUTO
+care.staff	MANUAL_CONFLICT_REQUIRED	manual	0	0	0	0	0	0	0	no_op_empty_table	SAFE_AUTO
+hr.announcements	MANUAL_CONFLICT_REQUIRED	manual								manual_review	SAFE_AUTO
+hr.document_assignments	MANUAL_CONFLICT_REQUIRED	manual								manual_review	SAFE_AUTO
+hr.document_signatures	(organization_id,document_id,user_id)	validated_key	0	0	0	0	2	90	0	merge_old_only_preserve_new_only_update_when_safe	SAFE_AUTO
+hr.documents	(organization_id,title)	validated_key	0	0	0	0	1	19	0	merge_old_only_preserve_new_only_update_when_safe	SAFE_AUTO
+hr.email_settings	id	pk_lineage_validated								preserve_new_only_no_overwrite	PRESERVE_NEW_ONLY
+hr.employees	MANUAL_CONFLICT_REQUIRED	manual	0	0	0	0	0	0	0	no_op_empty_table	SAFE_AUTO
+hr.hr_onboarding_expiry_tasks	MANUAL_CONFLICT_REQUIRED	manual								manual_review	SAFE_AUTO
+hr.hr_onboarding_uploads	(organization_id,id)	validated_key	0	0	0	0	1	4	0	merge_old_only_preserve_new_only_update_when_safe	SAFE_AUTO
+hr.hr_user_roles	(organization_id,user_id)	validated_key	0	0	0	0	0	28	0	merge_old_only_preserve_new_only_update_when_safe	SAFE_AUTO
+hr.organization_app_access	id	pk_lineage_validated								preserve_new_only_no_overwrite	PRESERVE_NEW_ONLY
+hr.survey_assignments	(organization_id,id)	validated_key	0	0	0	0	0	6	0	merge_old_only_preserve_new_only_update_when_safe	SAFE_AUTO
+hr.survey_completions	(organization_id,assignment_id,user_id)	validated_key	0	0	0	0	0	6	0	merge_old_only_preserve_new_only_update_when_safe	SAFE_AUTO
+hr.surveys	(organization_id,title)	validated_key	0	0	0	0	0	1	0	merge_old_only_preserve_new_only_update_when_safe	SAFE_AUTO
+hr.task_assignments	id	validated_key	0	0	0	0	1	40	0	merge_old_only_preserve_new_only_update_when_safe	SAFE_AUTO
+hr.task_completion	id	validated_key	0	0	0	0	1	15	0	merge_old_only_preserve_new_only_update_when_safe	SAFE_AUTO
+hr.task_user_states	MANUAL_CONFLICT_REQUIRED	manual								rebuild_from_source	DERIVED_REBUILD
+hr.tasks	(organization_id,title)	validated_key	0	0	0	0	1	11	0	merge_old_only_preserve_new_only_update_when_safe	SAFE_AUTO
+hr.training	(organization_id,id)	validated_key	0	0	0	0	0	2	0	merge_old_only_preserve_new_only_update_when_safe	SAFE_AUTO
+hr.training_assignments	(organization_id,id)	validated_key	0	0	0	0	0	4	0	merge_old_only_preserve_new_only_update_when_safe	SAFE_AUTO
+hr.training_completions	(organization_id,id)	validated_key	0	0	0	0	0	4	0	merge_old_only_preserve_new_only_update_when_safe	SAFE_AUTO
+hr.user_password_history	id	pk_lineage_validated	0	0	0	0	1	22	0	merge_old_only_preserve_new_only_update_when_safe	SAFE_AUTO
+public.audit_log	id	pk_lineage_validated								preserve_new_only_no_overwrite	PRESERVE_NEW_ONLY
+public.auth_revoked_tokens	jti	pk_lineage_validated								preserve_new_only_no_overwrite	PRESERVE_NEW_ONLY
+public.departments	id	validated_key	0	0	0	0	0	3	0	merge_old_only_preserve_new_only_update_when_safe	SAFE_AUTO
+public.email_settings	id	pk_lineage_validated								preserve_new_only_no_overwrite	PRESERVE_NEW_ONLY
+public.organization_app_access	MANUAL_CONFLICT_REQUIRED	manual								preserve_new_only_no_overwrite	PRESERVE_NEW_ONLY
+public.organizations	id	validated_key	0	0	0	0	0	2	0	merge_old_only_preserve_new_only_update_when_safe	SAFE_AUTO
+public.user_app_access	id	validated_key	0	0	0	0	5	43	0	merge_old_only_preserve_new_only_update_when_safe	SAFE_AUTO
+public.user_password_history	MANUAL_CONFLICT_REQUIRED	manual	0	0	0	0	0	0	0	no_op_empty_table	SAFE_AUTO
+public.user_roles	id	validated_key	0	0	0	0	0	1	0	merge_old_only_preserve_new_only_update_when_safe	SAFE_AUTO
+public.users	id	validated_key	0	0	0	0	0	34	1	merge_old_only_preserve_new_only_update_when_safe	SAFE_AUTO
+ursafe.emergency_contacts	MANUAL_CONFLICT_REQUIRED	manual	0	0	0	0	0	0	0	no_op_empty_table	SAFE_AUTO
+ursafe.mileage	MANUAL_CONFLICT_REQUIRED	manual	0	0	0	0	0	0	0	no_op_empty_table	SAFE_AUTO
+ursafe.safety_checklists	MANUAL_CONFLICT_REQUIRED	manual	0	0	0	0	0	0	0	no_op_empty_table	SAFE_AUTO
+ursafe.ursafe_active_sessions	MANUAL_CONFLICT_REQUIRED	manual	0	0	0	0	0	0	0	no_op_empty_table	SAFE_AUTO
+ursafe.ursafe_check_ins	MANUAL_CONFLICT_REQUIRED	manual	0	0	0	0	0	0	0	no_op_empty_table	SAFE_AUTO
+ursafe.ursafe_emergencies	MANUAL_CONFLICT_REQUIRED	manual	0	0	0	0	0	0	0	no_op_empty_table	SAFE_AUTO
+ursafe.ursafe_shifts	MANUAL_CONFLICT_REQUIRED	manual	0	0	0	0	0	0	0	no_op_empty_table	SAFE_AUTO
+ursafe.ursafe_trips	MANUAL_CONFLICT_REQUIRED	manual	0	0	0	0	0	0	0	no_op_empty_table	SAFE_AUTO
+ursafe.ursafe_user_profiles	MANUAL_CONFLICT_REQUIRED	manual	0	0	0	0	0	0	0	no_op_empty_table	SAFE_AUTO
+ursafe.vehicles	MANUAL_CONFLICT_REQUIRED	manual	0	0	0	0	0	0	0	no_op_empty_table	SAFE_AUTO

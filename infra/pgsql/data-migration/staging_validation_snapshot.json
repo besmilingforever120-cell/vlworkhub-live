@@ -1,0 +1,15 @@
+{
+  "timestamp_utc": "2026-06-24T00:00:00Z",
+  "verdict": "STAGING MIGRATION PASSED",
+  "shared_tables": 45,
+  "classification": {
+    "SAFE_AUTO": 38,
+    "PRESERVE_NEW_ONLY": 6,
+    "DERIVED_REBUILD": 1,
+    "MANUAL_CONFLICT_REQUIRED": 0
+  },
+  "protected_tables_unchanged": true,
+  "migration_created_orphans": false,
+  "duplicate_training_mappings": 0,
+  "cross_org_training_mappings": 0
+}
