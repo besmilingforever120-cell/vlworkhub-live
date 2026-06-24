@@ -15,7 +15,7 @@ mkdir -p "$(dirname "$OUT_PATH")"
 
 old_q() {
   local sql="$1"
-  ssh "$OLD_HOST" "docker exec -i $OLD_CONTAINER psql -U postgres -d $OLD_DB -At -F E'\\t' -c \"$sql\""
+  ssh -n "$OLD_HOST" "docker exec -i $OLD_CONTAINER psql -U postgres -d $OLD_DB -At -F E'\\t' -c \"$sql\""
 }
 
 sensitive_cols_regex='(password|token|secret|smtp|body|content|note|description|text|old_value|new_value|user_agent|ip_address|file_url|storage_path)'
