@@ -7,6 +7,7 @@ import hashlib
 import json
 import re
 import subprocess
+import shlex
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -60,12 +61,12 @@ def prod_psql_script(sql_script: str, db: str = PRODUCTION_DB) -> str:
 
 
 def old_psql(sql: str) -> str:
-    proc = run([
-        'ssh', OLD_HOST,
+    remote_command = shlex.join([
         'docker', 'exec', '-i', OLD_CONTAINER,
         'psql', '-U', 'postgres', '-d', OLD_DB,
         '-At', '-F', '\t', '-c', sql,
     ])
+    proc = run(['ssh', '-n', OLD_HOST, remote_command])
     if proc.returncode != 0:
         raise CutoverError(proc.stderr.strip() or proc.stdout.strip())
     return proc.stdout
@@ -326,8 +327,24 @@ def write_reconciliation_output(expected_recon_path: Path, output_dir: Path, tar
                 continue
             cols = line.split('\t')
             table = cols[0]
-            old_count = old_psql(f'SELECT count(*) FROM {table};').strip()
-            new_count = prod_psql(f'SELECT count(*) FROM {table};', db=target_db).strip()
+
+            parts = table.split('.')
+            if len(parts) != 2 or not all(parts):
+                raise ValueError(f'Invalid qualified table name: {table!r}')
+
+            schema_name, table_name = parts
+            quoted_table = (
+                '"' + schema_name.replace('"', '""') + '".'
+                '"' + table_name.replace('"', '""') + '"'
+            )
+
+            old_count = old_psql(
+                f'SELECT count(*) FROM {quoted_table};'
+            ).strip()
+            new_count = prod_psql(
+                f'SELECT count(*) FROM {quoted_table};',
+                db=target_db,
+            ).strip()
             f.write(line + f'\told_now={old_count}\tprod_now={new_count}\n')
     return out_path
 
